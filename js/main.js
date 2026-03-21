@@ -419,9 +419,9 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // --- ★ここから：一旦「上空からのドローン視点」にして船を探します ---
-  const bh = 100;   // 高さを100mに引き上げ
-  const bz = -250;  // 船の250m後ろに下がる
+  // --- 修正後（ブリッジ視点へのアタリ） ---
+  const bh = 35;   // ★高さ（Bridge Height）：見下ろす高さを下げます
+  const bz = -120; // ★前後位置（Bridge Z）：船の形に合わせて調整します
   camera.position.set(0, bh, bz);
 
   const yr = camOffset.yaw   * Math.PI / 180;
@@ -430,8 +430,8 @@ function upd3D(t) {
   camera.rotation.order = 'YXZ';
   camera.rotation.y = Math.PI + yr;
   
-  // 船を見下ろすように、少し下向きの角度(-0.2)をつけます
-  camera.rotation.x = -0.2 + pr; 
+  // 修正後（正面を向くようにする）
+  camera.rotation.x = pr; 
   // --- ここまで ---
 
   if (curM?.wx === 'ngt') {
