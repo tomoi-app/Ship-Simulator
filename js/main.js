@@ -33,8 +33,8 @@ const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 shipGroup.add(camera);
-const bridgeHeight = 40;
-const bridgeZPos = 60;
+const bridgeHeight = 22; // ★高さを大幅に下げる
+const bridgeZPos = 85;   // ★前後位置を調整（後ろへ）
 camera.position.set(0, bridgeHeight, bridgeZPos);
 
 // --- 物理演算対象の変更（shipGroup 全体を指定） ---
@@ -112,6 +112,57 @@ function initTouch() {
   area.addEventListener('touchend',   te, { passive: false });
   area.addEventListener('touchcancel',te, { passive: false });
 }
+
+// ============================================================
+//  マウス・タッチによる視点（カメラ）操作
+// ============================================================
+let isDraggingCam = false;
+let prevMouseX = 0;
+let prevMouseY = 0;
+const lookSens = 0.2; // 角度（度）での感度チューニング
+
+const cv = document.getElementById('cv');
+
+window.addEventListener('mousedown', e => {
+  if (e.target !== cv) return;
+  isDraggingCam = true;
+  prevMouseX = e.clientX;
+  prevMouseY = e.clientY;
+});
+window.addEventListener('mousemove', e => {
+  if (!isDraggingCam) return;
+  const dx = e.clientX - prevMouseX;
+  const dy = e.clientY - prevMouseY;
+  camOffset.yaw   -= dx * lookSens;
+  camOffset.pitch += dy * lookSens;
+  // 角度制限
+  camOffset.yaw   = Math.max(-130, Math.min(130, camOffset.yaw));
+  camOffset.pitch = Math.max(-25, Math.min(45, camOffset.pitch));
+  prevMouseX = e.clientX;
+  prevMouseY = e.clientY;
+});
+window.addEventListener('mouseup', () => { isDraggingCam = false; });
+
+cv.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDraggingCam = true;
+    prevMouseX = e.touches[0].clientX;
+    prevMouseY = e.touches[0].clientY;
+  }
+}, { passive: false });
+cv.addEventListener('touchmove', e => {
+  if (!isDraggingCam || e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - prevMouseX;
+  const dy = e.touches[0].clientY - prevMouseY;
+  camOffset.yaw   -= dx * lookSens * 1.5;
+  camOffset.pitch += dy * lookSens * 1.5;
+  camOffset.yaw   = Math.max(-130, Math.min(130, camOffset.yaw));
+  camOffset.pitch = Math.max(-25, Math.min(45, camOffset.pitch));
+  prevMouseX = e.touches[0].clientX;
+  prevMouseY = e.touches[0].clientY;
+}, { passive: false });
+cv.addEventListener('touchend', () => { isDraggingCam = false; });
+cv.addEventListener('touchcancel', () => { isDraggingCam = false; });
 
 // ============================================================
 //  天候 → Three.js 反映
@@ -345,7 +396,7 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  const bridgeHeight = 40, bridgeZPos = 60;
+  const bridgeHeight = 22, bridgeZPos = 85;
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
   

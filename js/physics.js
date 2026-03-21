@@ -68,13 +68,7 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   else if (keys['q'] || keys['Q']) { P.rudder *= 0.88; if (Math.abs(P.rudder) < 0.3) P.rudder = 0; }
   else                              P.rudder *= 0.9985;
 
-  // 視点操作
-  if (keys['ArrowUp'])    camOffset.pitch = Math.max(camOffset.pitch - 0.45, -16);
-  if (keys['ArrowDown'])  camOffset.pitch = Math.min(camOffset.pitch + 0.45,  10);
-  if (keys['ArrowLeft'])  camOffset.yaw   = Math.max(camOffset.yaw   - 0.45, -65);
-  if (keys['ArrowRight']) camOffset.yaw   = Math.min(camOffset.yaw   + 0.45,  65);
-  if (!keys['ArrowLeft']  && !keys['ArrowRight']) camOffset.yaw   *= 0.93;
-  if (!keys['ArrowUp']    && !keys['ArrowDown'])  camOffset.pitch *= 0.93;
+  // 視点操作は main.js のマウス・タッチイベントで行います
 
   // エンジン応答（大型船は加速が非常に遅い）
   const ratio  = ENG_RATIOS[P.engineOrder + 3];

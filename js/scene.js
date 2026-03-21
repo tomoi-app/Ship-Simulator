@@ -208,16 +208,15 @@ export function buildShip(THREE, scene) {
   loader.load('./models/ship.glb', (gltf) => {
     const model = gltf.scene;
 
-    // ① スケール調整（モデルの元サイズによって超巨大だったり極小だったりします）
-    // まずは1倍で様子を見て、小さければ 10, 50, 100 と増やしてみてください
+    // ① スケール調整
     const s = 1.0; 
     model.scale.set(s, s, s);
 
-    // ② 位置の調整（Y軸で海面との高さを合わせます。マイナスにすると沈みます）
-    model.position.set(0, 0, 0);
+    // ② 位置の調整（喫水を深くするため-18に変更）
+    model.position.set(0, -18, 0);
 
-    // ③ 向きの調整（船が横や後ろを向いて進んでしまう場合のみ数値をいじります）
-    // model.rotation.y = Math.PI / 2; 
+    // ③ 向きの調整（船首を進行方向のZマイナスに合わせるため180度回転）
+    model.rotation.y = Math.PI; 
 
     SG.add(model);
   });
