@@ -78,7 +78,6 @@ const PITCH_F   = 0.010;    // ピッチ復原力
 export const keys = {};
 
 export function initInput() {
-  initKeyMapDisplay();
   window.addEventListener('keydown', e => {
     keys[e.key] = true;
     if (e.key === ' ') e.preventDefault();
