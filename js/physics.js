@@ -30,7 +30,7 @@ export const P = {
   Lpp: 350,       
   B: 50,          // 船幅
   d: 15,          // 喫水
-  mass: 1.0e7,    // 超・アーケード挙動化 (「超クイック」な加速度0.8相当を達成するため、さらに1万tへ究極の軽量化)
+  mass: 3.6e8,    // リアル挙動回帰 (重厚な操作感・慣性を出すため、標準18万tからさらに倍の36万t相当へ重量化。船速レスポンス0.01相当)
   u: 0,           // Surge
   v: 0,           // Sway
   r: 0,           // Yaw rate
@@ -107,13 +107,13 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   if (gameOverActive) return;
 
   // --- 1. 舵と主機のレスポンス ---
-  // ステアリングエンジン (毎秒 25.0度へさらに高速化し、キー操作に超クイック反応)
-  const rudderSpeed = (25.0 * Math.PI / 180) * dt; // rad
-  const rSpdDeg = 25.0 * dt;
+  // ステアリングエンジン (毎秒 2.3度へ戻す。重厚な舵の効き・回頭レスポンス0.05相当)
+  const rudderSpeed = (2.3 * Math.PI / 180) * dt; // rad
+  const rSpdDeg = 2.3 * dt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
 
-  // 主機レスポンス (RPMの追従を 0.5 -> 0.8 へ超クイック化)
-  P.rpm += (P.targetRpm - P.rpm) * 0.8 * dt * 60;
+  // 主機レスポンス (エンジンの回転立ち上がりを 0.02 へ遅くし極めて重厚に)
+  P.rpm += (P.targetRpm - P.rpm) * 0.02 * dt * 60;
 
   const L = P.Lpp;
   const d = P.d;
