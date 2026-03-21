@@ -116,53 +116,75 @@ function initTouch() {
 // ============================================================
 //  マウス・タッチによる視点（カメラ）操作
 // ============================================================
-let isDraggingCam = false;
-let prevMouseX = 0;
-let prevMouseY = 0;
-const lookSens = 0.2; // 角度（度）での感度チューニング
+let isDragging = false;
+let previousMouseX = 0;
+let previousMouseY = 0;
+const lookSensitivity = 0.25; // 視点移動の感度
 
-const cv = document.getElementById('cv');
-
-window.addEventListener('mousedown', e => {
-  if (e.target !== cv) return;
-  isDraggingCam = true;
-  prevMouseX = e.clientX;
-  prevMouseY = e.clientY;
+window.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    previousMouseX = e.clientX;
+    previousMouseY = e.clientY;
 });
-window.addEventListener('mousemove', e => {
-  if (!isDraggingCam) return;
-  const dx = e.clientX - prevMouseX;
-  const dy = e.clientY - prevMouseY;
-  camOffset.yaw   -= dx * lookSens;
-  camOffset.pitch += dy * lookSens;
-  // 角度制限
-  camOffset.yaw   = Math.max(-130, Math.min(130, camOffset.yaw));
-  camOffset.pitch = Math.max(-25, Math.min(45, camOffset.pitch));
-  prevMouseX = e.clientX;
-  prevMouseY = e.clientY;
-});
-window.addEventListener('mouseup', () => { isDraggingCam = false; });
 
-cv.addEventListener('touchstart', e => {
-  if (e.touches.length === 1) {
-    isDraggingCam = true;
-    prevMouseX = e.touches[0].clientX;
-    prevMouseY = e.touches[0].clientY;
-  }
-}, { passive: false });
-cv.addEventListener('touchmove', e => {
-  if (!isDraggingCam || e.touches.length !== 1) return;
-  const dx = e.touches[0].clientX - prevMouseX;
-  const dy = e.touches[0].clientY - prevMouseY;
-  camOffset.yaw   -= dx * lookSens * 1.5;
-  camOffset.pitch += dy * lookSens * 1.5;
-  camOffset.yaw   = Math.max(-130, Math.min(130, camOffset.yaw));
-  camOffset.pitch = Math.max(-25, Math.min(45, camOffset.pitch));
-  prevMouseX = e.touches[0].clientX;
-  prevMouseY = e.touches[0].clientY;
-}, { passive: false });
-cv.addEventListener('touchend', () => { isDraggingCam = false; });
-cv.addEventListener('touchcancel', () => { isDraggingCam = false; });
+window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.clientX - previousMouseX;
+    const deltaY = e.clientY - previousMouseY;
+
+    // ★右から左ドラッグで右側を見る（引き算にする）
+    camOffset.yaw   -= deltaX * lookSensitivity; 
+    camOffset.pitch -= deltaY * lookSensitivity; 
+    
+    // 見回せる限界角度（真後ろや真上を見すぎないように）
+    camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
+    camOffset.pitch = Math.max(-45, Math.min(45, camOffset.pitch));
+
+    previousMouseX = e.clientX;
+    previousMouseY = e.clientY;
+});
+
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+// --- ここから追加：PC用ダブルクリックで視点リセット ---
+window.addEventListener('dblclick', () => {
+    camOffset.yaw = 0;
+    camOffset.pitch = 0;
+});
+// --- ここまで追加 ---
+
+// スマホのタッチ操作も同じ向きに修正
+let lastTouchTime = 0; // ダブルタップ判定用の変数を追加
+
+window.addEventListener('touchstart', (e) => {
+    // ダブルタップ判定（300ミリ秒以内に2回タッチされたらリセット）
+    const now = Date.now();
+    if (now - lastTouchTime < 300) {
+        camOffset.yaw = 0;
+        camOffset.pitch = 0;
+    }
+    lastTouchTime = now;
+
+    // 既存のドラッグ開始処理
+    isDragging = true;
+    previousMouseX = e.touches[0].clientX;
+    previousMouseY = e.touches[0].clientY;
+});
+window.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.touches[0].clientX - previousMouseX;
+    const deltaY = e.touches[0].clientY - previousMouseY;
+    
+    camOffset.yaw   -= deltaX * lookSensitivity * 1.5; 
+    camOffset.pitch -= deltaY * lookSensitivity * 1.5;
+    
+    camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
+    camOffset.pitch = Math.max(-45, Math.min(45, camOffset.pitch));
+    
+    previousMouseX = e.touches[0].clientX;
+    previousMouseY = e.touches[0].clientY;
+});
+window.addEventListener('touchend', () => { isDragging = false; });
 
 // ============================================================
 //  天候 → Three.js 反映
@@ -396,17 +418,24 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  const bridgeHeight = 22, bridgeZPos = 85;
+  // --- ここからカメラの追従処理を書き換え ---
+  const bh = 28;  // ★ブリッジの高さ（見下ろしすぎないよう少し下げます）
+  const bz = 85;  // ★ブリッジの前後位置（船体の後ろの方へ）
+  
+  // カメラはshipGroupの中にあるので、0,0,0（船の基準点）からの相対位置で固定
+  camera.position.set(0, bh, bz);
+
+  // マウスで操作した角度（camOffset）をラジアンに変換
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
-  
-  // カメラは shipGroup の子なのでローカル座標で視点を調整
-  // GLBモデルはZマイナス方向が船首になるため、Zマイナス側を見る
+
+  // 船から見て、カメラが向く方向をローカル座標で指定
   camera.lookAt(
-    -Math.sin(yr) * 200,
-    bridgeHeight - pr * 85,
-    bridgeZPos - Math.cos(yr) * 200
+    Math.sin(yr) * 200, 
+    bh - Math.sin(pr) * 200, 
+    bz - Math.cos(yr) * 200
   );
+  // --- ここまで ---
 
   if (curM?.wx === 'ngt') {
     const fl = 0.82 + Math.sin(t * 0.003) * 0.18;
