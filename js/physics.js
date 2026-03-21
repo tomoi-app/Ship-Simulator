@@ -213,12 +213,16 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   // 【修正】3Dモデルの正面方向に正しく進むように、u(前進)とv(横滑り)の符号ベクトルを反転
   P.posX += (-P.u * sinH + P.v * cosH) * dt + P.driftX * dt + currX;
   P.posZ += (P.u * cosH + P.v * sinH) * dt + P.driftZ * dt + currZ;
-  P.heading += P.r * dt;
+  
+  // 【修正】旋回方向を反転させる（-= に変更）
+  P.heading -= P.r * dt;
 
   // HUD・他システム互換のためのパラメータ追従
   P.speed = Math.sqrt(P.u*P.u + P.v*P.v) / 0.514;
   if (P.u < 0) P.speed = -P.speed;
-  P.yawRate = P.r;
+
+  // 【修正】ROT（旋回計）のメーターも正しく振れるようにマイナスをつける
+  P.yawRate = -P.r;
 }
 
 // ---- スコア計算（100点満点）----

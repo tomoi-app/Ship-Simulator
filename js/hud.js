@@ -123,15 +123,27 @@ export function updateMainHUD(P, curM) {
   }
 }
 
-// ---- エンジンテレグラフ ----
-const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
-const ENG_IDS    = ['tf0','tf1','tf2','tf3','tf4','tf5','tf6','tf7','tf8'];
+// ---- 新しいテレグラフ（画面左上） ----
+const NEW_ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
+// HTMLに追加したID（Full Asternが最後尾、Full Aheadが最上部）
+const NEW_ENG_IDS = ['tg-rev-full','tg-rev-half','tg-rev-slow','tg-rev-dead','tg-stop','tg-fwd-dead','tg-fwd-slow','tg-fwd-half','tg-fwd-full'];
 
 export function updateTelegraph(engineOrder) {
-  const idx = engineOrder + 4; // 基準を+3から+4に変更
-  ENG_IDS.forEach((id, i) => document.getElementById(id)?.classList.toggle('on', i === idx));
-  const td = document.getElementById('td');
-  if (td) td.textContent = ENG_LABELS[idx];
+    // P.engineOrder は -4(Full Astern) から +4(Full Ahead)
+    // 配列のインデックスに変換: -4 -> 0, -3 -> 1, ..., 0 -> 4, ..., +4 -> 8
+    const idx = engineOrder + 4; 
+
+    // 【追加】新しい左上テレグラフの表示更新
+    NEW_ENG_IDS.forEach((id, i) => {
+        document.getElementById(id)?.classList.toggle('on', i === idx);
+    });
+
+    // (既存の非表示UIも一応更新しておく)
+    const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
+    const ENG_IDS    = ['tf0','tf1','tf2','tf3','tf4','tf5','tf6','tf7','tf8'];
+    ENG_IDS.forEach((id, i) => document.getElementById(id)?.classList.toggle('on', i === idx));
+    const td = document.getElementById('td');
+    if (td) td.textContent = ENG_LABELS[idx];
 }
 
 // ---- 接岸ガイドバー ----
@@ -394,48 +406,61 @@ function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks) {
 }
 
 // ------------------------------------------------------------------
-// drawColorArc: 指定範囲に色帯を描画 (下部文字エリアを避けるクリッピングを追加)
+// 【追加】縦書きテキスト描画ヘルパー
 // ------------------------------------------------------------------
-function drawColorArc(ctx, minVal, maxVal, startVal, endVal, color, radius, width) {
-    const range      = maxVal - minVal;
-    // drawBase と同じ角度設定
-    const startAngleBase = -Math.PI * 1.25; // 左下 (約225度)
-    const endAngleBase   =  Math.PI * 0.25; // 右下 (約45度)
+function drawVerticalText(ctx, text, x, startY, color, fontSize = 10) {
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const step = fontSize * 1.1; // 行間
+    // 文字列全体の高さを計算して、中央がstartYにくるように調整
+    const totalHeight = (text.length - 1) * step;
+    let y = startY - totalHeight / 2;
+    for (let char of text) {
+        ctx.fillText(char, x, y);
+        y += step;
+    }
+}
+
+// ------------------------------------------------------------------
+// 【修正】drawColorArc: 指定範囲に色帯を描画 (文字エリアのくり抜き対応)
+// ------------------------------------------------------------------
+function drawColorArc(ctx, minVal, maxVal, startVal, endVal, color, radius, width, cutouts = []) {
+    const range = maxVal - minVal;
+    const startAngleBase = -Math.PI * 1.25; 
+    const endAngleBase   =  Math.PI * 0.25; 
     function valToAngle(val) {
         const ratio = (val - minVal) / range;
         return startAngleBase + ratio * (endAngleBase - startAngleBase);
     }
 
-    // 【修正】基準変換を削除（drawBaseの角度設定をそのまま使用）
     const startAngle = valToAngle(startVal);
     const endAngle   = valToAngle(endVal);
 
-    // 【追加】文字エリア（下部中央）を描画しないようにトリミングするクリッピングパスを設定
-    ctx.save(); // 状態保存
-
+    ctx.save();
+    
+    // ▼ 文字の領域だけ色帯を「消す（クリッピング）」処理
     ctx.beginPath();
-    // メーターのベースのアーク範囲を描画（クリッピング外周、少し広めに）
-    ctx.arc(80, 80, radius + width + 5, startAngleBase, endAngleBase);
+    // 1. まず全体を描画許可エリアとする
+    ctx.rect(0, 0, 160, 160);
     
-    // 文字エリア（下部中央）に穴を開ける
-    // 角度範囲の目安: 下部 90度(PI/2) を中心に、±PI/8 (22.5度) 程度
-    // この範囲にカラー帯が描画されないようにする
-    const trimStartAngle = Math.PI / 2 - Math.PI / 8; // 67.5度
-    const trimEndAngle   = Math.PI / 2 + Math.PI / 8; // 112.5度
-    
-    // 穴を開けるために逆回転で描画
-    ctx.arc(80, 80, radius - width - 5, trimEndAngle, trimStartAngle, true);
-    ctx.closePath();
-    ctx.clip(); // クリッピング適用
+    // 2. くり抜きたい四角形を追加（evenoddルールにより、この中は描画されなくなる）
+    if (cutouts && cutouts.length > 0) {
+        for (let c of cutouts) {
+            ctx.rect(c.x, c.y, c.w, c.h);
+        }
+    }
+    ctx.clip('evenodd');
 
-    // カラーアークの描画（既存のコード、中心固定）
+    // 色帯（アーク）の描画
     ctx.beginPath();
     ctx.arc(80, 80, radius, startAngle, endAngle);
     ctx.lineWidth = width;
     ctx.strokeStyle = color;
     ctx.stroke();
 
-    ctx.restore(); // 状態復元
+    ctx.restore();
 }
 
 function drawNeedle(ctx, value, min, max, isRudder = false) {
@@ -574,45 +599,52 @@ export function updateDashboard(P) {
 
     // Ship Speed (0-40ノット)
     ctx = cvs.shipSpeed.getContext('2d');
-    // 【変更】主要目盛り(majStep)を 10 から 5 へ、数字ラベルも5ノットごとに表示
     drawBase(ctx, 'SPEED', 'KNOTS', 0, 40, 5, 1);
-    // 港内制限速度(10-15kt)を黄色、過速度(20kt以上)を赤色帯にする
-    drawColorArc(ctx, 0, 40, 10, 15, '#ffcc00', 40, 4);
-    drawColorArc(ctx, 0, 40, 20, 40, '#d32f2f', 40, 4); 
+    // 上部のタイトル「SPEED」と被らないように半径を 56 に拡大
+    drawColorArc(ctx, 0, 40, 10, 15, '#ffcc00', 56, 4);
+    drawColorArc(ctx, 0, 40, 20, 40, '#d32f2f', 56, 4); 
     const shipSpeed = Math.abs(P.speed);
     drawNeedle(ctx, shipSpeed, 0, 40);
 
-    // Rudder (舵角: 船の計器は左舷が赤、右舷が緑)
+    // Rudder (舵角)
     ctx = cvs.rudder.getContext('2d');
     drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 5);
-    drawColorArc(ctx, -35, 35, -35, 0, '#d32f2f', 40, 6); // PORT(赤)
-    drawColorArc(ctx, -35, 35, 0, 35, '#388e3c', 40, 6);  // STBD(緑)
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 45, 90);
-    ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 90);
+    // 縦文字を描画するエリアの色帯をくり抜く指定（x, y, 幅, 高さ）
+    const rCutouts = [
+        {x: 20, y: 55, w: 20, h: 50}, // 左舷(PORT)用の空白
+        {x: 120, y: 55, w: 20, h: 50} // 右舷(STBD)用の空白
+    ];
+    drawColorArc(ctx, -35, 35, -35, 0, '#d32f2f', 56, 6, rCutouts); // PORT(赤)
+    drawColorArc(ctx, -35, 35, 0, 35, '#388e3c', 56, 6, rCutouts);  // STBD(緑)
+    // PORT / STBD を縦書きで隙間にピタッと配置
+    drawVerticalText(ctx, 'PORT', 30, 80, '#d32f2f', 10);
+    drawVerticalText(ctx, 'STBD', 130, 80, '#388e3c', 10);
     drawNeedle(ctx, P.rudder, -35, 35, true);
 
     // ROT (旋回角速度)
     ctx = cvs.rot.getContext('2d');
     drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 5);
-    drawColorArc(ctx, -30, 30, -30, 0, '#d32f2f', 40, 6);
-    drawColorArc(ctx, -30, 30, 0, 30, '#388e3c', 40, 6);
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 45, 80);
-    ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 80);
+    drawColorArc(ctx, -30, 30, -30, 0, '#d32f2f', 56, 6, rCutouts);
+    drawColorArc(ctx, -30, 30, 0, 30, '#388e3c', 56, 6, rCutouts);
+    drawVerticalText(ctx, 'PORT', 30, 80, '#d32f2f', 10);
+    drawVerticalText(ctx, 'STBD', 130, 80, '#388e3c', 10);
     const rotDegMin = P.yawRate * (180 / Math.PI) * 60;
     drawNeedle(ctx, rotDegMin, -30, 30);
 
-    // RPM (エンジン回転数) - より実機らしいカラー帯へ
+    // RPM (エンジン回転数)
     ctx = cvs.rpm.getContext('2d');
     drawBase(ctx, 'ENGINE', 'RPM', -50, 120, 20, 5);
-    drawColorArc(ctx, -50, 120, -50, 0, '#ff8800', 40, 6); // 後進(ASTERN)は警戒のオレンジ
-    drawColorArc(ctx, -50, 120, 0, 80, '#388e3c', 40, 6);  // 常用アヘッドは緑
-    drawColorArc(ctx, -50, 120, 80, 100, '#ffcc00', 40, 6); // ワーニングゾーンは黄
-    drawColorArc(ctx, -50, 120, 100, 120, '#d32f2f', 40, 6); // レッドゾーンは赤
-    ctx.font = 'bold 10px sans-serif';
-    ctx.fillStyle = '#ff8800'; ctx.fillText('ASTERN', 45, 90);
-    ctx.fillStyle = '#388e3c'; ctx.fillText('AHEAD', 115, 90);
+    // ASTERNは6文字あり長いため、高さを70にして大きめにくり抜く
+    const rpmCutouts = [
+        {x: 20, y: 45, w: 20, h: 70}, 
+        {x: 120, y: 45, w: 20, h: 70} 
+    ];
+    drawColorArc(ctx, -50, 120, -50, 0, '#ff8800', 56, 6, rpmCutouts); 
+    drawColorArc(ctx, -50, 120, 0, 80, '#388e3c', 56, 6, rpmCutouts);  
+    drawColorArc(ctx, -50, 120, 80, 100, '#ffcc00', 56, 6, rpmCutouts); 
+    drawColorArc(ctx, -50, 120, 100, 120, '#d32f2f', 56, 6, rpmCutouts); 
+    drawVerticalText(ctx, 'ASTERN', 30, 80, '#ff8800', 9);
+    drawVerticalText(ctx, 'AHEAD', 130, 80, '#388e3c', 9);
     drawNeedle(ctx, P.rpm, -50, 120);
 
     // Wind Direction (風向)
