@@ -30,7 +30,7 @@ export const P = {
   Lpp: 350,       
   B: 50,          // 船幅
   d: 15,          // 喫水
-  mass: 1.8e8,    // 排水量 (kg)
+  mass: 3.0e7,    // アーケード挙動化 (ご要望の約6倍の加速度向上に向け18万tから3万tへ軽量化)
   u: 0,           // Surge
   v: 0,           // Sway
   r: 0,           // Yaw rate
@@ -72,39 +72,26 @@ const ACCEL_R   = 0.0050;   // 後進応答係数
 const ROLL_F    = 0.015;    // ロール復原力
 const PITCH_F   = 0.010;    // ピッチ復原力
 
-import { keyMaps, updateKeyMapDisplay } from './hud.js';
+import { initKeyMapDisplay } from './hud.js';
 
 // ---- キー状態 ----
 export const keys = {};
-export let currentMode = 'standard';
-let modeLockM = false;
 
 export function initInput() {
-  updateKeyMapDisplay(currentMode);
+  initKeyMapDisplay();
   window.addEventListener('keydown', e => {
     keys[e.key] = true;
     if (e.key === ' ') e.preventDefault();
     
-    const modeData = keyMaps[currentMode];
-    if (!modeData) return;
-
-    if (e.key === 'w' || e.key === 'W') P.targetRpm = Math.min(P.targetRpm + modeData.rpmStep, 120);
-    else if (e.key === 's' || e.key === 'S') P.targetRpm = Math.max(P.targetRpm - modeData.rpmStep, -50);
-    else if (e.key === 'd' || e.key === 'D') P.targetRudder = Math.min(P.targetRudder + modeData.rudderStep, 35);
-    else if (e.key === 'a' || e.key === 'A') P.targetRudder = Math.max(P.targetRudder - modeData.rudderStep, -35);
+    // --- WASDの直接操作 (固定ステップ) ---
+    if (e.key === 'w' || e.key === 'W') P.targetRpm = Math.min(P.targetRpm + 10, 120);
+    else if (e.key === 's' || e.key === 'S') P.targetRpm = Math.max(P.targetRpm - 10, -50);
+    else if (e.key === 'd' || e.key === 'D') P.targetRudder = Math.min(P.targetRudder + 5, 35);
+    else if (e.key === 'a' || e.key === 'A') P.targetRudder = Math.max(P.targetRudder - 5, -35);
     else if (e.key === ' ') P.targetRudder = 0;
-    
-    if (e.key === 'm' || e.key === 'M') {
-      if (!modeLockM) {
-        currentMode = currentMode === 'standard' ? 'maneuver' : 'standard';
-        updateKeyMapDisplay(currentMode);
-        modeLockM = true;
-      }
-    }
   });
   window.addEventListener('keyup', e => {
     keys[e.key] = false;
-    if (e.key === 'm' || e.key === 'M') modeLockM = false;
   });
 }
 
@@ -120,13 +107,13 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   if (gameOverActive) return;
 
   // --- 1. 舵と主機のレスポンス ---
-  // ステアリングエンジン (毎秒 2.3度)
-  const rudderSpeed = (2.3 * Math.PI / 180) * dt; // rad
-  const rSpdDeg = 2.3 * dt;
+  // ステアリングエンジン (毎秒 15.0度へ高速化し、キー操作に即座に反応)
+  const rudderSpeed = (15.0 * Math.PI / 180) * dt; // rad
+  const rSpdDeg = 15.0 * dt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
 
-  // 主機レスポンス (RPMの追従)
-  P.rpm += (P.targetRpm - P.rpm) * 0.05 * dt * 60;
+  // 主機レスポンス (RPMの追従を 0.05 -> 0.5 へ超爆速化)
+  P.rpm += (P.targetRpm - P.rpm) * 0.5 * dt * 60;
 
   const L = P.Lpp;
   const d = P.d;

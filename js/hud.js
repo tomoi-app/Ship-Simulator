@@ -371,12 +371,19 @@ function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks) {
         }
     }
 
-    // タイトルと単位
+    // ==========================================
+    // 【変更点】文字をメーター内の最上部に配置
+    // ==========================================
+    ctx.textAlign = 'center';
+    
+    // タイトル（一番上の数字のすぐ下）
     ctx.font = 'bold 12px sans-serif';
     ctx.fillStyle = '#444';
-    ctx.fillText(title, cx, cy - 35);
+    ctx.fillText(title, cx, cy - 42); 
+    
+    // 単位（タイトルのすぐ下）
     ctx.font = '10px sans-serif';
-    ctx.fillText(unit, cx, cy + 25);
+    ctx.fillText(unit, cx, cy - 28); 
 }
 
 // カラーゾーン描画ヘルパー関数
@@ -548,54 +555,28 @@ export function updateDashboard(P) {
 }
 
 // ==== 操作説明UI ====
-export const keyMaps = {
-    standard: {
-        label: '標準',
-        keys: [
-            { key: 'W', desc: 'RPM ↑ (10)' },
-            { key: 'S', desc: 'RPM ↓ (10)' },
-            { key: 'D', desc: '舵右 (5)' },
-            { key: 'A', desc: '舵左 (5)' },
-            { key: 'Space', desc: '舵中央' },
-            { key: 'M', desc: 'モード切替' }
-        ],
-        rpmStep: 10,
-        rudderStep: 5
-    },
-    maneuver: {
-        label: '操船',
-        keys: [
-            { key: 'W', desc: 'RPM ↑ (2)' },
-            { key: 'S', desc: 'RPM ↓ (2)' },
-            { key: 'D', desc: '舵右 (1)' },
-            { key: 'A', desc: '舵左 (1)' },
-            { key: 'Space', desc: '舵中央' },
-            { key: 'M', desc: 'モード切替' }
-        ],
-        rpmStep: 2,
-        rudderStep: 1
-    }
-};
-
-export function updateKeyMapDisplay(currentMode) {
-    const mode = keyMaps[currentMode];
-    if (!mode) return;
-    const labelSpan = document.getElementById('current-mode-label');
+export function initKeyMapDisplay() {
     const listUl = document.getElementById('key-map-list');
+    if (!listUl) return;
 
-    if (labelSpan) labelSpan.textContent = mode.label;
-    if (listUl) {
-        listUl.innerHTML = '';
-        mode.keys.forEach(item => {
-            const li = document.createElement('li');
-            const keySpan = document.createElement('span');
-            keySpan.className = 'key-name';
-            keySpan.textContent = item.key;
-            const descSpan = document.createElement('span');
-            descSpan.textContent = item.desc;
-            li.appendChild(keySpan);
-            li.appendChild(descSpan);
-            listUl.appendChild(li);
-        });
-    }
+    const keys = [
+        { key: 'W', desc: 'RPM ↑ (10)' },
+        { key: 'S', desc: 'RPM ↓ (10)' },
+        { key: 'A', desc: '舵左 (5)' },
+        { key: 'D', desc: '舵右 (5)' },
+        { key: 'Space', desc: '舵中央' }
+    ];
+
+    listUl.innerHTML = '';
+    keys.forEach(item => {
+        const li = document.createElement('li');
+        const keySpan = document.createElement('span');
+        keySpan.className = 'key-name';
+        keySpan.textContent = item.key;
+        const descSpan = document.createElement('span');
+        descSpan.textContent = item.desc;
+        li.appendChild(keySpan);
+        li.appendChild(descSpan);
+        listUl.appendChild(li);
+    });
 }
