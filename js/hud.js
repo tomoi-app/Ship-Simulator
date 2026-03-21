@@ -246,10 +246,9 @@ export function animScore(target) {
 export function showDockResult(scoreData, stars, collision, elapsed, curM) {
   const mm = Math.floor(elapsed / 60), ss = elapsed % 60;
   const dm = document.getElementById('drm');
-  if (dm) {
-    dm.textContent = collision ? '衝突！' : stars === 3 ? '完璧な接岸' : stars === 2 ? '接岸成功' : stars === 1 ? '接岸完了' : '接岸失敗';
-    dm.className   = 'drm' + (collision ? ' col' : '');
-  }
+  if (!dm) return; // 修正
+  dm.textContent = collision ? '衝突！' : stars === 3 ? '完璧な接岸' : stars === 2 ? '接岸成功' : stars === 1 ? '接岸完了' : '接岸失敗';
+  dm.className   = 'drm' + (collision ? ' col' : '');
   const sn = document.getElementById('drsn');
   if (sn) sn.className = 'drsn' + (collision ? ' col' : '');
   const s2 = document.getElementById('drs2');
@@ -330,4 +329,82 @@ export function applyWeatherOverlay(m) {
   if (m.fog > 0.4) {
     if (wi) { wi.classList.remove('h'); wi.textContent = `🌫 視程${Math.round((1 - m.fog) * 10 + 1)}km — レーダー活用`; }
   }
+}
+
+// ==== アナログ計器ダッシュボード ====
+function drawGauge(canvasId, value, min, max, isRudder = false) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const radius = cx - 15;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 角度計算 (-135度 〜 +135度)
+  let range = max - min;
+  let clampedValue = Math.max(min, Math.min(max, value));
+  let percent = (clampedValue - min) / range;
+  let angle = (percent * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+
+  // 針の描画
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = isRudder ? '#d32f2f' : '#333';
+  ctx.stroke();
+
+  // 中心の丸
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#333';
+  ctx.fill();
+}
+
+function drawClock() {
+  const canvas = document.getElementById('cg-clock');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const now = new Date();
+  const ms = now.getMilliseconds();
+  const sec = now.getSeconds() + ms / 1000; // スムーズな秒針
+  const min = now.getMinutes() + sec / 60;
+  const hr = (now.getHours() % 12) + min / 60;
+
+  const drawHand = (pos, length, width, color) => {
+    ctx.beginPath();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(pos) * length, cy + Math.sin(pos) * length);
+    ctx.stroke();
+  };
+
+  drawHand((hr * Math.PI / 6) - Math.PI / 2, 30, 4, '#333');
+  drawHand((min * Math.PI / 30) - Math.PI / 2, 45, 3, '#333');
+  drawHand((sec * Math.PI / 30) - Math.PI / 2, 50, 2, 'red');
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#333';
+  ctx.fill();
+}
+
+export function updateDashboard(P) {
+  drawGauge('cg-windDir', P.windDir, 0, 360);
+  drawGauge('cg-windSpeed', P.windSpeed, 0, 60);       // 風速を60まで
+  // u (surge) を使って前進・後進を表現
+  const shipSpeed = P.u / 0.5144;
+  drawGauge('cg-shipSpeed', shipSpeed, -10, 30);       // 船速を-10〜30へ
+  drawGauge('cg-rudder', P.rudder, -35, 35, true);     // 舵角は定数-35〜35
+  const rotDegMin = P.yawRate * (180 / Math.PI) * 60;  // 度/分
+  drawGauge('cg-rateOfTurn', rotDegMin, -30, 30);      // -30〜30度/分
+  drawGauge('cg-rpm', P.rpm, -60, 120);
+  drawClock();
 }

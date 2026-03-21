@@ -9,9 +9,11 @@ import { MISSIONS, SAVE, saveResult, getStats } from './missions.js';
 import { P, ENG_LABELS, ENG_RATIOS, initInput, keys, camOffset, updatePhysics, calcScore } from './physics.js';
 import { initAudio, updateEngineSound, playHorn, playCrash, playVHF, playClear, isReady as audioReady } from './audio.js';
 import { buildScene, buildOcean, buildShip, buildWorld, buildAI } from './scene.js';
-import { drawRudder, drawRadar, updateCompass, updateMainHUD, updateTelegraph,
-         setDockBar, showPenaltyToast, showVHF, flashScreen, showMissionBanner,
-         drawResultRadar, animScore, showDockResult, applyWeatherOverlay } from './hud.js';
+import {
+  drawRudder, drawRadar, updateCompass, updateMainHUD, updateTelegraph,
+  setDockBar, showPenaltyToast, showVHF, flashScreen, showMissionBanner,
+  drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard
+} from './hud.js';
 import { isToolOpen, toggleTool, drawAll as drawTools } from './tools.js';
 
 // ============================================================
@@ -509,6 +511,9 @@ function loop(t) {
   updateMainHUD(P, curM);
   drawRudder(P.rudder);
   drawRadar(P.posX, P.posZ, P.heading, AIships, fishBoats, curM);
+  
+  // ダッシュボード（アナログ計器）更新
+  updateDashboard(P);
 
   // サウンド
   if (audioReady()) updateEngineSound(P.engineOrder);
