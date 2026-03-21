@@ -34,9 +34,10 @@ const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 // ★ここの数値を変更するだけで、ゲーム中ずっと反映されるように整理しました！
 shipGroup.add(camera);
-const bridgeHeight = 250;   // ★高さ（上への移動）
-const bridgeZPos   = 300; // ★前後位置（マイナス方向が前、プラス方向が後ろ）
-camera.position.set(0, bridgeHeight, bridgeZPos);
+const bridgeXPos   = 20;     // ★左右の位置（マイナスで左、プラスで右にずれます）
+const bridgeHeight = 230;   // ★高さ（上への移動）
+const bridgeZPos   = 280;   // ★前後位置（マイナス方向が前、プラス方向が後ろ）
+camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
 // --- 物理演算対象の変更（shipGroup 全体を指定） ---
 P.shipMesh = shipGroup;
@@ -421,7 +422,7 @@ function upd3D(t) {
   shipGroup.rotation.y = -P.heading;
 
   // --- 上部で設定したブリッジ視点を反映 ---
-  camera.position.set(0, bridgeHeight, bridgeZPos);
+  camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
