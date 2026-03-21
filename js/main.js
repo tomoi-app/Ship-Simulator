@@ -415,6 +415,7 @@ function checkSpdPen() {
 // ============================================================
 function upd3D(t) {
   ocean.position.x = P.posX; ocean.position.z = P.posZ;
+  wu.uOffset.value.set(P.posX, P.posZ); // 追加: 波のシェーダーに船の位置を渡す
   const wa = curM ? curM.waves : 1;
 
   shipGroup.position.set(P.posX, 0, P.posZ);

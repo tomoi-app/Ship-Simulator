@@ -162,15 +162,17 @@ export function buildOcean(THREE, scene) {
     uWD:   { value: new THREE.Vector2(1, 0.3) },
     uCur:  { value: new THREE.Vector2(0.1, 0) },
     uWind: { value: 1.0 },
+    uOffset: { value: new THREE.Vector2(0, 0) } // 追加: 船の座標オフセット
   };
   const vert = `
-    uniform float uT,uWH,uWS,uWind; uniform vec2 uWD,uCur;
+    uniform float uT,uWH,uWS,uWind; uniform vec2 uWD,uCur,uOffset;
     varying vec3 vN; varying float vWY,vFoam;
     float W(vec2 p,vec2 d,float f,float s,float a){
       return a*sin(dot(p/1000.+uCur*uT*.05,normalize(d))*f-uT*s);
     }
     void main(){
-      vec3 pos=position; vec2 wp=pos.xz;
+      // 波のスクロールを25倍速に強調し、「表示速度（メーター）に合った」圧倒的な視覚的スピード感を出します
+      vec3 pos=position; vec2 wp=pos.xz + uOffset * 25.0;
       float h=W(wp,uWD,6.,uWS,uWH)+W(wp,vec2(uWD.y,-uWD.x),9.,uWS*1.3,uWH*.5)
              +W(wp,vec2(-.7,.9),15.,uWS*1.7,uWH*.25)+W(wp,vec2(.5,-.8),22.,uWS*2.1,uWH*.14)
              +W(wp,uWD*1.3,35.,uWS*3.,uWH*.06);
