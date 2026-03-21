@@ -361,3 +361,31 @@ body {
         0 8px 15px rgba(0,0,0,0.4);      /* 外側の落ち影 */
     background-color: #e8e8e8; /* 万が一グラデが効かなかったときの下地 */
 }
+
+/* --- 左下：レーダー --- */
+#radar-container {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 100;
+}
+#radar-canvas {
+    border-radius: 50%;
+    border: 4px solid #333;
+    background-color: rgba(0, 20, 0, 0.8); /* レーダーっぽい暗緑色 */
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+}
+
+/* --- 右下：エンジンテレグラフ --- */
+#telegraph-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 100;
+}
+#telegraph-canvas {
+    border-radius: 10px;
+    border: 4px solid #333;
+    background-color: rgba(200, 200, 200, 0.9); /* 金属っぽい色 */
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+}

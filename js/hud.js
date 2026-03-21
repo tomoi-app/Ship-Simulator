@@ -372,18 +372,44 @@ function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks) {
     }
 
     // ==========================================
-    // 【変更点】文字をメーター内の最上部に配置
+    // 【工夫】文字の背景をプレート状に白塗りし、白フチを付ける
     // ==========================================
     ctx.textAlign = 'center';
     
-    // タイトル（一番上の数字のすぐ下）
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillStyle = '#444';
-    ctx.fillText(title, cx, cy - 42); 
+    // 配置位置（一番上の数字と、中心の針の間のスペースにずらす）
+    let textY = cy - 36; 
     
-    // 単位（タイトルのすぐ下）
+    // タイトルと単位の文字幅を計算して、背景を消すサイズを自動調整
+    ctx.font = 'bold 11px sans-serif';
+    let titleWidth = ctx.measureText(title).width;
     ctx.font = '10px sans-serif';
-    ctx.fillText(unit, cx, cy - 28); 
+    let unitWidth = ctx.measureText(unit).width;
+    let bgWidth = Math.max(titleWidth, unitWidth) + 12; // 文字幅 ＋ 余白
+    
+    // 背景の目盛りを消す白塗りプレート（透過率90%でメーターに馴染ませる）
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
+    ctx.fillRect(cx - bgWidth / 2, textY - 8, bgWidth, 24);
+    
+    // プレートの薄い枠線（計器のラベルシールっぽいリアル感を出します）
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - bgWidth / 2, textY - 8, bgWidth, 24);
+
+    // タイトルの描画
+    ctx.font = 'bold 11px sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(title, cx, textY);    // 先に白いフチを描く
+    ctx.fillStyle = '#111';
+    ctx.fillText(title, cx, textY);      // その上に黒文字を描く
+    
+    // 単位の描画
+    ctx.font = '10px sans-serif';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(unit, cx, textY + 11); // 先に白いフチを描く
+    ctx.fillStyle = '#444';
+    ctx.fillText(unit, cx, textY + 11);   // その上に濃いグレーを描く
 }
 
 // カラーゾーン描画ヘルパー関数
@@ -416,6 +442,56 @@ function drawNeedle(ctx, value, min, max, isRudder = false) {
     ctx.arc(cx, cy, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#222';
     ctx.fill();
+}
+
+// 風向計用の針描画ヘルパー (方位計タイプに対応、赤くて太い)
+function drawNeedleCompass(ctx, value, isRudder = false) {
+    const cx = 80; const cy = 80; const radius = 55;
+    // 真上が0の方位計タイプに角度計算を調整
+    const angleCompass = (value * Math.PI / 180) - (Math.PI / 2);
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angleCompass) * radius, cy + Math.sin(angleCompass) * radius);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = isRudder ? '#d32f2f' : '#222';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#222';
+    ctx.fill();
+}
+
+// 文字視認性アップのオーバレイヘルパー
+function drawTextOverlay(ctx, title, unit) {
+    const cx = 80; const cy = 80;
+    // 配置位置
+    let textY = cy - 36;
+    // 文字幅計算
+    ctx.font = 'bold 11px sans-serif'; 
+    let titleWidth = ctx.measureText(title).width; 
+    ctx.font = '10px sans-serif'; 
+    let unitWidth = ctx.measureText(unit).width;
+    let bgWidth = Math.max(titleWidth, unitWidth) + 12;
+    // 背景消し＆フチ
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
+    ctx.fillRect(cx - bgWidth / 2, textY - 8, bgWidth, 24);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'; 
+    ctx.lineWidth = 1; 
+    ctx.strokeRect(cx - bgWidth / 2, textY - 8, bgWidth, 24);
+    // 文字
+    ctx.lineWidth = 3; 
+    ctx.strokeStyle = '#ffffff'; 
+    ctx.font = 'bold 11px sans-serif'; 
+    ctx.strokeText(title, cx, textY); 
+    ctx.fillStyle = '#111'; 
+    ctx.fillText(title, cx, textY);
+    ctx.font = '10px sans-serif'; 
+    ctx.strokeStyle = '#ffffff'; 
+    ctx.strokeText(unit, cx, textY + 11); 
+    ctx.fillStyle = '#444'; 
+    ctx.fillText(unit, cx, textY + 11);
 }
 
 function updateClock(ctx) {
@@ -523,16 +599,7 @@ export function updateDashboard(P) {
     ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 80);
     
     const rotDegMin = P.yawRate * (180 / Math.PI) * 60;
-    // デジタルメーター (LCD風)
-    ctx.fillStyle = '#8f9a8a';
-    ctx.fillRect(50, 105, 60, 22);
-    ctx.strokeStyle = '#444';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(50, 105, 60, 22);
-    ctx.font = 'bold 16px monospace';
-    ctx.fillStyle = '#111';
-    ctx.textAlign = 'center';
-    ctx.fillText(Math.abs(rotDegMin).toFixed(2), 80, 121);
+    // 針の描画 (デジタル表示削除)
     drawNeedle(ctx, rotDegMin, -30, 30);
 
     // RPM
@@ -543,13 +610,57 @@ export function updateDashboard(P) {
     drawColorArc(ctx, -50, 120, 90, 120, '#d32f2f', 40, 4);
     drawNeedle(ctx, P.rpm, -50, 120);
 
-    // Wind Dir
+    // ==============================================================================
+    // 【変更点】風向計 (Wind Direction) の専用描画処理
+    // ==============================================================================
     ctx = cvs.windDir.getContext('2d');
-    drawBase(ctx, 'WIND DIR', 'PORT / STBD', 0, 360, 90, 10);
-    ctx.font = '24px sans-serif';
-    ctx.fillStyle = '#444';
-    ctx.fillText('◬', 80, 85);
-    drawNeedle(ctx, P.windDir, 0, 360);
+    const cx = 80; const cy = 80; const radius = 70;
+    ctx.clearRect(0, 0, 160, 160);
+
+    // 文字盤の背景 (グラデーション)
+    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius); 
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+
+    // 船のアイコン（真上に船首、シルエット）
+    ctx.save();
+    ctx.fillStyle = 'rgba(100, 100, 100, 0.3)'; // 半透明グレー
+    ctx.translate(cx, cy);
+    // 簡易的な船の形（菱形＋丸）
+    ctx.beginPath(); 
+    ctx.moveTo(0, -28); ctx.lineTo(12, 1); ctx.lineTo(10, 23); 
+    ctx.lineTo(0, 28); ctx.lineTo(-10, 23); ctx.lineTo(-12, 1); 
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // 相対風向のメモリの描画 (360度全円、主要目盛りを30度刻みに)
+    for (let i = 0; i < 360; i += 10) {
+        // 真上(0度)が0になる方位計タイプにPERCENT計算を調整
+        let angleCompass = (i * Math.PI / 180) - (Math.PI / 2);
+        
+        let startR = radius - 6; let endR = radius; if (i % 30 === 0) startR -= 6;
+        ctx.beginPath(); 
+        ctx.moveTo(cx + Math.cos(angleCompass) * startR, cy + Math.sin(angleCompass) * startR); 
+        ctx.lineTo(cx + Math.cos(angleCompass) * endR, cy + Math.sin(angleCompass) * endR);
+        ctx.lineWidth = i % 30 === 0 ? 2 : 1; 
+        ctx.strokeStyle = '#333'; 
+        ctx.stroke();
+
+        if (i % 30 === 0 && i !== 0) { // 0(360)は表示しない
+            ctx.font = 'bold 11px sans-serif'; 
+            ctx.fillStyle = '#222'; 
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            let textR = radius - 18; 
+            ctx.fillText(i, cx + Math.cos(angleCompass) * textR, cy + Math.sin(angleCompass) * textR);
+        }
+    }
+
+    // 風向針を描画 ( Compassタイプ、赤くて太い)
+    drawNeedleCompass(ctx, P.windDir, true);
+    
+    // 文字の視認性アップ処理 (白塗りプレートフチ付き)
+    drawTextOverlay(ctx, 'WIND DIRECTION', 'DEG');
 
     updateClock(cvs.clock.getContext('2d'));
 }
@@ -579,4 +690,65 @@ export function initKeyMapDisplay() {
         li.appendChild(descSpan);
         listUl.appendChild(li);
     });
+}
+
+// ==========================================
+// アーケード画面：レーダーとテレグラフの描画
+// ==========================================
+let arcadeRadarAngle = 0;
+
+export function drawArcadeRadarAndTelegraph(P) {
+    // --- レーダーの描画 ---
+    const radarCtx = document.getElementById('radar-canvas')?.getContext('2d');
+    if (radarCtx) {
+        radarCtx.clearRect(0, 0, 200, 200);
+        const cx = 100; const cy = 100; const r = 95;
+        
+        // グリッド線
+        radarCtx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+        radarCtx.lineWidth = 1;
+        radarCtx.beginPath(); radarCtx.arc(cx, cy, r * 0.33, 0, Math.PI*2); radarCtx.stroke();
+        radarCtx.beginPath(); radarCtx.arc(cx, cy, r * 0.66, 0, Math.PI*2); radarCtx.stroke();
+        radarCtx.beginPath(); radarCtx.moveTo(cx, cy - r); radarCtx.lineTo(cx, cy + r); radarCtx.stroke();
+        radarCtx.beginPath(); radarCtx.moveTo(cx - r, cy); radarCtx.lineTo(cx + r, cy); radarCtx.stroke();
+
+        // スイープ線（くるくる回る線）
+        arcadeRadarAngle += 0.05;
+        radarCtx.beginPath();
+        radarCtx.moveTo(cx, cy);
+        radarCtx.lineTo(cx + Math.cos(arcadeRadarAngle) * r, cy + Math.sin(arcadeRadarAngle) * r);
+        radarCtx.lineWidth = 3;
+        radarCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+        radarCtx.stroke();
+    }
+
+    // --- テレグラフの描画 ---
+    const teleCtx = document.getElementById('telegraph-canvas')?.getContext('2d');
+    if (teleCtx) {
+        teleCtx.clearRect(0, 0, 120, 240);
+        
+        // メモリと文字
+        teleCtx.fillStyle = '#111';
+        teleCtx.font = 'bold 12px sans-serif';
+        teleCtx.textAlign = 'center';
+        teleCtx.fillText("AHEAD", 60, 30);
+        teleCtx.fillText("ASTERN", 60, 220);
+        
+        // 現在のRPMに応じたレバーの位置 (-50 〜 120 を Y座標 200 〜 50 にマッピング)
+        let percent = (P.rpm - (-50)) / (120 - (-50));
+        let leverY = 200 - (percent * 150);
+        
+        // レバーの溝
+        teleCtx.fillStyle = '#333';
+        teleCtx.fillRect(55, 40, 10, 170);
+        
+        // レバーの取っ手
+        teleCtx.fillStyle = '#d32f2f'; // 赤い取っ手
+        teleCtx.beginPath();
+        teleCtx.arc(60, leverY, 15, 0, Math.PI*2);
+        teleCtx.fill();
+        teleCtx.strokeStyle = '#222';
+        teleCtx.lineWidth = 2;
+        teleCtx.stroke();
+    }
 }

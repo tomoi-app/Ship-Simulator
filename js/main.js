@@ -12,7 +12,7 @@ import { buildScene, buildOcean, buildShip, buildWorld, buildAI } from './scene.
 import {
   drawRudder, drawRadar, updateCompass, updateMainHUD, updateTelegraph,
   setDockBar, showPenaltyToast, showVHF, flashScreen, showMissionBanner,
-  drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard
+  drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard, drawArcadeRadarAndTelegraph
 } from './hud.js';
 import { isToolOpen, toggleTool, drawAll as drawTools } from './tools.js';
 
@@ -514,6 +514,7 @@ function loop(t) {
   
   // ダッシュボード（アナログ計器）更新
   updateDashboard(P);
+  drawArcadeRadarAndTelegraph(P);
 
   // サウンド
   if (audioReady()) updateEngineSound(P.engineOrder);
