@@ -4,7 +4,33 @@
 //  hud.js — HUD・UI 描画管理
 // ============================================================
 
+
+// ---- コンパス（画面上のHDG表示） ----
+export function updateCompass(heading) {
+  const hdg = ((heading * 180 / Math.PI) % 360 + 360) % 360;
+  const hd = document.getElementById('hd');
+  if (hd) hd.textContent = hdg.toFixed(0).padStart(3, '0') + '°';
+  const cn = document.getElementById('cn');
+  if (cn) cn.style.transform = `rotate(${-heading * 180 / Math.PI}deg)`;
+}
+
+// ---- メインHUD（速力・エンジン状態等の小テキスト表示） ----
+export function updateMainHUD(P, curM) {
+  const as = Math.abs(P.speed);
+  const ss = document.getElementById('ss2');
+  if (ss) {
+    ss.textContent = as > 12 ? '高速' : as > 6 ? '中速' : as > 2 ? '低速' : '停止';
+    ss.style.color = as > 12 ? '#ff4444' : as > 6 ? '#ffcc00' : '#00ff88';
+  }
+  if (curM) {
+    const dx = curM.tx - P.posX, dz = curM.tz - P.posZ;
+    const ddEl = document.getElementById('dd');
+    if (ddEl) ddEl.textContent = (Math.sqrt(dx*dx + dz*dz) / 1852).toFixed(1) + ' nm';
+  }
+}
+
 // ---- 舵角アーク ----
+
 export function drawRudder(rudder) {
   const cv  = document.getElementById('rucv');
   if (!cv) return;
