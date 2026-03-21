@@ -420,16 +420,12 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★ 350mの船に合わせた現実的なブリッジ位置（メートル単位）
-  const bridgeX = 0;    // 船の真ん中（左右）
-  const bridgeY = 40;   // 水面から約40mの高さ（ブリッジの高さ）
-  const bridgeZ = -100; // 船の中心から100m後ろ（コンテナ船のブリッジは後ろ寄りにあります）
-
+  // --- 上部で設定したブリッジ視点を毎フレーム反映 ---
   // scene.js で計算されたスケール倍率（P.shipScale）を掛ける
   const s = P.shipScale || 1.0; 
 
-  // スケールを考慮してカメラ位置をセット
-  camera.position.set(bridgeX * s, bridgeY * s, bridgeZ * s);
+  // ★ファイル先頭の bridgeXPos, bridgeHeight, bridgeZPos を使用するように修正！
+  camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
 
   // カメラの向き
   const yr = camOffset.yaw   * Math.PI / 180;
