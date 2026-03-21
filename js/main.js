@@ -77,8 +77,8 @@ let vhfFired  = new Set();
 initInput();
 
 window.addEventListener('keydown', e => {
-  if (e.key === 'w' || e.key === 'W') { P.engineOrder = Math.min(P.engineOrder + 1, 3);  updateTelegraph(P.engineOrder); }
-  if (e.key === 's' || e.key === 'S') { P.engineOrder = Math.max(P.engineOrder - 1, -3); updateTelegraph(P.engineOrder); }
+  if (e.key === 'w' || e.key === 'W') { P.engineOrder = Math.min(P.engineOrder + 1, 4);  updateTelegraph(P.engineOrder); }
+  if (e.key === 's' || e.key === 'S') { P.engineOrder = Math.max(P.engineOrder - 1, -4); updateTelegraph(P.engineOrder); }
   if (e.key === 'e' || e.key === 'E') { P.engineOrder = 0; updateTelegraph(P.engineOrder); }
   if (e.key === 'h' || e.key === 'H') { initAudio(); playHorn(); }
   if (e.key === 'm' || e.key === 'M') goSel();
@@ -86,8 +86,8 @@ window.addEventListener('keydown', e => {
 });
 
 function initTouch() {
-  document.getElementById('tbu')?.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); P.engineOrder = Math.min(P.engineOrder + 1, 3);  updateTelegraph(P.engineOrder); }, { passive: false });
-  document.getElementById('tbd')?.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); P.engineOrder = Math.max(P.engineOrder - 1, -3); updateTelegraph(P.engineOrder); }, { passive: false });
+  document.getElementById('tbu')?.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); P.engineOrder = Math.min(P.engineOrder + 1, 4);  updateTelegraph(P.engineOrder); }, { passive: false });
+  document.getElementById('tbd')?.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); P.engineOrder = Math.max(P.engineOrder - 1, -4); updateTelegraph(P.engineOrder); }, { passive: false });
   document.getElementById('tbs')?.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); P.engineOrder = 0; updateTelegraph(P.engineOrder); }, { passive: false });
   document.getElementById('tbh')?.addEventListener('touchstart', e => { e.preventDefault(); initAudio(); playHorn(); }, { passive: false });
 

@@ -83,10 +83,8 @@ export function initInput() {
     keys[e.key] = true;
     if (e.key === ' ') e.preventDefault();
     
-    // --- WASDの直接操作 (固定ステップ) ---
-    if (e.key === 'w' || e.key === 'W') P.targetRpm = Math.min(P.targetRpm + 10, 120);
-    else if (e.key === 's' || e.key === 'S') P.targetRpm = Math.max(P.targetRpm - 10, -50);
-    else if (e.key === 'd' || e.key === 'D') P.targetRudder = Math.min(P.targetRudder + 5, 35);
+    // --- W/Sキーの処理は main.js のエンジンオーダーに統合されたためここからは削除 ---
+    if (e.key === 'd' || e.key === 'D') P.targetRudder = Math.min(P.targetRudder + 5, 35);
     else if (e.key === 'a' || e.key === 'A') P.targetRudder = Math.max(P.targetRudder - 5, -35);
     else if (e.key === ' ') P.targetRudder = 0;
   });
@@ -111,6 +109,22 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   const rudderSpeed = (2.3 * Math.PI / 180) * dt; // rad
   const rSpdDeg = 2.3 * dt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
+
+  // ==========================================================
+  // テレグラフ命令から目標RPMを決定 (全9段階に拡張)
+  // ==========================================================
+  const rpmMap = {
+     "4": 110,  // Full Ahead: 約22 knots
+     "3": 70,   // Half Ahead: 約14 knots
+     "2": 35,   // Slow Ahead: 約7 knots
+     "1": 20,   // Dead Slow Ahead: 微速前進 (約4 knots)
+     "0": 0,    // Stop: 停止
+    "-1": -15,  // Dead Slow Astern: 微速後進
+    "-2": -25,  // Slow Astern
+    "-3": -50,  // Half Astern
+    "-4": -80   // Full Astern
+  };
+  P.targetRpm = rpmMap[P.engineOrder] || 0;
 
   // --- 【変更点】エンジンRPMをリニア加速（10秒 = 0から120到達） ---
   // 10秒間で 120 RPM 変化させるため、毎秒 12 RPM の加速度

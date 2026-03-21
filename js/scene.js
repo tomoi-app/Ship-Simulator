@@ -385,18 +385,46 @@ export function buildWorld(THREE, scene) {
   buildPort(-2100, 3200);
   buildPort( 1800, 4500);
 
-  // 浮標
+  // 浮標 (日本のIALA B方式: 水源に向かって右が赤、左が緑)
   const buoys = [];
-  for (let i = 0; i < 12; i++) {
+  // 巨大船が安全に通れるように航路幅を300m（左右150mずつ）に設定
+  const channelWidth = 150; 
+  
+  for (let i = 0; i < 20; i++) { // ブイの数を20個に増やして長い航路を形成
     const g = new THREE.Group();
-    const color = i % 2 ? 0x00aa44 : 0xff3300;
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 3.5, 8), new THREE.MeshStandardMaterial({ color, roughness: 0.6 }));
-    body.position.y = 2.2; g.add(body);
-    const top = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.2, 8), new THREE.MeshStandardMaterial({ color }));
-    top.position.y = 5; g.add(top);
-    const bl = new THREE.PointLight(color, 1.4, 70); bl.position.y = 5.5; g.add(bl);
-    g.position.set(-80 + (i % 2 ? 32 : -32), 0, i * 620 - 600);
-    scene.add(g); buoys.push(g);
+    
+    // 偶数(左舷側)を緑、奇数(右舷側)を赤に設定
+    const isStarboard = i % 2 !== 0; 
+    const color = isStarboard ? 0xff2200 : 0x00ff44; // 赤(右) と 緑(左)
+    
+    // ブイ本体の質感
+    const mat = new THREE.MeshStandardMaterial({ 
+      color: color, 
+      roughness: 0.3, 
+      metalness: 0.6 
+    });
+    
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 4.5, 12), mat);
+    body.position.y = 2.2; 
+    g.add(body);
+    
+    // 頭頂部の形状（緑は円筒形、赤は円錐形が国際基準ですが、ここでは視認性重視で統一感を出します）
+    const top = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.0, 12), mat);
+    top.position.y = 5.5; 
+    g.add(top);
+    
+    // 航路標識の灯火（夜間や悪天候で目立つように強化）
+    const bl = new THREE.PointLight(color, 2.5, 150); 
+    bl.position.y = 7.0; 
+    g.add(bl);
+    
+    // Z軸マイナス方向（北/水源）に向かって配置。X座標を左右に振り分ける
+    const posX = isStarboard ? channelWidth : -channelWidth;
+    const posZ = Math.floor(i / 2) * -800 + 1000; // 800m間隔で配置
+    
+    g.position.set(posX, 0, posZ);
+    scene.add(g); 
+    buoys.push(g);
   }
 
   return { buoys };

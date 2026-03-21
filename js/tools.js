@@ -222,7 +222,7 @@ export function drawPrecCompass(P, curM) {
 // ============================================================
 export function updateNavData(P, curM) {
   const deg  = ((P.heading * 180 / Math.PI) % 360 + 360) % 360;
-  const EL   = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','STOP','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
+  const EL   = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
   const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
   const as   = Math.abs(P.speed);
 
@@ -235,7 +235,7 @@ export function updateNavData(P, curM) {
   set('td0', String(Math.round(deg)).padStart(3,'0') + '°');
   set('td1', as.toFixed(1) + ' kt', as > 14 ? 'd' : as > 8 ? 'w' : '');
   set('td2', (P.rudder >= 0 ? '+' : '') + P.rudder.toFixed(1) + '°');
-  set('td6', EL[P.engineOrder + 3]);
+  set('td6', EL[P.engineOrder + 4]);
   set('td5', `${dirs[Math.round(P.currDir / 22.5) % 16]} ${P.currSpeed.toFixed(1)}kt`);
 
   if (curM) {

@@ -49,7 +49,7 @@ function _startEngine() {
 // エンジン音を物理状態に合わせて更新（毎フレーム呼ぶ）
 export function updateEngineSound(engineOrder) {
   if (!nodes.eng) return;
-  const ap = Math.abs(engineOrder) / 3;
+  const ap = Math.abs(engineOrder) / 4;
   nodes.eng.gain.gain.setTargetAtTime(ap * 0.09, ctx.currentTime, 0.35);
   nodes.eng.osc.frequency.setTargetAtTime(32 + ap * 48, ctx.currentTime, 0.55);
 }

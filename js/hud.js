@@ -124,11 +124,11 @@ export function updateMainHUD(P, curM) {
 }
 
 // ---- エンジンテレグラフ ----
-const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','STOP','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
-const ENG_IDS    = ['tf0','tf1','tf2','tf3','tf4','tf5','tf6'];
+const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
+const ENG_IDS    = ['tf0','tf1','tf2','tf3','tf4','tf5','tf6','tf7','tf8'];
 
 export function updateTelegraph(engineOrder) {
-  const idx = engineOrder + 3;
+  const idx = engineOrder + 4; // 基準を+3から+4に変更
   ENG_IDS.forEach((id, i) => document.getElementById(id)?.classList.toggle('on', i === idx));
   const td = document.getElementById('td');
   if (td) td.textContent = ENG_LABELS[idx];
@@ -540,61 +540,60 @@ export function updateDashboard(P) {
     drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 5);
     drawNeedle(ctx, P.windSpeed, 0, 100);
 
-    // Ship Speed
+    // Ship Speed (0-40ノット)
     ctx = cvs.shipSpeed.getContext('2d');
     drawBase(ctx, 'SPEED', 'KNOTS', 0, 40, 10, 1);
-    drawColorArc(ctx, 0, 40, 0, 10, '#d32f2f', 40, 4); 
+    // 港内制限速度(10-15kt)を黄色、過速度(20kt以上)を赤色帯にする
+    drawColorArc(ctx, 0, 40, 10, 15, '#ffcc00', 40, 4);
+    drawColorArc(ctx, 0, 40, 20, 40, '#d32f2f', 40, 4); 
     const shipSpeed = Math.abs(P.speed);
     drawNeedle(ctx, shipSpeed, 0, 40);
 
-    // Rudder
+    // Rudder (舵角: 船の計器は左舷が赤、右舷が緑)
     ctx = cvs.rudder.getContext('2d');
     drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 5);
-    drawColorArc(ctx, -35, 35, -35, 0, '#d32f2f', 40, 5);
-    drawColorArc(ctx, -35, 35, 0, 35, '#388e3c', 40, 5);
+    drawColorArc(ctx, -35, 35, -35, 0, '#d32f2f', 40, 6); // PORT(赤)
+    drawColorArc(ctx, -35, 35, 0, 35, '#388e3c', 40, 6);  // STBD(緑)
     ctx.font = 'bold 11px sans-serif';
     ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 45, 90);
     ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 90);
     drawNeedle(ctx, P.rudder, -35, 35, true);
 
-    // ROT
+    // ROT (旋回角速度)
     ctx = cvs.rot.getContext('2d');
-    drawBase(ctx, 'RATE OF TURN', '', -30, 30, 10, 5);
-    drawColorArc(ctx, -30, 30, -30, 0, '#d32f2f', 40, 5);
-    drawColorArc(ctx, -30, 30, 0, 30, '#388e3c', 40, 5);
+    drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 5);
+    drawColorArc(ctx, -30, 30, -30, 0, '#d32f2f', 40, 6);
+    drawColorArc(ctx, -30, 30, 0, 30, '#388e3c', 40, 6);
     ctx.font = 'bold 11px sans-serif';
     ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 45, 80);
     ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 80);
-    
     const rotDegMin = P.yawRate * (180 / Math.PI) * 60;
-    // 針の描画 (デジタル表示削除)
     drawNeedle(ctx, rotDegMin, -30, 30);
 
-    // RPM
+    // RPM (エンジン回転数) - より実機らしいカラー帯へ
     ctx = cvs.rpm.getContext('2d');
-    drawBase(ctx, 'RPM', 'SPEED', -50, 120, 20, 5);
-    drawColorArc(ctx, -50, 120, -50, 0, '#d32f2f', 40, 4);
-    drawColorArc(ctx, -50, 120, 60, 90, '#388e3c', 40, 4);
-    drawColorArc(ctx, -50, 120, 90, 120, '#d32f2f', 40, 4);
+    drawBase(ctx, 'ENGINE', 'RPM', -50, 120, 20, 5);
+    drawColorArc(ctx, -50, 120, -50, 0, '#ff8800', 40, 6); // 後進(ASTERN)は警戒のオレンジ
+    drawColorArc(ctx, -50, 120, 0, 80, '#388e3c', 40, 6);  // 常用アヘッドは緑
+    drawColorArc(ctx, -50, 120, 80, 100, '#ffcc00', 40, 6); // ワーニングゾーンは黄
+    drawColorArc(ctx, -50, 120, 100, 120, '#d32f2f', 40, 6); // レッドゾーンは赤
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = '#ff8800'; ctx.fillText('ASTERN', 45, 90);
+    ctx.fillStyle = '#388e3c'; ctx.fillText('AHEAD', 115, 90);
     drawNeedle(ctx, P.rpm, -50, 120);
 
-    // ==============================================================================
-    // 【変更点】風向計 (Wind Direction) の専用描画処理
-    // ==============================================================================
+    // Wind Direction (風向)
     ctx = cvs.windDir.getContext('2d');
     const cx = 80; const cy = 80; const radius = 70;
     ctx.clearRect(0, 0, 160, 160);
 
-    // 文字盤の背景 (グラデーション)
     let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius); 
     grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
     ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
 
-    // 船のアイコン（真上に船首、シルエット）
     ctx.save();
-    ctx.fillStyle = 'rgba(100, 100, 100, 0.3)'; // 半透明グレー
+    ctx.fillStyle = 'rgba(60, 80, 100, 0.25)'; 
     ctx.translate(cx, cy);
-    // 簡易的な船の形（菱形＋丸）
     ctx.beginPath(); 
     ctx.moveTo(0, -28); ctx.lineTo(12, 1); ctx.lineTo(10, 23); 
     ctx.lineTo(0, 28); ctx.lineTo(-10, 23); ctx.lineTo(-12, 1); 
@@ -602,11 +601,8 @@ export function updateDashboard(P) {
     ctx.fill();
     ctx.restore();
 
-    // 相対風向のメモリの描画 (360度全円、主要目盛りを30度刻みに)
     for (let i = 0; i < 360; i += 10) {
-        // 真上(0度)が0になる方位計タイプにPERCENT計算を調整
         let angleCompass = (i * Math.PI / 180) - (Math.PI / 2);
-        
         let startR = radius - 6; let endR = radius; if (i % 30 === 0) startR -= 6;
         ctx.beginPath(); 
         ctx.moveTo(cx + Math.cos(angleCompass) * startR, cy + Math.sin(angleCompass) * startR); 
@@ -615,7 +611,7 @@ export function updateDashboard(P) {
         ctx.strokeStyle = '#333'; 
         ctx.stroke();
 
-        if (i % 30 === 0 && i !== 0) { // 0(360)は表示しない
+        if (i % 30 === 0 && i !== 0) {
             ctx.font = 'bold 11px sans-serif'; 
             ctx.fillStyle = '#222'; 
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -624,11 +620,8 @@ export function updateDashboard(P) {
         }
     }
 
-    // 風向針を描画 ( Compassタイプ、赤くて太い)
     drawNeedleCompass(ctx, P.windDir, true);
-    
-    // 文字の視認性アップ処理 (白塗りプレートフチ付き)
-    drawTextOverlay(ctx, 'WIND DIRECTION', 'DEG');
+    drawTextOverlay(ctx, 'WIND DIR', 'DEG');
 
     updateClock(cvs.clock.getContext('2d'));
 }
