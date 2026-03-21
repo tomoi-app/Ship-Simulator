@@ -393,17 +393,49 @@ function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks) {
     ctx.fillText(unit, cx, textY + 11);
 }
 
-// カラーゾーン描画ヘルパー関数
-function drawColorArc(ctx, minVal, maxVal, arcMin, arcMax, color, radius, width) {
-    let p1 = (arcMin - minVal) / (maxVal - minVal);
-    let p2 = (arcMax - minVal) / (maxVal - minVal);
-    let a1 = (p1 * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
-    let a2 = (p2 * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+// ------------------------------------------------------------------
+// drawColorArc: 指定範囲に色帯を描画 (下部文字エリアを避けるクリッピングを追加)
+// ------------------------------------------------------------------
+function drawColorArc(ctx, minVal, maxVal, startVal, endVal, color, radius, width) {
+    const range      = maxVal - minVal;
+    // drawBase と同じ角度設定
+    const startAngleBase = -Math.PI * 1.25; // 左下 (約225度)
+    const endAngleBase   =  Math.PI * 0.25; // 右下 (約45度)
+    function valToAngle(val) {
+        const ratio = (val - minVal) / range;
+        return startAngleBase + ratio * (endAngleBase - startAngleBase);
+    }
+
+    // 【修正】基準変換を削除（drawBaseの角度設定をそのまま使用）
+    const startAngle = valToAngle(startVal);
+    const endAngle   = valToAngle(endVal);
+
+    // 【追加】文字エリア（下部中央）を描画しないようにトリミングするクリッピングパスを設定
+    ctx.save(); // 状態保存
+
     ctx.beginPath();
-    ctx.arc(80, 80, radius, a1, a2);
+    // メーターのベースのアーク範囲を描画（クリッピング外周、少し広めに）
+    ctx.arc(80, 80, radius + width + 5, startAngleBase, endAngleBase);
+    
+    // 文字エリア（下部中央）に穴を開ける
+    // 角度範囲の目安: 下部 90度(PI/2) を中心に、±PI/8 (22.5度) 程度
+    // この範囲にカラー帯が描画されないようにする
+    const trimStartAngle = Math.PI / 2 - Math.PI / 8; // 67.5度
+    const trimEndAngle   = Math.PI / 2 + Math.PI / 8; // 112.5度
+    
+    // 穴を開けるために逆回転で描画
+    ctx.arc(80, 80, radius - width - 5, trimEndAngle, trimStartAngle, true);
+    ctx.closePath();
+    ctx.clip(); // クリッピング適用
+
+    // カラーアークの描画（既存のコード、中心固定）
+    ctx.beginPath();
+    ctx.arc(80, 80, radius, startAngle, endAngle);
     ctx.lineWidth = width;
     ctx.strokeStyle = color;
     ctx.stroke();
+
+    ctx.restore(); // 状態復元
 }
 
 function drawNeedle(ctx, value, min, max, isRudder = false) {
@@ -542,7 +574,8 @@ export function updateDashboard(P) {
 
     // Ship Speed (0-40ノット)
     ctx = cvs.shipSpeed.getContext('2d');
-    drawBase(ctx, 'SPEED', 'KNOTS', 0, 40, 10, 1);
+    // 【変更】主要目盛り(majStep)を 10 から 5 へ、数字ラベルも5ノットごとに表示
+    drawBase(ctx, 'SPEED', 'KNOTS', 0, 40, 5, 1);
     // 港内制限速度(10-15kt)を黄色、過速度(20kt以上)を赤色帯にする
     drawColorArc(ctx, 0, 40, 10, 15, '#ffcc00', 40, 4);
     drawColorArc(ctx, 0, 40, 20, 40, '#d32f2f', 40, 4); 

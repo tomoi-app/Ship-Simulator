@@ -370,7 +370,8 @@ function updAI(dt) {
     }
     if (s.avoidTimer > 0) s.avoidTimer--;
     const spd = s.speed * 0.514;
-    s.mesh.position.x += Math.sin(s.heading) * spd * dt;
+    // 【修正後】自船と同じ座標系に合わせるため X の符号にマイナスをつける
+    s.mesh.position.x += -Math.sin(s.heading) * spd * dt;
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
     if (s.mesh.position.z >  8000) s.mesh.position.z = -2500;
@@ -380,7 +381,8 @@ function updAI(dt) {
   });
   fishBoats.forEach(f => {
     f.heading += f.drift;
-    f.mesh.position.x += Math.sin(f.heading) * f.speed * 0.514 * dt;
+    // 【修正後】自船と同じ座標系に合わせるため X の符号にマイナスをつける
+    f.mesh.position.x += -Math.sin(f.heading) * f.speed * 0.514 * dt;
     f.mesh.position.z += Math.cos(f.heading) * f.speed * 0.514 * dt;
     f.mesh.rotation.y = -f.heading;
     if (Math.sqrt(f.mesh.position.x**2 + f.mesh.position.z**2) > 2500)

@@ -126,12 +126,9 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   };
   P.targetRpm = rpmMap[P.engineOrder] || 0;
 
-  // --- 【変更点】エンジンRPMをリニア加速（10秒 = 0から120到達） ---
-  // 10秒間で 120 RPM 変化させるため、毎秒 12 RPM の加速度
-  let rpmDiff = P.targetRpm - P.rpm;
-  let maxRpmDt = 12.0 * dt;
-  if (Math.abs(rpmDiff) < maxRpmDt) P.rpm = P.targetRpm;
-  else P.rpm += Math.sign(rpmDiff) * maxRpmDt;
+  // 【変更】エンジンRPMは約5秒かけて滑らかに目標値へ到達（指数関数的カーブ）
+  P.rpm += (P.targetRpm - P.rpm) * 0.6 * dt;
+  if (Math.abs(P.targetRpm - P.rpm) < 0.1) P.rpm = P.targetRpm; // 微小なブレをピタッと止める
 
   const L = P.Lpp;
   const d = P.d;
@@ -173,25 +170,24 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   const dr = (Nh + Nr_force) / ( (P.mass * L**2 / 12) + Jzz );
 
   // 速度の更新
-  // --- 【変更点】船速をリニア加速（10秒で30ノット到達） ---
-  let targetSpeedKts = P.rpm * 0.25;
+  // 【変更】巨大船の慣性：船速はRPMの出力に対して約10秒かけて滑らかに追従する
+  let targetSpeedKts = P.rpm * 0.20; 
   let targetSpeedMs = targetSpeedKts * 0.514444; // ノットから m/s 変換
-  let speedDiffMs = targetSpeedMs - u;
-  let maxAccelMs = (30 * 0.514444 / 10) * dt; // 10秒で30ノット分(約15.4m/s)に達する加速度
   
-  if (Math.abs(speedDiffMs) < maxAccelMs) P.u = targetSpeedMs;
-  else P.u = u + Math.sign(speedDiffMs) * maxAccelMs;
+  // スピード(P.u)を目標速度に約10秒で到達させる
+  P.u += (targetSpeedMs - P.u) * 0.3 * dt;
+  if (Math.abs(targetSpeedMs - P.u) < 0.01) P.u = targetSpeedMs;
 
   P.v = v + dv * dt;
   P.r = r + dr * dt;
 
-  // 横流れ（風・潮流の影響）※旧モデル互換
+  // 横流れ（風・潮流の影響）※環境の力も正しい方向へ修正
   const wr = P.windDir * Math.PI / 180;
   const cr = P.currDir * Math.PI / 180;
-  const windX = Math.sin(wr) * P.windSpeed * 0.000022;
-  const windZ = -Math.cos(wr) * P.windSpeed * 0.000022;
-  const currX = Math.sin(cr) * P.currSpeed * 0.514 * dt;
-  const currZ = -Math.cos(cr) * P.currSpeed * 0.514 * dt;
+  const windX = -Math.sin(wr) * P.windSpeed * 0.000022; // マイナスを追加
+  const windZ =  Math.cos(wr) * P.windSpeed * 0.000022; // マイナスを削除
+  const currX = -Math.sin(cr) * P.currSpeed * 0.514 * dt; // マイナスを追加
+  const currZ =  Math.cos(cr) * P.currSpeed * 0.514 * dt; // マイナスを削除
 
   P.driftX += (windX - P.driftX * 0.018) * dt * 60;
   P.driftZ += (windZ - P.driftZ * 0.018) * dt * 60;
@@ -214,9 +210,9 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   const cosH = Math.cos(P.heading);
   const sinH = Math.sin(P.heading);
   
-  // X = 東西, Z = 南北 (ノースアップは -Z が北)
-  P.posX += (P.u * sinH + P.v * cosH) * dt + P.driftX * dt + currX;
-  P.posZ += (-P.u * cosH + P.v * sinH) * dt + P.driftZ * dt + currZ;
+  // 【修正】3Dモデルの正面方向に正しく進むように、u(前進)とv(横滑り)の符号ベクトルを反転
+  P.posX += (-P.u * sinH + P.v * cosH) * dt + P.driftX * dt + currX;
+  P.posZ += (P.u * cosH + P.v * sinH) * dt + P.driftZ * dt + currZ;
   P.heading += P.r * dt;
 
   // HUD・他システム互換のためのパラメータ追従
