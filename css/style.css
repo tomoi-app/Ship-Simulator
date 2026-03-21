@@ -378,10 +378,33 @@ body {
 
 /* --- 右下：エンジンテレグラフ --- */
 #telegraph-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 100;
+    position: absolute;
+    width: 6px;
+    height: 100%;
+    background: #00ff88;
+}
+
+/* ========================================================== */
+/* UIのクリーンアップ：「メーター以外すべて非表示」のご要望対応 */
+/* ========================================================== */
+/* ゲーム中の余分な情報パネル・旧UI類を完全に隠す */
+#mp,               /* ミッション情報(左上) */
+#wi,               /* 風/潮流のテキストオーバーレイ */
+#comp-c,           /* コンパス帯(画面上部) */
+#ch,               /* 旧・キー操作説明(右上) */
+#vhf,              /* VHF無線通信UI */
+#dg,               /* ドッキングガイド(着岸UI) */
+#pl,               /* レーダー等を含む左パネル全体 */
+#tele,             /* 旧・エンジンテレグラフ(右パネル内) */
+#rub,              /* 旧・ラダーインジケータ(右パネル内) */
+#key-map-container /* 新・キー操作説明(メーター下) */
+{
+    display: none !important;
+}
+
+/* メーター群は確実に表示する */
+#gauges-container {
+    display: flex !important;
 }
 #telegraph-canvas {
     border-radius: 10px;

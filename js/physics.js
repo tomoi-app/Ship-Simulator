@@ -112,8 +112,12 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   const rSpdDeg = 2.3 * dt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
 
-  // 主機レスポンス (エンジンの回転立ち上がりを 0.02 へ遅くし極めて重厚に)
-  P.rpm += (P.targetRpm - P.rpm) * 0.02 * dt * 60;
+  // --- 【変更点】エンジンRPMをリニア加速（10秒 = 0から120到達） ---
+  // 10秒間で 120 RPM 変化させるため、毎秒 12 RPM の加速度
+  let rpmDiff = P.targetRpm - P.rpm;
+  let maxRpmDt = 12.0 * dt;
+  if (Math.abs(rpmDiff) < maxRpmDt) P.rpm = P.targetRpm;
+  else P.rpm += Math.sign(rpmDiff) * maxRpmDt;
 
   const L = P.Lpp;
   const d = P.d;
@@ -150,12 +154,20 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   const Nr_force =  Yr_force * ( -P.Lpp / 2 ); // 船尾に働くのでマイナス方向モーメントの距離を考慮
 
   // --- 5. 運動方程式の求解 ---
-  const du = (Xh + Xp + Xr) / (P.mass + mx);
+  // const du = (Xh + Xp + Xr) / (P.mass + mx); // ★サスペンド (リニア加速に強制置換)
   const dv = (Yh + Yr_force - (P.mass + mx) * u * r) / (P.mass + my);
   const dr = (Nh + Nr_force) / ( (P.mass * L**2 / 12) + Jzz );
 
   // 速度の更新
-  P.u = u + du * dt;
+  // --- 【変更点】船速をリニア加速（10秒で30ノット到達） ---
+  let targetSpeedKts = P.rpm * 0.25;
+  let targetSpeedMs = targetSpeedKts * 0.514444; // ノットから m/s 変換
+  let speedDiffMs = targetSpeedMs - u;
+  let maxAccelMs = (30 * 0.514444 / 10) * dt; // 10秒で30ノット分(約15.4m/s)に達する加速度
+  
+  if (Math.abs(speedDiffMs) < maxAccelMs) P.u = targetSpeedMs;
+  else P.u = u + Math.sign(speedDiffMs) * maxAccelMs;
+
   P.v = v + dv * dt;
   P.r = r + dr * dt;
 
