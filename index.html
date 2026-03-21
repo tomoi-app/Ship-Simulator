@@ -150,31 +150,36 @@
       <div class="rul">RUDDER ANGLE</div>
       <canvas id="rucv" width="234" height="52"></canvas>
       <div id="ruv">0°</div>
-    </div>
-  </div>
-
   <!-- ダッシュボード (アナログ計器) -->
-  <div id="dashboard">
-    <div class="panel-container">
-      <div class="gauges-row">
-        <div class="gauge-item"><canvas id="cg-windDir" width="120" height="120"></canvas></div>
-        <div class="gauge-item"><canvas id="cg-windSpeed" width="120" height="120"></canvas></div>
-        <div class="gauge-item"><canvas id="cg-shipSpeed" width="120" height="120"></canvas></div>
-        <div class="gauge-item"><canvas id="cg-rudder" width="120" height="120"></canvas></div>
-        <div class="gauge-item"><canvas id="cg-rateOfTurn" width="120" height="120"></canvas></div>
-        <div class="gauge-item"><canvas id="cg-rpm" width="120" height="120"></canvas></div>
-        <div class="gauge-item"><canvas id="cg-clock" width="120" height="120"></canvas></div>
+  <div id="gauges-container">
+      <div class="gauge-unit">
+          <canvas id="wind-dir-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">風向</div>
       </div>
-      <div class="labels-row">
-        <div class="label-box">風向</div>
-        <div class="label-box">風速</div>
-        <div class="label-box">船速</div>
-        <div class="label-box">舵角</div>
-        <div class="label-box">回頭角速度</div>
-        <div class="label-box">エンジン<br>回転数</div>
-        <div class="label-box">時計</div>
+      <div class="gauge-unit">
+          <canvas id="wind-speed-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">風速</div>
       </div>
-    </div>
+      <div class="gauge-unit">
+          <canvas id="ship-speed-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">船速</div>
+      </div>
+      <div class="gauge-unit">
+          <canvas id="rudder-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">舵角</div>
+      </div>
+      <div class="gauge-unit">
+          <canvas id="rot-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">回頭角速度</div>
+      </div>
+      <div class="gauge-unit">
+          <canvas id="rpm-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">エンジン<br>回転数</div>
+      </div>
+      <div class="gauge-unit">
+          <canvas id="clock-canvas" width="160" height="160"></canvas>
+          <div class="label-bubble">時計</div>
+      </div>
   </div>
 
   <!-- スコア画面 -->

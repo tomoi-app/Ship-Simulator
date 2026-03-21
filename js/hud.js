@@ -331,80 +331,139 @@ export function applyWeatherOverlay(m) {
   }
 }
 
-// ==== アナログ計器ダッシュボード ====
-function drawGauge(canvasId, value, min, max, isRudder = false) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  const radius = cx - 15;
+// ==== アナログ計器ダッシュボード (文字盤・メモリ描画版) ====
+function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks, isRudder = false) {
+    const cx = 80, cy = 80, radius = 65;
+    ctx.clearRect(0, 0, 160, 160);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 文字盤
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
 
-  // 角度計算 (-135度 〜 +135度)
-  let range = max - min;
-  let clampedValue = Math.max(min, Math.min(max, value));
-  let percent = (clampedValue - min) / range;
-  let angle = (percent * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+    // メモリ
+    for (let i = min; i <= max; i += minorTicks) {
+        let percent = (i - min) / (max - min);
+        let angle = (percent * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+        let startR = radius - 5;
+        let endR = radius;
+        if (i % majorTicks === 0) startR -= 5;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(angle) * startR, cy + Math.sin(angle) * startR);
+        ctx.lineTo(cx + Math.cos(angle) * endR, cy + Math.sin(angle) * endR);
+        ctx.lineWidth = 1; ctx.strokeStyle = '#333'; ctx.stroke();
 
-  // 針の描画
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = isRudder ? '#d32f2f' : '#333';
-  ctx.stroke();
+        // 数字
+        if (i % majorTicks === 0) {
+            ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#333';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            let textR = radius - 15;
+            ctx.fillText(i, cx + Math.cos(angle) * textR, cy + Math.sin(angle) * textR);
+        }
+    }
 
-  // 中心の丸
-  ctx.beginPath();
-  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-  ctx.fillStyle = '#333';
-  ctx.fill();
+    // タイトルと単位
+    ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#333';
+    ctx.fillText(title, cx, cy - 30);
+    ctx.font = '12px sans-serif';
+    ctx.fillText(unit, cx, cy + 30);
 }
 
-function drawClock() {
-  const canvas = document.getElementById('cg-clock');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function drawNeedle(ctx, value, min, max, isRudder = false) {
+    const cx = 80, cy = 80, radius = 60;
+    const clampedValue = Math.max(min, Math.min(max, value));
+    const percent = (clampedValue - min) / (max - min);
+    const angle = (percent * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+    ctx.lineWidth = 4; ctx.strokeStyle = isRudder ? '#d32f2f' : '#333'; ctx.stroke();
+    // 針の中心
+    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#333'; ctx.fill();
+}
 
-  const now = new Date();
-  const ms = now.getMilliseconds();
-  const sec = now.getSeconds() + ms / 1000; // スムーズな秒針
-  const min = now.getMinutes() + sec / 60;
-  const hr = (now.getHours() % 12) + min / 60;
+function drawDigitalValue(ctx, value, unitLabel) {
+    ctx.font = 'bold 20px monospace'; ctx.fillStyle = '#333';
+    ctx.fillText(value.toFixed(1), 80, 80 + 17);
+    ctx.font = '10px sans-serif'; ctx.fillStyle = '#666';
+    ctx.fillText(unitLabel, 80, 80 + 32);
+}
 
-  const drawHand = (pos, length, width, color) => {
-    ctx.beginPath();
-    ctx.lineWidth = width;
-    ctx.strokeStyle = color;
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(pos) * length, cy + Math.sin(pos) * length);
-    ctx.stroke();
-  };
+function updateClock(ctx) {
+    const cx = 80, cy = 80;
+    ctx.clearRect(0, 0, 160, 160);
+    ctx.beginPath(); ctx.arc(cx, cy, 65, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
 
-  drawHand((hr * Math.PI / 6) - Math.PI / 2, 30, 4, '#333');
-  drawHand((min * Math.PI / 30) - Math.PI / 2, 45, 3, '#333');
-  drawHand((sec * Math.PI / 30) - Math.PI / 2, 50, 2, 'red');
+    for (let i = 0; i < 60; i++) {
+        let angle = (i * 6 - 90) * Math.PI / 180;
+        let startR = 60, endR = 65;
+        if (i % 5 === 0) startR -= 5;
+        ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * startR, cy + Math.sin(angle) * startR);
+        ctx.lineTo(cx + Math.cos(angle) * endR, cy + Math.sin(angle) * endR);
+        ctx.lineWidth = 1; ctx.strokeStyle = '#333'; ctx.stroke();
+    }
+    ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#333';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 1; i <= 12; i++) {
+        let angle = (i * 30 - 90) * Math.PI / 180;
+        ctx.fillText(i, cx + Math.cos(angle) * 50, cy + Math.sin(angle) * 50);
+    }
+    const now = new Date();
+    const sec = now.getSeconds() + now.getMilliseconds() / 1000;
+    const min = now.getMinutes() + sec / 60;
+    const hr = (now.getHours() % 12) + min / 60;
 
-  ctx.beginPath();
-  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#333';
-  ctx.fill();
+    const drawHand = (pos, length, width, color, denom) => {
+        const handAngle = (pos * (360 / denom) - 90) * Math.PI / 180;
+        ctx.beginPath(); ctx.lineWidth = width; ctx.strokeStyle = color;
+        ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(handAngle) * length, cy + Math.sin(handAngle) * length); ctx.stroke();
+    };
+    drawHand(hr, 30, 4, '#333', 12);
+    drawHand(min, 45, 3, '#333', 60);
+    drawHand(sec, 50, 1, 'red', 60);
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fillStyle = '#333'; ctx.fill();
 }
 
 export function updateDashboard(P) {
-  drawGauge('cg-windDir', P.windDir, 0, 360);
-  drawGauge('cg-windSpeed', P.windSpeed, 0, 60);       // 風速を60まで
-  // u (surge) を使って前進・後進を表現
-  const shipSpeed = P.u / 0.5144;
-  drawGauge('cg-shipSpeed', shipSpeed, -10, 30);       // 船速を-10〜30へ
-  drawGauge('cg-rudder', P.rudder, -35, 35, true);     // 舵角は定数-35〜35
-  const rotDegMin = P.yawRate * (180 / Math.PI) * 60;  // 度/分
-  drawGauge('cg-rateOfTurn', rotDegMin, -30, 30);      // -30〜30度/分
-  drawGauge('cg-rpm', P.rpm, -60, 120);
-  drawClock();
+    const cvs = {
+        windDir: document.getElementById('wind-dir-canvas'),
+        windSpeed: document.getElementById('wind-speed-canvas'),
+        shipSpeed: document.getElementById('ship-speed-canvas'),
+        rudder: document.getElementById('rudder-canvas'),
+        rot: document.getElementById('rot-canvas'),
+        rpm: document.getElementById('rpm-canvas'),
+        clock: document.getElementById('clock-canvas')
+    };
+    if (!cvs.windDir) return;
+
+    let ctx = cvs.windDir.getContext('2d');
+    drawBase(ctx, 'WIND DIRECTION', 'DEG', 0, 360, 90, 10);
+    ctx.font = '20px serif'; ctx.fillText('⛵', 80, 80);
+    drawNeedle(ctx, P.windDir, 0, 360);
+
+    ctx = cvs.windSpeed.getContext('2d');
+    drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 5);
+    drawNeedle(ctx, P.windSpeed, 0, 100);
+
+    ctx = cvs.shipSpeed.getContext('2d');
+    const shipSpeed = P.u / 0.5144;
+    drawBase(ctx, 'SHIP SPEED', 'KNOTS', -10, 30, 10, 1);
+    drawNeedle(ctx, shipSpeed, -10, 30);
+
+    ctx = cvs.rudder.getContext('2d');
+    drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 1, true);
+    drawNeedle(ctx, P.rudder, -35, 35, true);
+
+    ctx = cvs.rot.getContext('2d');
+    const rotDegMin = P.yawRate * (180 / Math.PI) * 60;
+    drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 1);
+    drawNeedle(ctx, rotDegMin, -30, 30);
+    drawDigitalValue(ctx, rotDegMin, 'deg/m');
+
+    ctx = cvs.rpm.getContext('2d');
+    drawBase(ctx, 'ENGINE RPM', 'RPM', -40, 100, 20, 5);
+    drawNeedle(ctx, P.rpm, -40, 100);
+
+    updateClock(cvs.clock.getContext('2d'));
 }
