@@ -38,7 +38,7 @@ export function drawChart(P, AIships, fishBoats, buoys, curM) {
   const VIEW  = 6500;
   const scale = Math.min(W, H) / (VIEW * 2);
   const cx = W / 2, cy = H / 2;
-  const toC = (wx, wz) => ({ x: cx + (wx - P.posX) * scale, y: cy - (wz - P.posZ) * scale });
+  const toC = (wx, wz) => ({ x: cx - (wx - P.posX) * scale, y: cy - (wz - P.posZ) * scale });
 
   // グリッド
   const gM = 2 * 1852;
@@ -86,14 +86,14 @@ export function drawChart(P, AIships, fishBoats, buoys, curM) {
   if (AIships) AIships.forEach(s => {
     const p = toC(s.mesh.position.x, s.mesh.position.z);
     if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) return;
-    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(-s.heading);
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(s.heading);
     const sz = s.isTanker ? 2.5 : 1;
     ctx.beginPath(); ctx.moveTo(0, -8 * sz); ctx.lineTo(5 * sz, 7 * sz); ctx.lineTo(-5 * sz, 7 * sz); ctx.closePath();
     ctx.fillStyle = s.isTanker ? '#ff880080' : '#0088cc';
     ctx.shadowColor = s.isTanker ? '#ff8800' : '#00aaff'; ctx.shadowBlur = 3; ctx.fill(); ctx.shadowBlur = 0; ctx.restore();
     ctx.strokeStyle = 'rgba(0,170,255,.38)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x + Math.sin(s.heading) * s.speed * scale * 18, p.y - Math.cos(s.heading) * s.speed * scale * 18);
+    ctx.lineTo(p.x - Math.sin(s.heading) * s.speed * scale * 18, p.y - Math.cos(s.heading) * s.speed * scale * 18);
     ctx.stroke();
   });
 
@@ -120,14 +120,14 @@ export function drawChart(P, AIships, fishBoats, buoys, curM) {
 
   // 自船
   const sp = toC(P.posX, P.posZ);
-  ctx.save(); ctx.translate(sp.x, sp.y); ctx.rotate(-P.heading);
+  ctx.save(); ctx.translate(sp.x, sp.y); ctx.rotate(P.heading);
   ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(9, 9); ctx.lineTo(0, 4); ctx.lineTo(-9, 9); ctx.closePath();
   ctx.fillStyle = '#00ff88'; ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0; ctx.restore();
 
   if (Math.abs(P.speed) > 0.5) {
     ctx.strokeStyle = 'rgba(0,255,136,.48)'; ctx.lineWidth = 1.8;
     ctx.beginPath(); ctx.moveTo(sp.x, sp.y);
-    ctx.lineTo(sp.x + Math.sin(P.heading) * P.speed * scale * 22, sp.y - Math.cos(P.heading) * P.speed * scale * 22);
+    ctx.lineTo(sp.x - Math.sin(P.heading) * P.speed * scale * 22, sp.y - Math.cos(P.heading) * P.speed * scale * 22);
     ctx.stroke();
   }
 
@@ -195,7 +195,7 @@ export function drawPrecCompass(P, curM) {
 
   // 目標ベアリング
   if (curM) {
-    const brg = Math.atan2(curM.tx - P.posX, curM.tz - P.posZ);
+    const brg = Math.atan2(-(curM.tx - P.posX), curM.tz - P.posZ);
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(brg - Math.PI/2);
     ctx.beginPath(); ctx.moveTo(r-4, 0); ctx.lineTo(r*0.4, 0);
     ctx.strokeStyle = 'rgba(255,204,0,.55)'; ctx.lineWidth = 1.4;
