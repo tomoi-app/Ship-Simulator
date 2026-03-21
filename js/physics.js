@@ -47,7 +47,7 @@ const Jzz = (P.mass * (P.Lpp**2) / 12) * 0.30; // 付加慣性モーメント
 // 無次元化流体微係数 (Hull)
 const XH0 = -0.015;           // 直進抵抗係数
 const Yv  = -0.20;            // 横滑り力係数
-const Yr  =  0.05;            // 旋回に伴う横力係数
+const Yr_coeff =  0.05;       // 旋回に伴う横力係数（名前重複回避）
 const Nv  = -0.10;            // 横滑りによる回頭モーメント
 const Nr_coeff = -0.04;       // 旋回抵抗モーメント
 
@@ -62,13 +62,13 @@ export const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','STOP','SLO
 export const ENG_RATIOS = [-1.0, -0.55, -0.30, 0, 0.22, 0.55, 1.0];
 
 // ---- 物理定数 ----
-const DRAG      = 0.9992;   // ★抵抗を減らし、慣性で進み続けるように（0.9985 -> 0.9992）
+const DRAG      = 0.9992;   // ★抵抗を減らし、慣性で進み続けるように
 const DRIFT_D   = 0.96;     // 横流れ減衰率
-const YAW_D     = 0.985;    // ★旋回の減衰を重く（0.96 -> 0.985）
-const RUD_EFF   = 0.00035;  // ★舵効きを大幅に弱める（0.00075 -> 0.00035）
+const YAW_D     = 0.985;    // ★旋回の減衰を重く
+const RUD_EFF   = 0.00035;  // ★舵効きを大幅に弱める
 const STEER_SPD = 2.5;      // ★実際の舵が動く速さ（度/秒）
 const ACCEL_F   = 0.0028;   // 前進加速度係数
-const ACCEL_R   = 0.0050;   // 後進応答係数（後進は早い）
+const ACCEL_R   = 0.0050;   // 後進応答係数
 const ROLL_F    = 0.015;    // ロール復原力
 const PITCH_F   = 0.010;    // ピッチ復原力
 
@@ -124,7 +124,7 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   // --- 2. 船体流体力 (Hull) ---
   const U = Math.sqrt(u**2 + v**2) || 1e-6;
   const Xh = 0.5 * RHO * L * d * (XH0 * u * Math.abs(u));
-  const Yh = 0.5 * RHO * L * d * (Yv * v * U + Yr * r * L * U);
+  const Yh = 0.5 * RHO * L * d * (Yv * v * U + Yr_coeff * r * L * U); // ★変数名衝突を修正
   const Nh = 0.5 * RHO * L**2 * d * (Nv * v * U + Nr_coeff * r * L * U);
 
   // --- 3. プロペラ推力 (Propeller) ---
