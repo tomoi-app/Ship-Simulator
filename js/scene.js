@@ -297,18 +297,20 @@ export function buildWorld(THREE, scene) {
   land( 2600, 2000,  900, 7000,  9, 0x2e4a2e, grassTex);
   land( 2700, -300,  700, 4000,  7, 0x264226, grassTex);
 
-  // ビル群（横浜）
-  for (let i = 0; i < 35; i++) {
-    const h = 80 + Math.random() * 220; // ★ 80m〜300m級のビル
-    const w = 40 + Math.random() * 60;  // ビルの太さも拡大
+  // ビル群（横浜：ランドマークタワー級 296m を混ぜる）
+  for (let i = 0; i < 50; i++) {
+    const isLandmark = (i === 0);
+    const h = isLandmark ? 296 : (50 + Math.random() * 150);
+    const w = isLandmark ? 50 : (20 + Math.random() * 40);
     land(-2050 + Math.random() * 700 - 350, 3100 + Math.random() * 1200,
          w, w, h,
-         i % 3 ? 0x445566 : 0x334455);
+         isLandmark ? 0x8899aa : (i % 3 ? 0x445566 : 0x334455));
   }
   // ビル群（東京）
-  for (let i = 0; i < 25; i++) {
-    const h = 100 + Math.random() * 250; // ★ 100m〜350m級
-    const w = 50 + Math.random() * 80;
+  for (let i = 0; i < 50; i++) {
+    const isLandmark = (i === 0);
+    const h = isLandmark ? 350 : (80 + Math.random() * 150);
+    const w = isLandmark ? 60 : (30 + Math.random() * 50);
     land(1650 + Math.random() * 500 - 250, 4300 + Math.random() * 800,
          w, w, h,
          i % 4 ? 0x334455 : 0x223344);
@@ -340,24 +342,28 @@ export function buildWorld(THREE, scene) {
       );
       b.position.set(px + i * 44, 4, pz); scene.add(b);
     }
-    // クレーン
+    // クレーン（ガントリークレーン巨大化・実寸大）
     const yMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.6 });
-    // クレーンの柱の高さ
-    const craneHeight = 90; // ★ 現実の大型クレーンの高さ
-    const craneWidth = 4;   // 柱の太さ
-
-    [-80, 0, 80].forEach(cx => {
-      [-10, 10].forEach(lx => {
-        // BoxGeometry(幅, 高さ, 奥行き)
-        const l = new THREE.Mesh(new THREE.BoxGeometry(craneWidth, craneHeight, craneWidth), yMat);
-        l.position.set(px + cx + lx, craneHeight / 2, pz + 90); scene.add(l);
-      });
-      // クレーンの横梁（アーム）も巨大化
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(craneWidth, craneWidth, 120), yMat);
-      beam.position.set(px + cx, craneHeight - 5, pz + 50); scene.add(beam);
+    const buildGantryCrane = (cx, cz) => {
+      const g = new THREE.Group();
+      // 柱（高さ90m級）
+      const legG = new THREE.BoxGeometry(4, 90, 4);
+      const legL = new THREE.Mesh(legG, yMat); legL.position.set(-15, 45, 0);
+      const legR = new THREE.Mesh(legG, yMat); legR.position.set(15, 45, 0);
+      // アーム（海側に150m突き出す）
+      const beamG = new THREE.BoxGeometry(6, 6, 150);
+      const beam = new THREE.Mesh(beamG, yMat);
+      beam.position.set(0, 85, 40); 
+      g.add(legL, legR, beam);
+      g.position.set(cx, 0, cz);
       
       const pl = new THREE.PointLight(0xffeeaa, 1.2, 350);
-      pl.position.set(px + cx, craneHeight + 2, pz + 90); scene.add(pl);
+      pl.position.set(0, 92, 40); g.add(pl);
+      scene.add(g);
+    };
+
+    [-100, 0, 100].forEach(cx => {
+      buildGantryCrane(px + cx, pz + 90);
     });
     // コンテナヤード
     const CC = [0xcc3333,0x3366cc,0x33aa33,0xccaa00,0x886633,0xcc6600];
