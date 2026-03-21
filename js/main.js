@@ -422,7 +422,10 @@ function upd3D(t) {
   shipGroup.rotation.y = -P.heading;
 
   // --- 上部で設定したブリッジ視点を反映 ---
-  camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
+  // 船の倍率を取得（まだ読み込まれていない場合は 1.0）
+  const s = P.shipScale || 1.0; 
+  // ★ 倍率を掛け合わせることで、船のサイズが変わっても「同じ場所」を維持する
+  camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
 
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;

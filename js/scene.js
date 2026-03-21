@@ -7,6 +7,7 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 // ↓ GLTFLoader のインポートを追加します
 import { GLTFLoader } from 'https://unpkg.com/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
+import { P } from './physics.js'; // ★ 倍率を P.shipScale として main.js に共有するために追加
 
 // ============================================================
 //  Procedural テクスチャ生成
@@ -216,10 +217,13 @@ export function buildShip(THREE, scene) {
     const center = box.getCenter(new THREE.Vector3());
 
     // 2. シミュレーターの船のサイズに自動でスケールを合わせる
-    const targetLength = 2000; 
+    const targetLength = 350; // ★ 350 にスケール変更
     const maxLength = Math.max(size.x, size.y, size.z); // 一番長い辺を探す
     const scaleFactor = targetLength / maxLength;       // 拡大・縮小率を計算
     
+    // ★ 計算された倍率を P.shipScale に保存して main.js と共有する
+    P.shipScale = scaleFactor;
+
     model.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
     // 3. モデルの中心のズレを修正する（原点に持ってくる）＆ 喫水を沈める
@@ -235,6 +239,16 @@ export function buildShip(THREE, scene) {
     console.log("🚢 Scale Factor:", scaleFactor);
     
     // --- ここまで ---
+
+    // --- ここから追加：全メッシュを両面レンダリングに設定する ---
+    model.traverse((object) => {
+      // オブジェクトがメッシュ（3D形状）の場合
+      if (object.isMesh) {
+        // マテリアル（質感）の設定を変更
+        object.material.side = THREE.DoubleSide; // ★両面を描画するように設定
+      }
+    });
+    // --- ここまで追加 ---
 
     SG.add(model);
   });
