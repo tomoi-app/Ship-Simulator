@@ -72,7 +72,7 @@ const ACCEL_R   = 0.0050;   // 後進応答係数
 const ROLL_F    = 0.015;    // ロール復原力
 const PITCH_F   = 0.010;    // ピッチ復原力
 
-import { initKeyMapDisplay } from './hud.js';
+
 
 // ---- キー状態 ----
 export const keys = {};
