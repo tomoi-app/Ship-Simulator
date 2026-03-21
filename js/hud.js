@@ -331,139 +331,218 @@ export function applyWeatherOverlay(m) {
   }
 }
 
-// ==== アナログ計器ダッシュボード (文字盤・メモリ描画版) ====
-function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks, isRudder = false) {
-    const cx = 80, cy = 80, radius = 65;
+// ==== アナログ計器ダッシュボード (メーターカラー帯・UI洗練版) ====
+function drawBase(ctx, title, unit, min, max, majorTicks, minorTicks) {
+    const cx = 80; const cy = 80; const radius = 70;
     ctx.clearRect(0, 0, 160, 160);
 
-    // 文字盤
+    // 文字盤の背景（リアルな立体感を出すグラデーション）
+    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(1, '#d5d5d5');
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = grad;
     ctx.fill();
 
-    // メモリ
+    // メモリの描画
     for (let i = min; i <= max; i += minorTicks) {
         let percent = (i - min) / (max - min);
         let angle = (percent * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
-        let startR = radius - 5;
+        let startR = radius - 6;
         let endR = radius;
-        if (i % majorTicks === 0) startR -= 5;
+        if (i % majorTicks === 0) startR -= 6;
+
         ctx.beginPath();
         ctx.moveTo(cx + Math.cos(angle) * startR, cy + Math.sin(angle) * startR);
         ctx.lineTo(cx + Math.cos(angle) * endR, cy + Math.sin(angle) * endR);
-        ctx.lineWidth = 1; ctx.strokeStyle = '#333'; ctx.stroke();
+        ctx.lineWidth = i % majorTicks === 0 ? 2 : 1;
+        ctx.strokeStyle = '#333';
+        ctx.stroke();
 
         // 数字
         if (i % majorTicks === 0) {
-            ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#333';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            let textR = radius - 15;
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillStyle = '#222';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            let textR = radius - 18;
             ctx.fillText(i, cx + Math.cos(angle) * textR, cy + Math.sin(angle) * textR);
         }
     }
 
     // タイトルと単位
-    ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#333';
-    ctx.fillText(title, cx, cy - 30);
-    ctx.font = '12px sans-serif';
-    ctx.fillText(unit, cx, cy + 30);
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#444';
+    ctx.fillText(title, cx, cy - 35);
+    ctx.font = '10px sans-serif';
+    ctx.fillText(unit, cx, cy + 25);
+}
+
+// カラーゾーン描画ヘルパー関数
+function drawColorArc(ctx, minVal, maxVal, arcMin, arcMax, color, radius, width) {
+    let p1 = (arcMin - minVal) / (maxVal - minVal);
+    let p2 = (arcMax - minVal) / (maxVal - minVal);
+    let a1 = (p1 * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+    let a2 = (p2 * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
+    ctx.beginPath();
+    ctx.arc(80, 80, radius, a1, a2);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.stroke();
 }
 
 function drawNeedle(ctx, value, min, max, isRudder = false) {
-    const cx = 80, cy = 80, radius = 60;
+    const cx = 80; const cy = 80; const radius = 55;
     const clampedValue = Math.max(min, Math.min(max, value));
     const percent = (clampedValue - min) / (max - min);
     const angle = (percent * 270 - 135) * Math.PI / 180 - (Math.PI / 2);
-    ctx.beginPath(); ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
-    ctx.lineWidth = 4; ctx.strokeStyle = isRudder ? '#d32f2f' : '#333'; ctx.stroke();
-    // 針の中心
-    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#333'; ctx.fill();
-}
 
-function drawDigitalValue(ctx, value, unitLabel) {
-    ctx.font = 'bold 20px monospace'; ctx.fillStyle = '#333';
-    ctx.fillText(value.toFixed(1), 80, 80 + 17);
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#666';
-    ctx.fillText(unitLabel, 80, 80 + 32);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = isRudder ? '#d32f2f' : '#222';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#222';
+    ctx.fill();
 }
 
 function updateClock(ctx) {
-    const cx = 80, cy = 80;
+    if(!ctx) return;
+    const cx = 80; const cy = 80;
     ctx.clearRect(0, 0, 160, 160);
-    ctx.beginPath(); ctx.arc(cx, cy, 65, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+
+    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 70);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(1, '#d5d5d5');
+    ctx.beginPath();
+    ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
 
     for (let i = 0; i < 60; i++) {
         let angle = (i * 6 - 90) * Math.PI / 180;
-        let startR = 60, endR = 65;
-        if (i % 5 === 0) startR -= 5;
-        ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * startR, cy + Math.sin(angle) * startR);
+        let startR = 64; let endR = 70;
+        if (i % 5 === 0) startR -= 6;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(angle) * startR, cy + Math.sin(angle) * startR);
         ctx.lineTo(cx + Math.cos(angle) * endR, cy + Math.sin(angle) * endR);
-        ctx.lineWidth = 1; ctx.strokeStyle = '#333'; ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#333';
+        ctx.stroke();
     }
-    ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#333';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#222';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     for (let i = 1; i <= 12; i++) {
         let angle = (i * 30 - 90) * Math.PI / 180;
         ctx.fillText(i, cx + Math.cos(angle) * 50, cy + Math.sin(angle) * 50);
     }
+
     const now = new Date();
     const sec = now.getSeconds() + now.getMilliseconds() / 1000;
     const min = now.getMinutes() + sec / 60;
     const hr = (now.getHours() % 12) + min / 60;
 
-    const drawHand = (pos, length, width, color, denom) => {
-        const handAngle = (pos * (360 / denom) - 90) * Math.PI / 180;
-        ctx.beginPath(); ctx.lineWidth = width; ctx.strokeStyle = color;
-        ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(handAngle) * length, cy + Math.sin(handAngle) * length); ctx.stroke();
+    const drawHand = (pos, length, width, color) => {
+        const handAngle = (pos * (360 / (color === 'red' ? 60 : 12)) - 90) * Math.PI / 180;
+        ctx.beginPath();
+        ctx.lineWidth = width;
+        ctx.strokeStyle = color;
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(handAngle) * length, cy + Math.sin(handAngle) * length);
+        ctx.stroke();
     };
-    drawHand(hr, 30, 4, '#333', 12);
-    drawHand(min, 45, 3, '#333', 60);
-    drawHand(sec, 50, 1, 'red', 60);
-    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fillStyle = '#333'; ctx.fill();
+
+    drawHand(hr, 35, 4, '#333'); 
+    drawHand(min, 50, 3, '#333'); 
+    drawHand(sec, 55, 1, 'red'); 
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#222';
+    ctx.fill();
 }
 
 export function updateDashboard(P) {
     const cvs = {
-        windDir: document.getElementById('wind-dir-canvas'),
         windSpeed: document.getElementById('wind-speed-canvas'),
         shipSpeed: document.getElementById('ship-speed-canvas'),
         rudder: document.getElementById('rudder-canvas'),
         rot: document.getElementById('rot-canvas'),
         rpm: document.getElementById('rpm-canvas'),
+        windDir: document.getElementById('wind-dir-canvas'),
         clock: document.getElementById('clock-canvas')
     };
-    if (!cvs.windDir) return;
+    if (!cvs.windSpeed) return;
 
-    let ctx = cvs.windDir.getContext('2d');
-    drawBase(ctx, 'WIND DIRECTION', 'DEG', 0, 360, 90, 10);
-    ctx.font = '20px serif'; ctx.fillText('⛵', 80, 80);
-    drawNeedle(ctx, P.windDir, 0, 360);
+    let ctx;
 
+    // Wind Speed
     ctx = cvs.windSpeed.getContext('2d');
     drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 5);
     drawNeedle(ctx, P.windSpeed, 0, 100);
 
+    // Ship Speed
     ctx = cvs.shipSpeed.getContext('2d');
-    const shipSpeed = P.u / 0.5144;
-    drawBase(ctx, 'SHIP SPEED', 'KNOTS', -10, 30, 10, 1);
-    drawNeedle(ctx, shipSpeed, -10, 30);
+    drawBase(ctx, 'SPEED', 'KNOTS', 0, 40, 10, 1);
+    drawColorArc(ctx, 0, 40, 0, 10, '#d32f2f', 40, 4); 
+    const shipSpeed = Math.abs(P.speed);
+    drawNeedle(ctx, shipSpeed, 0, 40);
 
+    // Rudder
     ctx = cvs.rudder.getContext('2d');
-    drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 1, true);
+    drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 5);
+    drawColorArc(ctx, -35, 35, -35, 0, '#d32f2f', 40, 5);
+    drawColorArc(ctx, -35, 35, 0, 35, '#388e3c', 40, 5);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 45, 90);
+    ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 90);
     drawNeedle(ctx, P.rudder, -35, 35, true);
 
+    // ROT
     ctx = cvs.rot.getContext('2d');
+    drawBase(ctx, 'RATE OF TURN', '', -30, 30, 10, 5);
+    drawColorArc(ctx, -30, 30, -30, 0, '#d32f2f', 40, 5);
+    drawColorArc(ctx, -30, 30, 0, 30, '#388e3c', 40, 5);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 45, 80);
+    ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 115, 80);
+    
     const rotDegMin = P.yawRate * (180 / Math.PI) * 60;
-    drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 1);
+    // デジタルメーター (LCD風)
+    ctx.fillStyle = '#8f9a8a';
+    ctx.fillRect(50, 105, 60, 22);
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(50, 105, 60, 22);
+    ctx.font = 'bold 16px monospace';
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.abs(rotDegMin).toFixed(2), 80, 121);
     drawNeedle(ctx, rotDegMin, -30, 30);
-    drawDigitalValue(ctx, rotDegMin, 'deg/m');
 
+    // RPM
     ctx = cvs.rpm.getContext('2d');
-    drawBase(ctx, 'ENGINE RPM', 'RPM', -40, 100, 20, 5);
-    drawNeedle(ctx, P.rpm, -40, 100);
+    drawBase(ctx, 'RPM', 'SPEED', -50, 120, 20, 5);
+    drawColorArc(ctx, -50, 120, -50, 0, '#d32f2f', 40, 4);
+    drawColorArc(ctx, -50, 120, 60, 90, '#388e3c', 40, 4);
+    drawColorArc(ctx, -50, 120, 90, 120, '#d32f2f', 40, 4);
+    drawNeedle(ctx, P.rpm, -50, 120);
+
+    // Wind Dir
+    ctx = cvs.windDir.getContext('2d');
+    drawBase(ctx, 'WIND DIR', 'PORT / STBD', 0, 360, 90, 10);
+    ctx.font = '24px sans-serif';
+    ctx.fillStyle = '#444';
+    ctx.fillText('◬', 80, 85);
+    drawNeedle(ctx, P.windDir, 0, 360);
 
     updateClock(cvs.clock.getContext('2d'));
 }

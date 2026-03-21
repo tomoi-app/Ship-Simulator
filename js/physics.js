@@ -72,15 +72,40 @@ const ACCEL_R   = 0.0050;   // 後進応答係数
 const ROLL_F    = 0.015;    // ロール復原力
 const PITCH_F   = 0.010;    // ピッチ復原力
 
+import { keyMaps, updateKeyMapDisplay } from './hud.js';
+
 // ---- キー状態 ----
 export const keys = {};
+export let currentMode = 'standard';
+let modeLockM = false;
 
 export function initInput() {
+  updateKeyMapDisplay(currentMode);
   window.addEventListener('keydown', e => {
     keys[e.key] = true;
     if (e.key === ' ') e.preventDefault();
+    
+    const modeData = keyMaps[currentMode];
+    if (!modeData) return;
+
+    if (e.key === 'w' || e.key === 'W') P.targetRpm = Math.min(P.targetRpm + modeData.rpmStep, 120);
+    else if (e.key === 's' || e.key === 'S') P.targetRpm = Math.max(P.targetRpm - modeData.rpmStep, -50);
+    else if (e.key === 'd' || e.key === 'D') P.targetRudder = Math.min(P.targetRudder + modeData.rudderStep, 35);
+    else if (e.key === 'a' || e.key === 'A') P.targetRudder = Math.max(P.targetRudder - modeData.rudderStep, -35);
+    else if (e.key === ' ') P.targetRudder = 0;
+    
+    if (e.key === 'm' || e.key === 'M') {
+      if (!modeLockM) {
+        currentMode = currentMode === 'standard' ? 'maneuver' : 'standard';
+        updateKeyMapDisplay(currentMode);
+        modeLockM = true;
+      }
+    }
   });
-  window.addEventListener('keyup', e => { keys[e.key] = false; });
+  window.addEventListener('keyup', e => {
+    keys[e.key] = false;
+    if (e.key === 'm' || e.key === 'M') modeLockM = false;
+  });
 }
 
 // ---- カメラオフセット ----
@@ -94,25 +119,13 @@ let keyLockD = false;
 export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   if (gameOverActive) return;
 
-  // --- 1. 舵のステップ入力ロジック (既存維持) ---
-  if (keys['a'] || keys['A']) {
-    if (!keyLockA) { P.targetRudder = Math.max(P.targetRudder - 5, -35); keyLockA = true; }
-  } else { keyLockA = false; }
-  if (keys['d'] || keys['D']) {
-    if (!keyLockD) { P.targetRudder = Math.min(P.targetRudder + 5, 35); keyLockD = true; }
-  } else { keyLockD = false; }
-  if (keys['q'] || keys['Q']) { P.targetRudder = 0; }
-
-  // --- 1. 舵とエンジンのレスポンス ---
+  // --- 1. 舵と主機のレスポンス ---
   // ステアリングエンジン (毎秒 2.3度)
   const rudderSpeed = (2.3 * Math.PI / 180) * dt; // rad
-  // ★P.targetRudderとP.rudder(度)からrad変換して扱うより、内部で維持するため P.rudder(deg)へ加算
   const rSpdDeg = 2.3 * dt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
 
   // 主機レスポンス (RPMの追従)
-  const ENG_RPMS = [-40, -30, -20, 0, 40, 60, 80];
-  P.targetRpm = ENG_RPMS[P.engineOrder + 3];
   P.rpm += (P.targetRpm - P.rpm) * 0.05 * dt * 60;
 
   const L = P.Lpp;
@@ -128,28 +141,31 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   const Nh = 0.5 * RHO * L**2 * d * (Nv * v * U + Nr_coeff * r * L * U);
 
   // --- 3. プロペラ推力 (Propeller) ---
-  const n = P.rpm / 60;
+  const Dp = 9.0;
+  // 120RPMで船速約30ノットにバランス調整するため、推力係数を0.30 -> 0.36に調整
+  const Kt = 0.36; 
+  const n = Math.abs(P.rpm) / 60; // rpst
   // 進速比 J の簡易計算 (伴流率 0.25)
   const Va = u * (1 - 0.25);
   const J_val = (Math.abs(n) > 0) ? Va / (Math.abs(n) * DP) : 0;
-  const thrust = (n > 0) ? RHO * n**2 * DP**4 * KT * (1 - J_val) : 
-                 (n < 0) ? -RHO * n**2 * DP**4 * KT * (1 - J_val) * 0.7 : 0;
+  const thrust = (n > 0) ? RHO * n**2 * DP**4 * Kt * (1 - J_val) : 
+                 (n < 0) ? -RHO * n**2 * DP**4 * Kt * (1 - J_val) * 0.7 : 0;
   const Xp = (1 - t_tp) * thrust;
 
   // --- 4. 舵力 (Rudder) : キックアヘッド効果 ---
   const rudRad = P.rudder * Math.PI / 180;
   // プロペラ後流による流入速度の増加
-  const uR = Math.sqrt(Va**2 + 0.6 * ( (n * DP)**2 )); 
-  const Fn = 0.5 * RHO * AR * uR**2 * 2.5 * Math.sin(rudRad); // 舵法線力
-  
+  const uR = Math.sqrt(Va**2 + 0.6 * ( (n * DP)**2 ));
+  // 揚力計算 (回頭角速度を速度とバランスとるため係数を2.5 -> 1.25へマイルド化)
+  const Fn = 0.5 * RHO * AR * 1.25 * uR * uR * Math.sin(rudRad); 
   const Xr = -Fn * Math.sin(rudRad);
-  const Yr = Fn * Math.cos(rudRad);
-  const Nr = Yr * (-L * 0.46); // 重心から舵までの距離を考慮
+  const Yr_force =  Fn * Math.cos(rudRad);
+  const Nr_force =  Yr_force * ( -P.Lpp / 2 ); // 船尾に働くのでマイナス方向モーメントの距離を考慮
 
   // --- 5. 運動方程式の求解 ---
   const du = (Xh + Xp + Xr) / (P.mass + mx);
-  const dv = (Yh + Yr - (P.mass + mx) * u * r) / (P.mass + my);
-  const dr = (Nh + Nr) / ( (P.mass * L**2 / 12) + Jzz );
+  const dv = (Yh + Yr_force - (P.mass + mx) * u * r) / (P.mass + my);
+  const dr = (Nh + Nr_force) / ( (P.mass * L**2 / 12) + Jzz );
 
   // 速度の更新
   P.u = u + du * dt;

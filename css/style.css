@@ -331,62 +331,33 @@ body {
 .tes   { background: rgba(255,204,0,.08); border-color: rgba(255,204,0,.3); color: #ffcc00; font-size: 9px; }
 .teh   { background: rgba(0,180,255,.08); border-color: rgba(0,180,255,.3); color: #00aaff; font-size: 9px; }
 
-/* ===== アナログ計器ダッシュボード (リアル版) ===== */
+/* ===== アナログ計器ダッシュボード (透過背景・洗練版) ===== */
 #gauges-container {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%) scale(0.7);
-  transform-origin: top center;
-  width: auto;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 15px;
-  padding: 10px 30px 40px;
-  box-sizing: border-box;
-  z-index: 1000;
-  pointer-events: none;
-  background: linear-gradient(to bottom, #1a1e24 50%, rgba(135,206,250,0.85) 50%);
-  border-radius: 0 0 10px 10px;
-  box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-  border: 2px solid rgba(0,255,136,0.3);
-  border-top: none;
+    position: fixed;
+    top: 10px; /* 画面の一番上からの余白 */
+    left: 50%;
+    transform: translateX(-50%) scale(0.75); /* 中央揃え & 適切なサイズ感に縮小縮小 */
+    transform-origin: top center;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px;
+    z-index: 9999; /* ゲーム画面より手前に表示 */
+    pointer-events: none; /* メーター下の画面UIもさわれるように透過させる */
 }
+
 .gauge-unit {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
+    display: flex;
+    justify-content: center;
 }
+
 #gauges-container canvas {
-  background-color: #fff;
-  border-radius: 50%;
-  border: 5px solid #333;
-  box-shadow: inset 0 0 10px rgba(0,0,0,0.5), 0 5px 10px rgba(0,0,0,0.3);
-}
-.label-bubble {
-  margin-top: 10px;
-  background: #fff;
-  border: 3px solid #666;
-  border-radius: 8px;
-  text-align: center;
-  font-weight: bold;
-  font-size: 14px;
-  color: #333;
-  padding: 8px 12px;
-  box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-  position: absolute;
-  bottom: -45px;
-  white-space: nowrap;
-}
-.label-bubble::before {
-  content: "";
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: solid transparent;
-  border-bottom-color: #666;
-  border-width: 10px;
+    /* メーター外側のベゼル（枠）のデザイン */
+    border-radius: 50%;
+    border: 5px solid #222; 
+    box-shadow: 
+        inset 0 0 10px rgba(0,0,0,0.6), /* 内側の影 */
+        0 8px 15px rgba(0,0,0,0.4);      /* 外側の落ち影 */
+    background-color: #e8e8e8; /* 万が一グラデが効かなかったときの下地 */
 }
