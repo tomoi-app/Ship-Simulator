@@ -16,7 +16,8 @@ export const P = {
   pitchAngle: 0,   // ピッチング角（rad）
 
   // 操作量
-  rudder: 0,       // 舵角（deg, -35〜+35）
+  rudder: 0,       // 実際の舵角（追従舵角）
+  targetRudder: 0, // ★命令舵角（5度刻みで指定するもの）
   engineOrder: 0,  // -3〜+3
 
   // 環境
@@ -34,10 +35,11 @@ export const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','STOP','SLO
 export const ENG_RATIOS = [-1.0, -0.55, -0.30, 0, 0.22, 0.55, 1.0];
 
 // ---- 物理定数 ----
-const DRAG      = 0.9985;   // 対水抵抗（速力維持率/frame）
+const DRAG      = 0.9992;   // ★抵抗を減らし、慣性で進み続けるように（0.9985 -> 0.9992）
 const DRIFT_D   = 0.96;     // 横流れ減衰率
-const YAW_D     = 0.96;     // ヨーレート減衰率
-const RUD_EFF   = 0.00075;  // 舵効力係数（基本）
+const YAW_D     = 0.985;    // ★旋回の減衰を重く（0.96 -> 0.985）
+const RUD_EFF   = 0.00035;  // ★舵効きを大幅に弱める（0.00075 -> 0.00035）
+const STEER_SPD = 2.5;      // ★実際の舵が動く速さ（度/秒）
 const ACCEL_F   = 0.0028;   // 前進加速度係数
 const ACCEL_R   = 0.0050;   // 後進応答係数（後進は早い）
 const ROLL_F    = 0.015;    // ロール復原力
@@ -57,16 +59,42 @@ export function initInput() {
 // ---- カメラオフセット ----
 export const camOffset = { pitch: 0, yaw: 0 };
 
+// キーの押しっぱなし判定用
+let keyLockA = false;
+let keyLockD = false;
+
 // ---- メイン物理更新 ----
 export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   if (gameOverActive) return;
 
-  // 舵操作
-  const rudSpeed = 0.55;
-  if      (keys['a'] || keys['A']) P.rudder = Math.max(P.rudder - rudSpeed, -35);
-  else if (keys['d'] || keys['D']) P.rudder = Math.min(P.rudder + rudSpeed,  35);
-  else if (keys['q'] || keys['Q']) { P.rudder *= 0.88; if (Math.abs(P.rudder) < 0.3) P.rudder = 0; }
-  else                              P.rudder *= 0.9985;
+  // --- 1. 舵の5度ステップ入力ロジック ---
+  // Aキー（左舵）
+  if (keys['a'] || keys['A']) {
+    if (!keyLockA) {
+      P.targetRudder = Math.max(P.targetRudder - 5, -35); // 5度ずつ引く
+      keyLockA = true;
+    }
+  } else { keyLockA = false; }
+
+  // Dキー（右舵）
+  if (keys['d'] || keys['D']) {
+    if (!keyLockD) {
+      P.targetRudder = Math.min(P.targetRudder + 5, 35); // 5度ずつ足す
+      keyLockD = true;
+    }
+  } else { keyLockD = false; }
+
+  // Qキー（舵中央：ミッドシップ）
+  if (keys['q'] || keys['Q']) { P.targetRudder = 0; }
+
+  // --- 2. 追従舵（実際の舵がゆっくり動く） ---
+  const diff = P.targetRudder - P.rudder;
+  if (Math.abs(diff) > 0.1) {
+    // ステアリングエンジンの速度（STEER_SPD）で目標に近づく
+    P.rudder += Math.sign(diff) * STEER_SPD * dt;
+  } else {
+    P.rudder = P.targetRudder;
+  }
 
   // 視点操作は main.js のマウス・タッチイベントで行います
 
@@ -78,15 +106,16 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
   P.speed *= DRAG;
   P.speed = Math.max(-P.maxRev, Math.min(P.maxFwd, P.speed));
 
-  // 舵→ヨーレート（旋回特性）
-  // ・速力が高いほど旋回効率が上がる
-  // ・低速（2kt以下）では舵がほぼ効かない
-  const sf    = Math.max(0, Math.abs(P.speed) - 1.5) / (P.maxFwd - 1.5);
-  const rudEff = RUD_EFF * (1 + sf * 1.8);
-  const tyaw  = P.rudder * rudEff * sf * Math.sign(P.speed || 0.001);
-  P.yawRate  += (tyaw - P.yawRate) * 0.038;
-  P.yawRate  *= YAW_D;
-  P.heading  += P.yawRate * dt * 60;
+  // --- 3. 旋回性能の計算（本格調整） ---
+  // 1.5ノット以下での舵効き低下をさらに厳密に
+  const sf = Math.max(0, Math.abs(P.speed) - 1.0) / (P.maxFwd - 1.0);
+  
+  // 旋回力の計算（速力の二乗に近い特性を持たせる）
+  const turnForce = P.rudder * RUD_EFF * (sf * sf + 0.1) * Math.sign(P.speed);
+  
+  P.yawRate += (turnForce - P.yawRate * 0.05) * dt * 60;
+  P.yawRate *= YAW_D;
+  P.heading += P.yawRate * dt * 60;
 
   // 横流れ（風・潮流の影響）
   const wr = P.windDir * Math.PI / 180;

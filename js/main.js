@@ -134,10 +134,9 @@ window.addEventListener('mousemove', (e) => {
     const deltaX = e.clientX - previousMouseX;
     const deltaY = e.clientY - previousMouseY;
 
-    // ★修正：引き算（-=）だと逆になってしまうため、足し算（+=）に戻すことで
-    // 「右にドラッグすると左を向く（空間を引っ張る操作感）」になります
-    camOffset.yaw   += deltaX * lookSensitivity; 
-    camOffset.pitch += deltaY * lookSensitivity; 
+    // ユーザー指定により -= に変更（ドラッグ方向の反転）
+    camOffset.yaw   -= deltaX * lookSensitivity; 
+    camOffset.pitch -= deltaY * lookSensitivity; 
     
     // 見回せる限界角度（真後ろや真上を見すぎないように）
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
@@ -178,8 +177,8 @@ window.addEventListener('touchmove', (e) => {
     const deltaX = e.touches[0].clientX - previousMouseX;
     const deltaY = e.touches[0].clientY - previousMouseY;
     
-    camOffset.yaw   += deltaX * lookSensitivity * 1.5; 
-    camOffset.pitch += deltaY * lookSensitivity * 1.5;
+    camOffset.yaw   -= deltaX * lookSensitivity * 1.5; 
+    camOffset.pitch -= deltaY * lookSensitivity * 1.5;
     
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
     camOffset.pitch = Math.max(-45, Math.min(45, camOffset.pitch));
@@ -421,20 +420,23 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // --- 上部で設定したブリッジ視点を反映 ---
-  // 船の倍率を取得（まだ読み込まれていない場合は 1.0）
-  const s = P.shipScale || 1.0; 
-  // ★ 倍率を掛け合わせることで、船のサイズが変わっても「同じ場所」を維持する
-  camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
+  // ★ 350mの船に合わせた現実的なブリッジ位置（メートル単位）
+  const bridgeX = 0;    // 船の真ん中（左右）
+  const bridgeY = 40;   // 水面から約40mの高さ（ブリッジの高さ）
+  const bridgeZ = -100; // 船の中心から100m後ろ（コンテナ船のブリッジは後ろ寄りにあります）
 
+  // scene.js で計算されたスケール倍率（P.shipScale）を掛ける
+  const s = P.shipScale || 1.0; 
+
+  // スケールを考慮してカメラ位置をセット
+  camera.position.set(bridgeX * s, bridgeY * s, bridgeZ * s);
+
+  // カメラの向き
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
-
   camera.rotation.order = 'YXZ';
   camera.rotation.y = Math.PI + yr;
-  
-  // 修正後（正面を向くようにする）
-  camera.rotation.x = pr; 
+  camera.rotation.x = pr;
   // --- ここまで ---
 
   if (curM?.wx === 'ngt') {
@@ -510,7 +512,7 @@ function loop(t) {
   updateCompass(P.heading);
   updateMainHUD(P, curM);
   drawRudder(P.rudder);
-  drawRadar(P.posX, P.posZ, AIships, fishBoats, curM);
+  drawRadar(P.posX, P.posZ, P.heading, AIships, fishBoats, curM);
 
   // サウンド
   if (audioReady()) updateEngineSound(P.engineOrder);

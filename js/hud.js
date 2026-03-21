@@ -35,7 +35,7 @@ export function drawRudder(rudder) {
 }
 
 // ---- レーダー ----
-export function drawRadar(posX, posZ, AIships, fishBoats, curM) {
+export function drawRadar(posX, posZ, heading, AIships, fishBoats, curM) {
   const cv  = document.getElementById('rcv');
   const el  = document.getElementById('radar');
   cv.width  = el ? el.clientWidth  || 128 : 128;
@@ -44,12 +44,8 @@ export function drawRadar(posX, posZ, AIships, fishBoats, curM) {
   const w = cv.width, h = cv.height, cx = w / 2, cy = h / 2, r = w / 2 - 2;
   ctx.clearRect(0, 0, w, h);
 
-  // 自船
-  ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
-  ctx.fillStyle = '#00ff88'; ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 6;
-  ctx.fill(); ctx.shadowBlur = 0;
-
   const RM = 3 * 1852;
+  const zoom = r / RM; // レーダーのズーム倍率
 
   // 他船
   [...AIships.map(s => ({ x: s.mesh.position.x, z: s.mesh.position.z, c: '#00aaff88', sz: s.sz || 1 })),
@@ -57,8 +53,11 @@ export function drawRadar(posX, posZ, AIships, fishBoats, curM) {
   ].forEach(t => {
     const dx = t.x - posX, dz = t.z - posZ, dist = Math.sqrt(dx*dx + dz*dz);
     if (dist > RM) return;
-    const ratio = dist / RM, angle = Math.atan2(dx, dz) - Math.PI / 2;
-    const rx = cx + Math.cos(angle) * ratio * r, ry = cy + Math.sin(angle) * ratio * r;
+    
+    // 北を上にするため Z軸（dz）を引き算する
+    const rx = cx + (dx * zoom);
+    const ry = cy - (dz * zoom);
+    
     ctx.beginPath(); ctx.arc(rx, ry, 2.5 * Math.min(t.sz, 2), 0, Math.PI * 2);
     ctx.fillStyle = t.c; ctx.shadowColor = t.c; ctx.shadowBlur = 2.5;
     ctx.fill(); ctx.shadowBlur = 0;
@@ -68,13 +67,28 @@ export function drawRadar(posX, posZ, AIships, fishBoats, curM) {
   if (curM) {
     const dx = curM.tx - posX, dz = curM.tz - posZ, td = Math.sqrt(dx*dx + dz*dz);
     if (td <= RM) {
-      const ratio = td / RM, angle = Math.atan2(dx, dz) - Math.PI / 2;
-      const rx = cx + Math.cos(angle) * ratio * r, ry = cy + Math.sin(angle) * ratio * r;
+      const rx = cx + (dx * zoom);
+      const ry = cy - (dz * zoom); // 北を上にする
       ctx.beginPath(); ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
       ctx.fillStyle = '#ffcc00'; ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 8;
       ctx.fill(); ctx.shadowBlur = 0;
     }
   }
+
+  // 中心点（自船）を描画
+  ctx.save();
+  ctx.translate(cx, cy); // レーダー中心へ
+  ctx.rotate(-heading);  // ★ 自船の針路に合わせてアイコンを回転
+
+  // 船の形（三角形）に描画
+  ctx.beginPath();
+  ctx.moveTo(0, -6);    // トップ（船首）
+  ctx.lineTo(3.5, 4);   // 右舷後方
+  ctx.lineTo(-3.5, 4);  // 左舷後方
+  ctx.closePath();
+  ctx.fillStyle = '#00ff88'; ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 6;
+  ctx.fill(); ctx.shadowBlur = 0;
+  ctx.restore();
 }
 
 // ---- コンパス針 ----

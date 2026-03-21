@@ -293,16 +293,18 @@ export function buildWorld(THREE, scene) {
 
   // ビル群（横浜）
   for (let i = 0; i < 35; i++) {
-    const h = 25 + Math.random() * 100;
+    const h = 80 + Math.random() * 220; // ★ 80m〜300m級のビル
+    const w = 40 + Math.random() * 60;  // ビルの太さも拡大
     land(-2050 + Math.random() * 700 - 350, 3100 + Math.random() * 1200,
-         18 + Math.random() * 48, 18 + Math.random() * 48, h,
+         w, w, h,
          i % 3 ? 0x445566 : 0x334455);
   }
   // ビル群（東京）
   for (let i = 0; i < 25; i++) {
-    const h = 40 + Math.random() * 130;
+    const h = 100 + Math.random() * 250; // ★ 100m〜350m級
+    const w = 50 + Math.random() * 80;
     land(1650 + Math.random() * 500 - 250, 4300 + Math.random() * 800,
-         22 + Math.random() * 55, 22 + Math.random() * 55, h,
+         w, w, h,
          i % 4 ? 0x334455 : 0x223344);
   }
   // 工場・タンク（川崎）
@@ -334,17 +336,22 @@ export function buildWorld(THREE, scene) {
     }
     // クレーン
     const yMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.6 });
+    // クレーンの柱の高さ
+    const craneHeight = 90; // ★ 現実の大型クレーンの高さ
+    const craneWidth = 4;   // 柱の太さ
+
     [-80, 0, 80].forEach(cx => {
-      [-8, 8].forEach(lx => {
-        const l = new THREE.Mesh(new THREE.BoxGeometry(1.8, 44, 1.8), yMat);
-        l.position.set(px + cx + lx, 22, pz + 90); scene.add(l);
+      [-10, 10].forEach(lx => {
+        // BoxGeometry(幅, 高さ, 奥行き)
+        const l = new THREE.Mesh(new THREE.BoxGeometry(craneWidth, craneHeight, craneWidth), yMat);
+        l.position.set(px + cx + lx, craneHeight / 2, pz + 90); scene.add(l);
       });
-      const bm  = new THREE.Mesh(new THREE.BoxGeometry(34, 1.8, 1.8), yMat);
-      bm.position.set(px + cx, 44, pz + 90); scene.add(bm);
-      const bm2 = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 55), yMat);
-      bm2.position.set(px + cx, 42, pz + 65); scene.add(bm2);
+      // クレーンの横梁（アーム）も巨大化
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(craneWidth, craneWidth, 120), yMat);
+      beam.position.set(px + cx, craneHeight - 5, pz + 50); scene.add(beam);
+      
       const pl = new THREE.PointLight(0xffeeaa, 1.2, 350);
-      pl.position.set(px + cx, 46, pz + 90); scene.add(pl);
+      pl.position.set(px + cx, craneHeight + 2, pz + 90); scene.add(pl);
     });
     // コンテナヤード
     const CC = [0xcc3333,0x3366cc,0x33aa33,0xccaa00,0x886633,0xcc6600];
@@ -413,14 +420,14 @@ export function buildAI(THREE, scene) {
   };
 
   [
-    [400, 1500, Math.PI * 0.1, 8, 0x334455],
-    [-300, 3200, Math.PI * 0.9, 6, 0x553322],
-    [200, -500, Math.PI * 1.5, 7, 0x335533],
-    [600, 800, Math.PI * 0.3, 9, 0x223344],
-    [-200, 4200, Math.PI * 1.1, 5, 0x443333],
-    [900, 2800, Math.PI * 0.7, 7, 0x334422],
-    [-600, 1200, Math.PI * 0.2, 6, 0x223355],
-  ].forEach(([x, z, h, spd, c]) => AIships.push(mkAI(x, z, h, spd, c)));
+    [400, 1500, Math.PI * 0.1, 8, 0x334455, 4],
+    [-300, 3200, Math.PI * 0.9, 6, 0x553322, 5],
+    [200, -500, Math.PI * 1.5, 7, 0x335533, 4],
+    [600, 800, Math.PI * 0.3, 9, 0x223344, 6],
+    [-200, 4200, Math.PI * 1.1, 5, 0x443333, 4],
+    [900, 2800, Math.PI * 0.7, 7, 0x334422, 5],
+    [-600, 1200, Math.PI * 0.2, 6, 0x223355, 6],
+  ].forEach(([x, z, h, spd, c, sz]) => AIships.push(mkAI(x, z, h, spd, c, sz)));
   AIships.push(mkTanker(300, -800, 0));
   AIships.push(mkTanker(-400, 5000, Math.PI));
 
@@ -439,17 +446,25 @@ export function buildAI(THREE, scene) {
   const tugs = [];
   const mkTug = (x, z, ox, oz) => {
     const g = new THREE.Group();
-    const bm = new THREE.Mesh(new THREE.BoxGeometry(7, 3.5, 16), new THREE.MeshStandardMaterial({ color: 0xff5500, roughness: 0.6 }));
-    bm.position.y = 1.8; g.add(bm);
-    const cb = new THREE.Mesh(new THREE.BoxGeometry(6, 5, 6), new THREE.MeshStandardMaterial({ color: 0xddddcc }));
-    cb.position.set(0, 6, 2); g.add(cb);
-    const fn = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.5, 5, 8), new THREE.MeshStandardMaterial({ color: 0xff5500 }));
-    fn.position.set(0, 9, 0); g.add(fn);
+    // 幅12m, 高さ8m, 全長35m に拡大
+    const bm = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 35), new THREE.MeshStandardMaterial({ color: 0xff5500, roughness: 0.6 }));
+    bm.position.y = 4; g.add(bm);
+    const cb = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), new THREE.MeshStandardMaterial({ color: 0xddddcc }));
+    cb.position.set(0, 12, 4); g.add(cb);
+    const fn = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 10, 8), new THREE.MeshStandardMaterial({ color: 0xff5500 }));
+    fn.position.set(0, 18, 0); g.add(fn);
     g.position.set(x, 0, z); scene.add(g);
     return { mesh: g, active: false, ox, oz };
   };
   tugs.push(mkTug(-2100 + 100, 3200 - 200,  65, -90));
   tugs.push(mkTug(-2100 - 100, 3200 - 180, -65, -70));
+
+  // --- 全ての物質を「透けない」ようにする ---
+  scene.traverse((object) => {
+    if (object.isMesh && object.material) {
+      object.material.side = THREE.DoubleSide; // ★ 全ての物体を両面描画に
+    }
+  });
 
   return { AIships, fishBoats, tugs };
 }
