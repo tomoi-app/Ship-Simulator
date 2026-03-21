@@ -208,15 +208,30 @@ export function buildShip(THREE, scene) {
   loader.load('./models/ship.glb', (gltf) => {
     const model = gltf.scene;
 
-    // ① スケール調整
-    const s = 1.0; 
-    model.scale.set(s, s, s);
+    // --- ここから：自動スケール＆センタリング処理 ---
+    
+    // 1. モデルの本来のサイズと中心座標を計算する
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
 
-    // ② 位置の調整（喫水を深くするため-18に変更）
-    model.position.set(0, -18, 0);
+    // 2. シミュレーターの船のサイズ（約300m）に自動でスケールを合わせる
+    const targetLength = 300; 
+    const maxLength = Math.max(size.x, size.y, size.z); // 一番長い辺を探す
+    const scaleFactor = targetLength / maxLength;       // 拡大・縮小率を計算
+    
+    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-    // ③ 向きの調整（船首を進行方向のZマイナスに合わせるため180度回転）
-    model.rotation.y = Math.PI; 
+    // 3. モデルの中心のズレを修正する（原点に持ってくる）＆ 喫水を沈める
+    model.position.x = -center.x * scaleFactor;
+    model.position.y = (-center.y * scaleFactor) - 15; // ★ -15 で少し海に沈めます
+    model.position.z = -center.z * scaleFactor;
+
+    // デバッグ用：F12コンソールにサイズを出力して確認する
+    console.log("🚢 Original Size:", size);
+    console.log("🚢 Scale Factor:", scaleFactor);
+    
+    // --- ここまで ---
 
     SG.add(model);
   });
