@@ -418,23 +418,19 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // --- ここからカメラの追従処理を書き換え ---
-  const bh = 28;  // ★ブリッジの高さ（見下ろしすぎないよう少し下げます）
-  const bz = 85;  // ★ブリッジの前後位置（船体の後ろの方へ）
-  
-  // カメラはshipGroupの中にあるので、0,0,0（船の基準点）からの相対位置で固定
+  // --- ★ここから：一旦「上空からのドローン視点」にして船を探します ---
+  const bh = 100;   // 高さを100mに引き上げ
+  const bz = -250;  // 船の250m後ろに下がる
   camera.position.set(0, bh, bz);
 
-  // マウスで操作した角度（camOffset）をラジアンに変換
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
 
-  // 船から見て、カメラが向く方向をローカル座標で指定
-  camera.lookAt(
-    Math.sin(yr) * 200, 
-    bh - Math.sin(pr) * 200, 
-    bz - Math.cos(yr) * 200
-  );
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = Math.PI + yr;
+  
+  // 船を見下ろすように、少し下向きの角度(-0.2)をつけます
+  camera.rotation.x = -0.2 + pr; 
   // --- ここまで ---
 
   if (curM?.wx === 'ngt') {
