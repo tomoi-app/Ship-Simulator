@@ -34,7 +34,7 @@ const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 // ★ここの数値を変更するだけで、ゲーム中ずっと反映されるように整理しました！
 shipGroup.add(camera);
-const bridgeXPos   = -250;     // ★左右の位置（マイナスで右、プラスで左にずれます）
+const bridgeXPos   = -260;     // ★左右の位置（マイナスで右、プラスで左にずれます）
 const bridgeHeight = 225;   // ★高さ（上への移動）
 const bridgeZPos   = 210;   // ★前後位置（マイナス方向が後ろ、プラス方向が前）
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
