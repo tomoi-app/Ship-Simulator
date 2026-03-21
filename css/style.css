@@ -357,122 +357,70 @@ body {
     border-radius: 50%;
     border: 5px solid #222; 
     box-shadow: 
-        inset 0 0 10px rgba(0,0,0,0.6), /* 内側の影 */
-        0 8px 15px rgba(0,0,0,0.4);      /* 外側の落ち影 */
-    background-color: #e8e8e8; /* 万が一グラデが効かなかったときの下地 */
+        inset 0 0 10px rgba(0,0,0,0.6),
+        0 8px 15px rgba(0,0,0,0.4);
+    background-color: #e8e8e8;
 }
 
-/* --- 左下：レーダー --- */
-#radar-container {
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
-    z-index: 100;
-}
-#radar-canvas {
-    border-radius: 50%;
-    border: 4px solid #333;
-    background-color: rgba(0, 20, 0, 0.8); /* レーダーっぽい暗緑色 */
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-}
-
-/* --- 右下：エンジンテレグラフ --- */
-#telegraph-container {
-    position: absolute;
-    width: 6px;
-    height: 100%;
-    background: #00ff88;
-}
-
-/* ========================================================== */
-/* UIのクリーンアップ：「メーター以外すべて非表示」のご要望対応 */
-/* ========================================================== */
-/* ゲーム中の余分な情報パネル・旧UI類を完全に隠す */
-#mp,               /* ミッション情報(左上) */
-#wi,               /* 風/潮流のテキストオーバーレイ */
-#comp-c,           /* コンパス帯(画面上部) */
-#ch,               /* 旧・キー操作説明(右上) */
-#vhf,              /* VHF無線通信UI */
-#dg,               /* ドッキングガイド(着岸UI) */
-#pl,               /* レーダー等を含む左パネル全体 */
-#pr,               /* 右下の旧コンテナ枠（黒背景） */
-#tele,             /* 旧・エンジンテレグラフ(右パネル内) */
-#rub,              /* 旧・ラダーインジケータ(右パネル内) */
-#key-map-container /* 新・キー操作説明(メーター下) */
-{
-    display: none !important;
-}
-
-/* メーター群は確実に表示する */
-#gauges-container {
-    display: flex !important;
-}
-#telegraph-canvas {
-    border-radius: 10px;
-    border: 4px solid #333;
-    background-color: rgba(200, 200, 200, 0.9); /* 金属っぽい色 */
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-}
 /* ==========================================================
-   【追加】画面左上テレグラフパネルのスタイル
+   画面左上テレグラフパネルのスタイル (メーターに合わせてリデザイン)
 ========================================================== */
 #telegraph-panel {
     position: absolute;
-    top: 20px;
+    top: 10px;
     left: 20px;
-    background-color: rgba(0, 0, 0, 0.7); /* 半透明の黒背景 */
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 5px;
-    font-family: 'Segment7', sans-serif; /* デジタルフォント。なければsans-serif */
-    font-size: 14px;
-    color: #fff;
+    background-color: rgba(10, 15, 20, 0.85);
+    border: 3px solid #222;
+    border-radius: 8px;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.6), 0 5px 15px rgba(0,0,0,0.4);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: bold;
+    color: #555;
     display: flex;
     flex-direction: column;
-    padding: 5px;
+    padding: 6px;
     z-index: 100;
-    min-width: 140px;
+    width: 140px;
+    height: 160px;
+    justify-content: space-between;
 }
 
 #telegraph-panel div {
-    padding: 4px 8px;
-    border-radius: 3px;
-    transition: background-color 0.2s;
+    text-align: center;
+    padding: 2px 0;
+    border-radius: 2px;
+    transition: all 0.1s;
 }
 
-/* 前進（AHEAD）は緑系 */
-#tg-fwd-full, #tg-fwd-half, #tg-fwd-slow, #tg-fwd-dead {
-    color: #388e3c;
-}
-
-/* 停止（STOP）は白 */
-#tg-stop {
-    color: #fff;
-    font-weight: bold;
-}
+/* 停止（STOP） */
+#tg-stop { color: #aaa; }
 
 /* 後進（ASTERN）は赤系 */
-#tg-rev-full, #tg-rev-half, #tg-rev-slow, #tg-rev-dead {
-    color: #d32f2f;
-}
+#tg-rev-full, #tg-rev-half, #tg-rev-slow, #tg-rev-dead { color: #d32f2f; }
 
-/* 現在の段階（onクラス）の強調表示 */
-#telegraph-panel div.on {
-    background-color: rgba(255, 255, 255, 0.3); /* 白の半透明背景 */
-}
+/* 前進（AHEAD）は緑系 */
+#tg-fwd-full, #tg-fwd-half, #tg-fwd-slow, #tg-fwd-dead { color: #388e3c; }
 
-/* 各色に合わせたonクラスのスタイル */
+/* on: 前進 */
 #telegraph-panel div.on#tg-fwd-full, 
 #telegraph-panel div.on#tg-fwd-half, 
 #telegraph-panel div.on#tg-fwd-slow, 
 #telegraph-panel div.on#tg-fwd-dead {
-    background-color: rgba(56, 142, 60, 0.3); /* 緑の半透明背景 */
-    color: #fff; /* 文字を白に */
+    background-color: #388e3c;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.3);
+    color: #fff;
 }
 
+/* on: 停止 */
+#telegraph-panel div.on#tg-stop { background-color: #666; color: #fff; }
+
+/* on: 後進 */
 #telegraph-panel div.on#tg-rev-full, 
 #telegraph-panel div.on#tg-rev-half, 
 #telegraph-panel div.on#tg-rev-slow, 
 #telegraph-panel div.on#tg-rev-dead {
-    background-color: rgba(211, 47, 47, 0.3); /* 赤の半透明背景 */
-    color: #fff; /* 文字を白に */
+    background-color: #d32f2f;
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.3);
+    color: #fff;
 }
