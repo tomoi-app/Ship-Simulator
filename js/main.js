@@ -34,9 +34,9 @@ const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 // ★ここの数値を変更するだけで、ゲーム中ずっと反映されるように整理しました！
 shipGroup.add(camera);
-const bridgeXPos   = -270;     // ★左右の位置（マイナスで右、プラスで左にずれます）
-const bridgeHeight = 225;   // ★高さ（上への移動）
-const bridgeZPos   = 210;   // ★前後位置（マイナス方向が後ろ、プラス方向が前）
+const bridgeXPos   = 0;     // ★左右の位置（マイナスで右、プラスで左にずれます）
+const bridgeHeight = 40;   // ★高さ（上への移動）
+const bridgeZPos   = -100;   // ★前後位置（マイナス方向が後ろ、プラス方向が前）
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
 // --- 物理演算対象の変更（shipGroup 全体を指定） ---
@@ -134,9 +134,9 @@ window.addEventListener('mousemove', (e) => {
     const deltaX = e.clientX - previousMouseX;
     const deltaY = e.clientY - previousMouseY;
 
-    // ユーザー指定により -= に変更（ドラッグ方向の反転）
-    camOffset.yaw   -= deltaX * lookSensitivity; 
-    camOffset.pitch -= deltaY * lookSensitivity; 
+    // 視点操作の反転（+=に戻す）
+    camOffset.yaw   += deltaX * lookSensitivity; 
+    camOffset.pitch += deltaY * lookSensitivity; 
     
     // 見回せる限界角度（真後ろや真上を見すぎないように）
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
@@ -177,8 +177,8 @@ window.addEventListener('touchmove', (e) => {
     const deltaX = e.touches[0].clientX - previousMouseX;
     const deltaY = e.touches[0].clientY - previousMouseY;
     
-    camOffset.yaw   -= deltaX * lookSensitivity * 1.5; 
-    camOffset.pitch -= deltaY * lookSensitivity * 1.5;
+    camOffset.yaw   += deltaX * lookSensitivity * 1.5; 
+    camOffset.pitch += deltaY * lookSensitivity * 1.5;
     
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
     camOffset.pitch = Math.max(-45, Math.min(45, camOffset.pitch));

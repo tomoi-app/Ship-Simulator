@@ -54,8 +54,8 @@ export function drawRadar(posX, posZ, heading, AIships, fishBoats, curM) {
     const dx = t.x - posX, dz = t.z - posZ, dist = Math.sqrt(dx*dx + dz*dz);
     if (dist > RM) return;
     
-    // 北を上にするため Z軸（dz）を引き算する
-    const rx = cx + (dx * zoom);
+    // Xも反転させて3D空間の見た目と一致させる
+    const rx = cx - (dx * zoom);
     const ry = cy - (dz * zoom);
     
     ctx.beginPath(); ctx.arc(rx, ry, 2.5 * Math.min(t.sz, 2), 0, Math.PI * 2);
@@ -67,7 +67,7 @@ export function drawRadar(posX, posZ, heading, AIships, fishBoats, curM) {
   if (curM) {
     const dx = curM.tx - posX, dz = curM.tz - posZ, td = Math.sqrt(dx*dx + dz*dz);
     if (td <= RM) {
-      const rx = cx + (dx * zoom);
+      const rx = cx - (dx * zoom);
       const ry = cy - (dz * zoom); // 北を上にする
       ctx.beginPath(); ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
       ctx.fillStyle = '#ffcc00'; ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 8;
@@ -78,7 +78,7 @@ export function drawRadar(posX, posZ, heading, AIships, fishBoats, curM) {
   // 中心点（自船）を描画
   ctx.save();
   ctx.translate(cx, cy); // レーダー中心へ
-  ctx.rotate(-heading);  // ★ 自船の針路に合わせてアイコンを回転
+  ctx.rotate(heading);   // ★ アイコンの回転方向も反転して見た目と一致させる
 
   // 船の形（三角形）に描画
   ctx.beginPath();
