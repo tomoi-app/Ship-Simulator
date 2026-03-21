@@ -1,20 +1,271 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>Realistic Ship Instrument Panel</title>
-    <link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#020810">
+<title>東京湾 Ship Simulator v5.0</title>
+<link rel="stylesheet" href="css/style.css">
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js"
+    }
+  }
+</script>
 </head>
 <body>
-    <div id="gauges-container">
-        <div class="gauge-unit"><canvas id="wind-dir-canvas" width="160" height="160"></canvas></div>
-        <div class="gauge-unit"><canvas id="wind-speed-canvas" width="160" height="160"></canvas></div>
-        <div class="gauge-unit"><canvas id="ship-speed-canvas" width="160" height="160"></canvas></div>
-        <div class="gauge-unit"><canvas id="rudder-canvas" width="160" height="160"></canvas></div>
-        <div class="gauge-unit"><canvas id="rot-canvas" width="160" height="160"></canvas></div>
-        <div class="gauge-unit"><canvas id="rpm-canvas" width="160" height="160"></canvas></div>
-        <div class="gauge-unit"><canvas id="clock-canvas" width="160" height="160"></canvas></div>
+
+<canvas id="cv"></canvas>
+<div id="night-ov"></div>
+<div id="wx-ov"></div>
+<canvas id="rain-cv"></canvas>
+
+<!-- ローディング -->
+<div id="loading">
+  <div class="ld-t">東京湾</div>
+  <div class="ld-s">TOKYO BAY SHIP SIMULATOR v5.0</div>
+  <div class="ld-bw"><div class="ld-b" id="ldb"></div></div>
+  <div style="font-size:9px;color:#00ff8858;letter-spacing:3px;margin-top:5px;" id="ldm">INITIALIZING...</div>
+</div>
+
+<!-- ミッション選択 -->
+<div id="ms-sel">
+  <div class="ms-t">東京湾</div>
+  <div class="ms-s">TOKYO BAY SHIP SIMULATOR v5.0</div>
+  <div id="ms-stat">
+    <div style="text-align:center"><span class="ss-v" id="sc0">0</span>クリア済み</div>
+    <div style="text-align:center"><span class="ss-v" id="sc1">0</span>獲得★</div>
+    <div style="text-align:center"><span class="ss-v" id="sc2">--</span>最高スコア</div>
+    <div style="text-align:center"><span class="ss-v" id="sc3">--</span>平均スコア</div>
+  </div>
+  <div class="ms-body">
+    <div class="ms-rank">🟢 3等航海士編 — 基礎</div><div class="ms-grid" id="g3"></div>
+    <div class="ms-rank">🔵 2等航海士編 — 応用</div><div class="ms-grid" id="g2"></div>
+    <div class="ms-rank">🟠 1等航海士編 — 上級</div><div class="ms-grid" id="g1"></div>
+    <div class="ms-rank">🔴 船長編 — エキスパート</div><div class="ms-grid" id="gc"></div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="flash"></div>
+  <div id="msb">MISSION COMPLETE</div>
+  <div id="cw">⚠ COLLISION ALERT</div>
+  <div id="ptst"></div>
+
+  <div id="mp">
+    <div id="mr">3等航海士 / M1</div>
+    <div id="mt">初めての東京湾</div>
+    <div>
+      <div class="sl"><span style="color:#ffcc00">●</span>港まで: <span id="dd">-- nm</span></div>
+      <div class="sl"><span style="color:#00ff88">●</span>速力: <span id="ss2">停止</span></div>
+      <div class="sl"><span style="color:#00ff88">●</span>天候: <span id="ws">晴れ</span></div>
     </div>
-    <script src="script.js"></script>
+  </div>
+
+  <div id="wi" class="h"></div>
+
+  <div id="comp-c">
+    <div id="comp">
+      <svg viewBox="0 0 100 100" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;height:90%;">
+        <g stroke="#00ff8828" stroke-width=".5">
+          <line x1="50" y1="5"  x2="50" y2="12"/>
+          <line x1="50" y1="88" x2="50" y2="95"/>
+          <line x1="5"  y1="50" x2="12" y2="50"/>
+          <line x1="88" y1="50" x2="95" y2="50"/>
+        </g>
+        <text x="50" y="18" text-anchor="middle" font-size="8" fill="#00ff8868" font-family="Courier New">N</text>
+        <text x="50" y="88" text-anchor="middle" font-size="8" fill="#00ff8840" font-family="Courier New">S</text>
+        <text x="88" y="53" text-anchor="middle" font-size="8" fill="#00ff8840" font-family="Courier New">E</text>
+        <text x="12" y="53" text-anchor="middle" font-size="8" fill="#00ff8840" font-family="Courier New">W</text>
+      </svg>
+      <div id="cn"></div>
+      <div id="cc"></div>
+    </div>
+    <div id="hd">000°</div>
+    <div id="hdl">HEADING</div>
+  </div>
+
+  <div id="ch">
+    <span class="hk">W</span> 前進増速 &nbsp;<span class="hk">S</span> 減速/後進<br>
+    <span class="hk">A</span> 左舵 &nbsp;<span class="hk">D</span> 右舵<br>
+    <span class="hk">Q</span> 舵中央 &nbsp;<span class="hk">E</span> 機関停止<br>
+    <span class="hk">H</span> 汽笛<br>
+    <span class="hk">↑↓←→</span> 視点 &nbsp;<span class="hk">T</span> 海図<br>
+    <span class="hk">M</span> ミッション
+  </div>
+
+  <div id="vhf" class="h">
+    <div class="vh"><div class="vb"></div><span id="vch">VHF CH.16</span></div>
+    <div id="vt"></div>
+  </div>
+
+  <div id="dg" class="h">
+    <div class="dgl">DOCKING GUIDE</div>
+    <div class="dbr">DIST<div class="dbw"><div class="dbf g" id="db0" style="width:0%"></div></div><span id="dv0">--</span></div>
+    <div class="dbr">SPD <div class="dbw"><div class="dbf g" id="db1" style="width:0%"></div></div><span id="dv1">--</span></div>
+    <div class="dbr">ANG <div class="dbw"><div class="dbf g" id="db2" style="width:0%"></div></div><span id="dv2">--</span></div>
+  </div>
+
+  <div id="pl">
+    <div style="display:flex;justify-content:center"><div>
+      <div id="radar">
+        <div id="rxh"></div><div id="rxv"></div>
+        <div class="rring" style="width:33%;height:33%;top:33%;left:33%;"></div>
+        <div class="rring" style="width:66%;height:66%;top:17%;left:17%;"></div>
+        <div id="rsw"></div>
+        <canvas id="rcv" style="position:absolute;top:0;left:0;border-radius:50%;opacity:.75;"></canvas>
+      </div>
+      <div class="rl">RADAR / 3nm</div>
+    </div></div>
+    <div class="gr">
+      <div class="gb"><div class="gl">SPEED</div><div class="gv" id="spd">0.0</div><div class="gu">KNOTS</div><div class="sbw"><div class="sb" id="sbar" style="width:0%"></div></div></div>
+      <div class="gb"><div class="gl">DEPTH</div><div class="gv" id="dep">32</div><div class="gu">METERS</div></div>
+    </div>
+    <div class="gr">
+      <div class="gb"><div class="gl">WIND</div><div class="gv" id="wnd" style="font-size:14px;">NW 8kt</div><div class="gu">DIR / SPD</div></div>
+      <div class="gb"><div class="gl">CURRENT</div><div class="gv" id="cur" style="font-size:14px;">N 1kt</div><div class="gu">TIDE</div></div>
+    </div>
+  </div>
+
+  <div id="pr">
+    <div id="tele">
+      <div class="tll">ENGINE TELEGRAPH</div>
+      <div id="td">STOP</div>
+      <div class="ts">
+        <div class="ti fwd" id="tf6"><div class="tid"></div>FULL AHEAD</div>
+        <div class="ti fwd" id="tf5"><div class="tid"></div>HALF AHEAD</div>
+        <div class="ti fwd" id="tf4"><div class="tid"></div>SLOW AHEAD</div>
+        <div class="ti stp" id="tf3"><div class="tid"></div>STOP</div>
+        <div class="ti rev" id="tf2"><div class="tid"></div>SLOW ASTERN</div>
+        <div class="ti rev" id="tf1"><div class="tid"></div>HALF ASTERN</div>
+        <div class="ti rev" id="tf0"><div class="tid"></div>FULL ASTERN</div>
+      </div>
+    </div>
+    <div id="rub">
+      <div class="rul">RUDDER ANGLE</div>
+      <canvas id="rucv" width="234" height="52"></canvas>
+      <div id="ruv">0°</div>
+  <!-- ダッシュボード (アナログ計器) -->
+  <div id="gauges-container">
+      <div class="gauge-unit"><canvas id="wind-dir-canvas" width="160" height="160"></canvas></div>
+      
+      <div class="gauge-unit"><canvas id="wind-speed-canvas" width="160" height="160"></canvas></div>
+      
+      <div class="gauge-unit"><canvas id="ship-speed-canvas" width="160" height="160"></canvas></div>
+      
+      <div class="gauge-unit"><canvas id="rudder-canvas" width="160" height="160"></canvas></div>
+      
+      <div class="gauge-unit"><canvas id="rot-canvas" width="160" height="160"></canvas></div>
+      
+      <div class="gauge-unit"><canvas id="rpm-canvas" width="160" height="160"></canvas></div>
+      
+      <div class="gauge-unit"><canvas id="clock-canvas" width="160" height="160"></canvas></div>
+  </div>
+
+  <div id="key-map-container">
+      <h3>操作方法</h3>
+      <ul id="key-map-list">
+      </ul>
+  </div>
+
+  <!-- スコア画面 -->
+  <div id="dr">
+    <div id="drh">
+      <div>
+        <div class="drt">RESULT — M<span id="drmid">1</span></div>
+        <div class="drm" id="drm">接岸成功</div>
+        <div class="drs" id="drs2">★★★</div>
+      </div>
+      <div id="drsw">
+        <div id="drsn">0</div>
+        <div class="drsl">SCORE / 100</div>
+        <div style="font-size:8px;color:#00ff8858;margin-top:3px;" id="drrank"></div>
+      </div>
+    </div>
+    <div id="drb">
+      <div id="drrc">
+        <canvas id="drrc2" width="136" height="136"></canvas>
+        <div class="drrl">PERFORMANCE</div>
+      </div>
+      <div id="drbd"></div>
+    </div>
+    <div id="drp"></div>
+    <div id="drf">
+      <button class="drb sec" onclick="goSel()">MISSIONS</button>
+      <button class="drb"     onclick="retry()">RETRY</button>
+    </div>
+  </div>
+
+  <!-- ゲームオーバー -->
+  <div id="go">
+    <div id="gob">
+      <div class="got">GAME OVER</div>
+      <div class="gos" id="gosub">航行不能</div>
+      <div class="goc" id="gocause"></div>
+      <div class="gobt">
+        <button class="gbtn"   onclick="goSel()">MISSIONS</button>
+        <button class="gbtn p" onclick="retry()">RETRY</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ツール画面 -->
+<div id="ts">
+  <div id="tsh">
+    <div class="tst">⚓ NAVIGATION TOOLS</div>
+    <button class="tsc" onclick="toggleTool()">✕ CLOSE [T]</button>
+  </div>
+  <div id="tsb">
+    <div class="tp" id="tcp">
+      <div class="tpl">海図 — NAUTICAL CHART</div>
+      <canvas id="tcc"></canvas>
+      <div id="tleg">
+        <div><span class="ld2" style="background:#00ff88"></span>自船</div>
+        <div><span class="ld2" style="background:#ffcc00"></span>目標港</div>
+        <div><span class="ld2" style="background:#00aaff"></span>他船</div>
+        <div><span class="ld2" style="background:#ff3300"></span>左舷浮標</div>
+        <div><span class="ld2" style="background:#00aa44"></span>右舷浮標</div>
+      </div>
+    </div>
+    <div class="tp" id="tpp">
+      <div class="tpl">精密コンパス — PRECISION COMPASS</div>
+      <canvas id="tpc" width="252" height="252" style="display:block;margin:0 auto;"></canvas>
+    </div>
+    <div class="tp" id="tdp">
+      <div class="tpl">航行データ — NAVIGATION DATA</div>
+      <div class="drow"><span class="dk2">船首方位</span><span class="dv2" id="td0">000°</span></div>
+      <div class="drow"><span class="dk2">対水速力</span><span class="dv2" id="td1">0.0 kt</span></div>
+      <div class="drow"><span class="dk2">舵角</span>    <span class="dv2" id="td2">0°</span></div>
+      <div class="drow"><span class="dk2">目標方位</span><span class="dv2" id="td3">---°</span></div>
+      <div class="drow"><span class="dk2">目標距離</span><span class="dv2" id="td4">--- nm</span></div>
+      <div class="drow"><span class="dk2">潮流</span>    <span class="dv2" id="td5">---</span></div>
+      <div class="drow"><span class="dk2">機関</span>    <span class="dv2" id="td6">STOP</span></div>
+      <div class="drow"><span class="dk2">ETA</span>     <span class="dv2" id="td7">--:--</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- タッチUI -->
+<div id="tcu">
+  <div id="tcl">
+    <div id="joy"><div id="jknob"></div></div>
+  </div>
+  <div id="tcr">
+    <button class="teb teu" id="tbu">▲ 前進増速</button>
+    <button class="teb tes" id="tbs">■ 停止</button>
+    <button class="teb ted" id="tbd">▼ 減速/後進</button>
+    <button class="teb teh" id="tbh">📯 汽笛</button>
+  </div>
+</div>
+
+<!-- ES Moduleで読み込み -->
+<script type="module" src="js/main.js"></script>
+
 </body>
 </html>
