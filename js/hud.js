@@ -546,3 +546,56 @@ export function updateDashboard(P) {
 
     updateClock(cvs.clock.getContext('2d'));
 }
+
+// ==== 操作説明UI ====
+export const keyMaps = {
+    standard: {
+        label: '標準',
+        keys: [
+            { key: 'W', desc: 'RPM ↑ (10)' },
+            { key: 'S', desc: 'RPM ↓ (10)' },
+            { key: 'D', desc: '舵右 (5)' },
+            { key: 'A', desc: '舵左 (5)' },
+            { key: 'Space', desc: '舵中央' },
+            { key: 'M', desc: 'モード切替' }
+        ],
+        rpmStep: 10,
+        rudderStep: 5
+    },
+    maneuver: {
+        label: '操船',
+        keys: [
+            { key: 'W', desc: 'RPM ↑ (2)' },
+            { key: 'S', desc: 'RPM ↓ (2)' },
+            { key: 'D', desc: '舵右 (1)' },
+            { key: 'A', desc: '舵左 (1)' },
+            { key: 'Space', desc: '舵中央' },
+            { key: 'M', desc: 'モード切替' }
+        ],
+        rpmStep: 2,
+        rudderStep: 1
+    }
+};
+
+export function updateKeyMapDisplay(currentMode) {
+    const mode = keyMaps[currentMode];
+    if (!mode) return;
+    const labelSpan = document.getElementById('current-mode-label');
+    const listUl = document.getElementById('key-map-list');
+
+    if (labelSpan) labelSpan.textContent = mode.label;
+    if (listUl) {
+        listUl.innerHTML = '';
+        mode.keys.forEach(item => {
+            const li = document.createElement('li');
+            const keySpan = document.createElement('span');
+            keySpan.className = 'key-name';
+            keySpan.textContent = item.key;
+            const descSpan = document.createElement('span');
+            descSpan.textContent = item.desc;
+            li.appendChild(keySpan);
+            li.appendChild(descSpan);
+            listUl.appendChild(li);
+        });
+    }
+}
