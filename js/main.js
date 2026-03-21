@@ -23,7 +23,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping      = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 22000);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.01, 50000);
 
 const { scene, sky, sun, amb, moon } = buildScene(THREE);
 const { ocean, wu }                   = buildOcean(THREE, scene);
@@ -36,7 +36,7 @@ const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 shipGroup.add(camera);
 const bridgeXPos   = -13;     // 左右★（プラスで左に移動）
 const bridgeHeight = 10;   // ★高さ（プラスで上に移動）
-const bridgeZPos   = 9;  // ★前後位置（プラスで前に移動）
+const bridgeZPos   = 9.7;  // ★前後位置（プラスで前に移動）
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
 // --- 物理演算対象の変更（shipGroup 全体を指定） ---

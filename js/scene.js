@@ -240,12 +240,18 @@ export function buildShip(THREE, scene) {
     
     // --- ここまで ---
 
-    // --- ここから追加：全メッシュを両面レンダリングに設定する ---
+    // --- ここから追加：全メッシュを両面レンダリングに設定＆透明度無効化 ---
     model.traverse((object) => {
       // オブジェクトがメッシュ（3D形状）の場合
       if (object.isMesh) {
         // マテリアル（質感）の設定を変更
         object.material.side = THREE.DoubleSide; // ★両面を描画するように設定
+        
+        // --- ここから追加：透明度設定による透けを防止 ---
+        object.material.transparent = false; // 強制的に不透明にする
+        object.material.depthWrite = true;   // 描画順序を正しくする
+        object.material.alphaTest = 0.5;     // 境界線をはっきりさせる
+        // --- ここまで追加 ---
       }
     });
     // --- ここまで追加 ---
