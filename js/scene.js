@@ -224,8 +224,11 @@ export function buildShip(THREE, scene) {
 
     // 3. モデルの中心のズレを修正する（原点に持ってくる）＆ 喫水を沈める
     model.position.x = -center.x * scaleFactor;
-    model.position.y = (-center.y * scaleFactor) - 1; 
+    model.position.y = (-center.y * scaleFactor) + 0 ; 
     model.position.z = -center.z * scaleFactor;
+
+  
+    model.rotation.y = -Math.PI / 2; 
 
     // デバッグ用：F12コンソールにサイズを出力して確認する
     console.log("🚢 Original Size:", size);
