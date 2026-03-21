@@ -31,6 +31,15 @@ const { shipGroup, prop, navL }       = buildShip(THREE, scene);
 const { buoys }                       = buildWorld(THREE, scene);
 const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 
+// --- ブリッジ視点（ファーストパーソン）設定 ---
+shipGroup.add(camera);
+const bridgeHeight = 40;
+const bridgeZPos = 60;
+camera.position.set(0, bridgeHeight, bridgeZPos);
+
+// --- 物理演算対象の変更（shipGroup 全体を指定） ---
+P.shipMesh = shipGroup;
+
 // 雨
 const rainCv  = document.getElementById('rain-cv');
 const rainCtx = rainCv.getContext('2d');
@@ -68,10 +77,6 @@ window.addEventListener('keydown', e => {
   if (e.key === 's' || e.key === 'S') { P.engineOrder = Math.max(P.engineOrder - 1, -3); updateTelegraph(P.engineOrder); }
   if (e.key === 'e' || e.key === 'E') { P.engineOrder = 0; updateTelegraph(P.engineOrder); }
   if (e.key === 'h' || e.key === 'H') { initAudio(); playHorn(); }
-  if (e.key === ' ') {
-    P.engineOrder = P.speed > 0.5 ? -3 : P.speed < -0.5 ? 3 : 0;
-    updateTelegraph(P.engineOrder);
-  }
   if (e.key === 'm' || e.key === 'M') goSel();
   if (e.key === 't' || e.key === 'T') toggleTool();
 });
@@ -335,22 +340,21 @@ function upd3D(t) {
   ocean.position.x = P.posX; ocean.position.z = P.posZ;
   const wa = curM ? curM.waves : 1;
 
+  shipGroup.position.set(P.posX, 0, P.posZ);
   shipGroup.rotation.z = P.rollAngle;
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  const bh = 14.5, bz = -9;
+  const bridgeHeight = 40, bridgeZPos = 60;
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
-  camera.position.set(
-    P.posX + Math.sin(P.heading) * bz,
-    bh + P.rollAngle * 2,
-    P.posZ + Math.cos(P.heading) * bz
-  );
+  
+  // カメラは shipGroup の子なのでローカル座標で視点を調整
+  // GLBモデルはZマイナス方向が船首になるため、Zマイナス側を見る
   camera.lookAt(
-    P.posX + Math.sin(P.heading + yr) * 200,
-    bh - pr * 85,
-    P.posZ + Math.cos(P.heading + yr) * 200
+    -Math.sin(yr) * 200,
+    bridgeHeight - pr * 85,
+    bridgeZPos - Math.cos(yr) * 200
   );
 
   if (curM?.wx === 'ngt') {
