@@ -420,8 +420,8 @@ function upd3D(t) {
   shipGroup.rotation.y = -P.heading;
 
   // --- 修正後（ブリッジ視点へのアタリ） ---
-  const bh = 35;   // ★高さ（Bridge Height）：見下ろす高さを下げます
-  const bz = -120; // ★前後位置（Bridge Z）：船の形に合わせて調整します
+  const bh = 60;   // ★もう少し上（高く）
+  const bz = -180; // ★もう少し前（マイナス方向へ）
   camera.position.set(0, bh, bz);
 
   const yr = camOffset.yaw   * Math.PI / 180;
