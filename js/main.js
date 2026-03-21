@@ -132,9 +132,10 @@ window.addEventListener('mousemove', (e) => {
     const deltaX = e.clientX - previousMouseX;
     const deltaY = e.clientY - previousMouseY;
 
-    // ★右から左ドラッグで右側を見る（引き算にする）
-    camOffset.yaw   -= deltaX * lookSensitivity; 
-    camOffset.pitch -= deltaY * lookSensitivity; 
+    // ★修正：引き算（-=）だと逆になってしまうため、足し算（+=）に戻すことで
+    // 「右にドラッグすると左を向く（空間を引っ張る操作感）」になります
+    camOffset.yaw   += deltaX * lookSensitivity; 
+    camOffset.pitch += deltaY * lookSensitivity; 
     
     // 見回せる限界角度（真後ろや真上を見すぎないように）
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
@@ -175,8 +176,8 @@ window.addEventListener('touchmove', (e) => {
     const deltaX = e.touches[0].clientX - previousMouseX;
     const deltaY = e.touches[0].clientY - previousMouseY;
     
-    camOffset.yaw   -= deltaX * lookSensitivity * 1.5; 
-    camOffset.pitch -= deltaY * lookSensitivity * 1.5;
+    camOffset.yaw   += deltaX * lookSensitivity * 1.5; 
+    camOffset.pitch += deltaY * lookSensitivity * 1.5;
     
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
     camOffset.pitch = Math.max(-45, Math.min(45, camOffset.pitch));

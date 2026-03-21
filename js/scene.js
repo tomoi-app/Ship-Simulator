@@ -215,8 +215,8 @@ export function buildShip(THREE, scene) {
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
-    // 2. シミュレーターの船のサイズ（約300m）に自動でスケールを合わせる
-    const targetLength = 300; 
+    // 2. シミュレーターの船のサイズに自動でスケールを合わせる
+    const targetLength = 3000; // ★ドカンと10倍(3000)に拡大
     const maxLength = Math.max(size.x, size.y, size.z); // 一番長い辺を探す
     const scaleFactor = targetLength / maxLength;       // 拡大・縮小率を計算
     
