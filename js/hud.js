@@ -429,44 +429,72 @@ export function setNight(night) {
 // ==================================================================
 function updateClock(ctx, simTime, curM, mst) {
     if (!ctx) return;
+    const cx = 80, cy = 80, r = 70;
     ctx.clearRect(0, 0, 160, 160);
 
     // ミッション開始からの経過シミュレーション時間（ミリ秒）
     let elapsed = 0;
     if (mst && mst.t0) elapsed = simTime - mst.t0;
-    else elapsed = simTime; // フリー走行時など
+    else elapsed = simTime;
 
     // 天候(時間帯)に合わせたベース時刻（ミリ秒）
-    let baseTime = 10 * 3600 * 1000; // デフォルトは昼 (10:00)
-    let dateTxt = '4/01';            // デフォルトの日付（春）
+    let baseTime = 10 * 3600 * 1000; // 10:00
+    let dateTxt = '4/01';
 
     if (curM) {
-        if (curM.wx === 'ngt') {
-            baseTime = 2 * 3600 * 1000;  // 夜ミッションは 02:00 スタート
-            dateTxt = '12/15';           // 冬の夜をイメージ
-        } 
-        else if (curM.wx === 'str') {
-            baseTime = 17 * 3600 * 1000; // 嵐ミッションは 夕暮れ 17:00 スタート
-            dateTxt = '9/10';            // 台風シーズンをイメージ
-        } 
-        else if (curM.wx === 'rain') {
-            baseTime = 14 * 3600 * 1000; // 雨ミッションは 14:00 スタート
-            dateTxt = '6/20';            // 梅雨をイメージ
-        }
+        if (curM.wx === 'ngt') { baseTime = 2 * 3600 * 1000; dateTxt = '12/15'; }
+        else if (curM.wx === 'str') { baseTime = 17 * 3600 * 1000; dateTxt = '9/10'; }
+        else if (curM.wx === 'rain') { baseTime = 14 * 3600 * 1000; dateTxt = '6/20'; }
     }
 
-    // 経過時間を足して現在のゲーム内時刻を計算
-    let totalSeconds = Math.floor((baseTime + elapsed) / 1000);
-    let hours = Math.floor(totalSeconds / 3600) % 24;
-    let mins = Math.floor(totalSeconds / 60) % 60;
+    let totalSeconds = (baseTime + elapsed) / 1000;
+    let h = (totalSeconds / 3600) % 12;
+    let m = (totalSeconds / 60) % 60;
+    let s = totalSeconds % 60;
 
-    // デジタル表示
-    const txt = hours.toString().padStart(2, '0') + ':' + mins.toString().padStart(2, '0');
-    ctx.font = 'bold 36px sans-serif'; ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(txt, 80, 80);
+    // 文字盤
+    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = '#222'; ctx.stroke();
 
-    // 日付表示
-    ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#555'; ctx.fillText(dateTxt, 80, 115);
+    // 目盛り
+    for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
+        const isMaj = i % 5 === 0;
+        const inner = r - (isMaj ? 12 : 6);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+        ctx.lineTo(cx + Math.cos(a) * r,     cy + Math.sin(a) * r);
+        ctx.lineWidth = isMaj ? 1.5 : 0.7; ctx.strokeStyle = isMaj ? '#000' : '#555'; ctx.stroke();
+    }
+
+    // 数字
+    ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [[12,0],[3,90],[6,180],[9,270]].forEach(([n, deg]) => {
+        const a = (deg - 90) * Math.PI / 180;
+        ctx.fillText(n, cx + Math.cos(a) * (r - 20), cy + Math.sin(a) * (r - 20));
+    });
+
+    // 時針
+    const ha = (h / 12) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath(); ctx.moveTo(cx - Math.cos(ha)*10, cy - Math.sin(ha)*10); ctx.lineTo(cx + Math.cos(ha)*(r*0.5), cy + Math.sin(ha)*(r*0.5));
+    ctx.lineWidth = 4; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.stroke();
+
+    // 分針
+    const ma = (m / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath(); ctx.moveTo(cx - Math.cos(ma)*12, cy - Math.sin(ma)*12); ctx.lineTo(cx + Math.cos(ma)*(r*0.72), cy + Math.sin(ma)*(r*0.72));
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#222'; ctx.stroke();
+
+    // 秒針
+    const sa = (s / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath(); ctx.moveTo(cx - Math.cos(sa)*14, cy - Math.sin(sa)*14); ctx.lineTo(cx + Math.cos(sa)*(r*0.85), cy + Math.sin(sa)*(r*0.85));
+    ctx.lineWidth = 1.2; ctx.strokeStyle = '#d32f2f'; ctx.stroke();
+
+    // 中心
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fillStyle = '#d32f2f'; ctx.fill();
+    ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = '#555'; ctx.fillText(dateTxt, 80, 115);
+    ctx.lineCap = 'butt';
 }
 
 // ==================================================================

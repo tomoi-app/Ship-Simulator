@@ -112,6 +112,15 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const rSpdDeg = 2.3 * sDt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
 
+  // ==========================================================
+  // テレグラフ命令から目標RPMを決定 (全9段階)
+  // ==========================================================
+  const rpmMap = {
+     "4": 110, "3": 70, "2": 35, "1": 20, "0": 0,
+    "-1": -15, "-2": -25, "-3": -50, "-4": -80
+  };
+  P.targetRpm = rpmMap[P.engineOrder] || 0;
+
   // エンジンのレスポンスも sDt に
   const maxRpmDt = 5.5 * sDt; 
   if (Math.abs(P.targetRpm - P.rpm) < maxRpmDt) P.rpm = P.targetRpm; 
@@ -210,7 +219,7 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   P.posZ += (P.u * cosH + P.v * sinH) * sDt + P.driftZ * sDt + currZ; // sDtに変更
   
   // 【修正】旋回方向を反転させる（-= に変更）
-  P.heading -= P.r * dt;
+  P.heading -= P.r * sDt; // sDtに変更
 
   // HUD・他システム互換のためのパラメータ追従
   P.speed = Math.sqrt(P.u*P.u + P.v*P.v) / 0.514;
