@@ -539,6 +539,18 @@ export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
     drawColorArc(ctx, -120, 120, 0, 120, 'rgba(40,140,60,0.7)', 62, 8); // 前進（緑）
     drawNeedle(ctx, P.rpm, -120, 120);
 
+    // 【追加】エンジンの過負荷（OVERLOAD）アラームの点滅表示
+    if (P.engineOverload) {
+        const cx = 80;
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillStyle = '#ff0000';
+        ctx.textAlign = 'center';
+        // 0.5秒間隔で点滅させる
+        if (Math.floor(Date.now() / 500) % 2 === 0) {
+            ctx.fillText('OVERLOAD', cx, 115);
+        }
+    }
+
     // 5. WIND SPEED (KNOTS)
     ctx = cvs.windSpeed.getContext('2d');
     drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 10, 5);

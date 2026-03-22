@@ -252,12 +252,14 @@ export function buildOcean(THREE, scene) {
 // ---- 船体（GLTFモデル版） ----
 export function buildShip(THREE, scene) {
   const SG = new THREE.Group();
+  SG.name = 'Ship'; // toggleNight で検索できるように名前を付与
 
   const loader = new GLTFLoader();
   
   // 先ほど配置したGLBファイルを読み込む
   loader.load('./models/ship.glb', (gltf) => {
     const model = gltf.scene;
+    // ... (スケーリング処理などはそのまま)
 
     // --- ここから：自動スケール＆センタリング処理 ---
     
@@ -309,23 +311,74 @@ export function buildShip(THREE, scene) {
     SG.add(model);
   });
 
-  // 航海灯（既存のものを維持）
-  const navL = {
-    mast:  new THREE.PointLight(0xffffff, 0.5, 350),
-    green: new THREE.PointLight(0x00ff00, 0.8, 220),
-    red:   new THREE.PointLight(0xff0000, 0.8, 220),
-  };
-  navL.mast.position.set(0, 35, -60);
-  navL.green.position.set(14, 10, 80);
-  navL.red.position.set(-14, 10, 80);
-  Object.values(navL).forEach(l => scene.add(l));
+  // ==========================================================
+  // 3. 航海灯の正確な配置と視認距離 (安全設備規則 / COLREGs 準拠)
+  // ==========================================================
+  const navLights = new THREE.Group();
+  navLights.name = 'NavLights';
+  const nmToMeters = 1852; // 1海里 = 1852m
 
-  // プロペラアニメーション用のダミー（main.jsのエラー回避用）
+  // 光源と照射角を生成するヘルパー関数
+  const createNavLight = (hex, angleDeg, distNm) => {
+      const g = new THREE.Group();
+      // 灯器本体の発光
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: hex }));
+      g.add(mesh);
+      // 規定された視認距離と照射角（Cut-off）を持つ SpotLight
+      const light = new THREE.SpotLight(hex, 5.0, distNm * nmToMeters, (angleDeg / 2) * (Math.PI / 180), 0.05, 1);
+      const target = new THREE.Object3D();
+      target.position.set(0, 0, 10); // 光の向かう方向
+      g.add(target);
+      light.target = target;
+      g.add(light);
+      return g;
+  };
+
+  // ① 前部マスト灯 (Fwd Masthead Light): 白, 225度, 視認距離 6海里
+  const fwdMast = createNavLight(0xffffff, 225, 6);
+  fwdMast.position.set(0, 35, 120); // 船首寄りマスト
+  navLights.add(fwdMast);
+
+  // ② 後部マスト灯 (Aft Masthead Light): 白, 225度, 視認距離 6海里
+  const aftMast = createNavLight(0xffffff, 225, 6);
+  aftMast.position.set(0, 50, -110); // 居住区トップマスト
+  navLights.add(aftMast);
+
+  // ③ 右舷灯 (Starboard Sidelight): 緑, 112.5度, 視認距離 3海里
+  const stbdLight = createNavLight(0x00ff00, 112.5, 3);
+  stbdLight.position.set(26, 30, -100); // 船橋ウイング右舷端
+  stbdLight.rotation.y = -Math.PI / 8; // 正面から右真横やや後方までを照射
+  navLights.add(stbdLight);
+
+  // ④ 左舷灯 (Port Sidelight): 赤, 112.5度, 視認距離 3海里
+  const portLight = createNavLight(0xff0000, 112.5, 3);
+  portLight.position.set(-26, 30, -100); // 船橋ウイング左舷端
+  portLight.rotation.y = Math.PI / 8; 
+  navLights.add(portLight);
+
+  // ⑤ 船尾灯 (Stern Light): 白, 135度, 視認距離 3海里
+  const sternLight = createNavLight(0xffffff, 135, 3);
+  sternLight.position.set(0, 15, -170); // 船尾端
+  sternLight.rotation.y = Math.PI; // 真後ろを照射
+  navLights.add(sternLight);
+
+  navLights.visible = false; // 初期状態は消灯（夜間に点灯）
+  SG.add(navLights);
+
+  // プロペラアニメーション用のダミー
   const prop = new THREE.Group(); 
   SG.add(prop);
 
   scene.add(SG);
-  return { shipGroup: SG, prop, navL };
+  return { shipGroup: SG, prop };
+}
+
+export function toggleNight(scene, night) {
+  const ship = scene.getObjectByName('Ship');
+  if (ship) {
+      const navLights = ship.getObjectByName('NavLights');
+      if (navLights) navLights.visible = night; // 夜間に航海灯を点灯
+  }
 }
 
 // ---- 陸地・港湾 ----

@@ -8,7 +8,7 @@ import * as THREE     from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128
 import { MISSIONS, SAVE, saveResult, getStats } from './missions.js';
 import { P, ENG_LABELS, ENG_RATIOS, initInput, keys, camOffset, updatePhysics, calcScore } from './physics.js';
 import { initAudio, updateEngineSound, playHorn, playCrash, playVHF, playClear, isReady as audioReady } from './audio.js';
-import { buildScene, buildOcean, buildShip, buildWorld, buildAI } from './scene.js';
+import { buildScene, buildOcean, buildShip, buildWorld, buildAI, toggleNight } from './scene.js';
 import {
   drawRudder, updateCompass, updateTelegraph,
   showPenaltyToast, flashScreen,
@@ -29,7 +29,7 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.01, 5
 
 const { scene, sky, sun, amb, moon } = buildScene(THREE);
 const { ocean, wu }                   = buildOcean(THREE, scene);
-const { shipGroup, prop, navL }       = buildShip(THREE, scene);
+const { shipGroup, prop }             = buildShip(THREE, scene);
 const { buoys }                       = buildWorld(THREE, scene);
 const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
 
@@ -206,26 +206,6 @@ function applyWeatherScene(m) {
   sun.intensity  = 1.2; moon.intensity = 0; amb.intensity = 0.6;
   sky.material.color.set(0x5a8fb0); sun.color.set(0xfff4e0);
   
-  let fogC = 0x8fb5cc;
-  let fogD = 0.00012;
-
-  // 海シェーダーへのデフォルト設定（晴れの昼）
-  wu.uBaseColor.value.setHex(0x051e38);
-  wu.uShallowColor.value.setHex(0x0f4770);
-  wu.uLightColor.value.setHex(0xfff4e0);
-  wu.uLightDir.value.copy(sun.position).normalize();
-
-  if (m.wx === 'ngt') {
-    sun.intensity = 0.04; moon.intensity = 0.7; amb.intensity = 0.16;
-    sky.material.color.set(0x03050d);
-    fogC = 0x03050d; fogD = 0.00022;
-    // 夜の海（月光）
-    wu.uBaseColor.value.setHex(0x010308); 
-    wu.uShallowColor.value.setHex(0x020815);
-    wu.uLightColor.value.setHex(0x6688aa); // 月明かりのきらめき
-    wu.uLightDir.value.copy(moon.position).normalize();
-    navL.mast.intensity = 3.8; navL.green.intensity = 2.8; navL.red.intensity = 2.8;
-  }
   else if (m.wx === 'str') {
     sky.material.color.set(0x223344); sun.color.set(0x7788aa); sun.intensity = 0.38;
     fogC = 0x2a3344; fogD = 0.00028;
