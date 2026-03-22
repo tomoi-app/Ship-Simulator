@@ -10,8 +10,8 @@ import { P, ENG_LABELS, ENG_RATIOS, initInput, keys, camOffset, updatePhysics, c
 import { initAudio, updateEngineSound, playHorn, playCrash, playVHF, playClear, isReady as audioReady } from './audio.js';
 import { buildScene, buildOcean, buildShip, buildWorld, buildAI } from './scene.js';
 import {
-  drawRudder, drawRadar, updateCompass, updateTelegraph,
-  setDockBar, showPenaltyToast, showVHF, flashScreen, showMissionBanner,
+  drawRudder, updateCompass, updateTelegraph,
+  showPenaltyToast, flashScreen,
   drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard
 } from './hud.js';
 import { isToolOpen, toggleTool, drawAll as drawTools } from './tools.js';
@@ -287,28 +287,10 @@ window.startM = function(id) {
 
   document.getElementById('dr')?.classList.remove('v');
   document.getElementById('go')?.classList.remove('v', 'dk');
-  document.getElementById('dg')?.classList.add('h');
-  document.getElementById('vhf')?.classList.add('h');
-  document.getElementById('msb')?.classList.remove('v');
   tugs.forEach(t => { t.active = false; t.mesh.position.set(m.tx + 100, 0, m.tz - 200); });
 
   applyWeatherScene(m);
   applyWeatherOverlay(m);
-
-  // VHFキュー
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  const wnd = document.getElementById('wnd'); if (wnd) wnd.textContent = `${dirs[Math.round(P.windDir/22.5)%16]} ${m.wind}kt`;
-  const cur = document.getElementById('cur'); if (cur) cur.textContent = `${dirs[Math.round(P.currDir/22.5)%16]} ${m.curr}kt`;
-
-  // VHFキュー
-  vhfQ = [
-    { d: 4500, msg: m.story[0] },
-    { d: 2000, msg: `速力8ノット以下に減速。水先案内人が接近中。` },
-    { d: 800,  msg: `残り800m。タグボート支援開始。速力4ノット以下。` },
-    { d: 300,  msg: `残り300m。機関後進用意。慎重に接岸。` },
-  ];
-
-  setTimeout(() => showVHF(`M${m.id} — ${m.title}。${m.story[0]}`, m.ch), 1600);
 };
 
 // ミッション判定
@@ -316,11 +298,6 @@ function chkMission() {
   if (!curM || mst.done) return;
   const dx   = curM.tx - P.posX, dz = curM.tz - P.posZ;
   const dist = Math.sqrt(dx*dx + dz*dz);
-
-  // VHF
-  vhfQ.forEach((q, i) => {
-    if (!vhfFired.has(i) && dist <= q.d) { vhfFired.add(i); showVHF(q.msg, curM.ch); playVHF(); }
-  });
 
   if (curM.type === 'dep') {
     const sx = curM.sp.x - P.posX, sz = curM.sp.z - P.posZ;
@@ -335,13 +312,9 @@ function chkMission() {
   // docking
   if (dist < 700 && !mst.tugOn) { mst.tugOn = true; tugs.forEach(t => t.active = true); }
   if (dist < 900) {
-    document.getElementById('dg')?.classList.remove('h');
     const as  = Math.abs(P.speed);
     const aa  = Math.atan2(dx, dz);
     const ad  = Math.abs(((P.heading - aa + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 180 / Math.PI;
-    setDockBar(0, Math.max(0, Math.min(100, (1 - dist / 900) * 100)), dist < 60 ? 'g' : dist < 200 ? 'w' : 'b', Math.round(dist) + 'm');
-    setDockBar(1, Math.max(0, (1 - as / 8) * 100), as < 1 ? 'g' : as < 3 ? 'w' : 'b', as.toFixed(1) + 'kt');
-    setDockBar(2, Math.max(0, (1 - ad / 90) * 100), ad < 15 ? 'g' : ad < 35 ? 'w' : 'b', ad.toFixed(0) + '°');
     if (dist < 28 && as < 1.8) { mst.done = true; _dockRes(dist, as, ad, false); }
     if (dist < 16 && as > 4.5) { triggerGO('pier'); }
   }
@@ -361,8 +334,7 @@ function _dockRes(dist, spd, angle, col) {
 
   if (!col && stars >= 1) {
     playClear();
-    showMissionBanner();
-    setTimeout(() => showDockResult(sd, stars, col, elapsed, curM), 2900);
+    showDockResult(sd, stars, col, elapsed, curM);
   } else {
     showDockResult(sd, stars, col, elapsed, curM);
   }
@@ -397,8 +369,6 @@ function checkCol() {
       if (Math.abs(P.speed) > 5) { triggerGO('collision'); return; }
       mst.colP += 10; mst.pens.push('⚠ 他船接触 −10pt');
       showPenaltyToast('他船に接触！ −10pt'); playCrash(); flashScreen('r');
-      document.getElementById('cw')?.classList.add('v');
-      setTimeout(() => document.getElementById('cw')?.classList.remove('v'), 2000);
       return;
     }
   }
@@ -551,25 +521,25 @@ function loop(t) {
   const dt = Math.min((t - lastT) / 1000, 0.05); 
   lastT = t;
 
-  // 【追加】物理演算を指定倍率の回数分ループさせる（性能を保ったまま早送り）
-  for (let i = 0; i < timeScale; i++) {
-      updatePhysics(dt, curM ? curM.waves : 1, goActive, simTime);
-      updAI(dt); 
-      updTugs(dt);
-      simTime += dt * 1000; // ゲーム内時間を進める
-  }
+  // 【修正】forループをやめ、スケールされた時間(scaledDt)を一括で計算する
+  const scaledDt = dt * timeScale;
+  simTime += scaledDt * 1000; // ゲーム内仮想時間を進める
 
-  // アニメーションと3Dの更新にはゲーム内時間(simTime)を使う
+  // 【修正】物理演算に timeScale を渡し、他船の演算には scaledDt を渡す
+  updatePhysics(dt, curM ? curM.waves : 1, goActive, simTime, timeScale);
+  updAI(scaledDt); 
+  updTugs(scaledDt);
+
+  // 3Dとアニメーションの更新
   wu.uT.value = simTime * 0.001;
   upd3D(simTime);
 
   // HUD
   updateCompass(P.heading);
   drawRudder(P.rudder);
-  drawRadar(P.posX, P.posZ, P.heading, AIships, fishBoats, curM);
   
-  // ダッシュボード（アナログ計器）更新
-  updateDashboard(P);
+  // ダッシュボード
+  updateDashboard(P, simTime, curM, mst);
 
   // サウンド
   if (audioReady()) updateEngineSound(P.engineOrder);

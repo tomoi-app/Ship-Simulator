@@ -100,35 +100,22 @@ let keyLockA = false;
 let keyLockD = false;
 
 // ---- メイン物理更新 ----
-// 【変更】引数に currentTime を追加
-export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTime = Date.now()) {
+// 【修正】引数に timeScale = 1 を追加
+export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTime = Date.now(), timeScale = 1) {
   if (gameOverActive) return;
 
+  // 【追加】倍速用にスケールされた時間（sDt）を計算
+  const sDt = dt * timeScale;
+
   // --- 1. 舵と主機のレスポンス ---
-  // ステアリングエンジン (毎秒 2.3度へ戻す。重厚な舵の効き・回頭レスポンス0.05相当)
-  const rudderSpeed = (2.3 * Math.PI / 180) * dt; // rad
-  const rSpdDeg = 2.3 * dt;
+  // dt ではなく sDt を使うように変更
+  const rSpdDeg = 2.3 * sDt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -rSpdDeg), rSpdDeg);
 
-  // ==========================================================
-  // テレグラフ命令から目標RPMを決定 (全9段階に拡張)
-  // ==========================================================
-  const rpmMap = {
-     "4": 110,  // Full Ahead: 約22 knots
-     "3": 70,   // Half Ahead: 約14 knots
-     "2": 35,   // Slow Ahead: 約7 knots
-     "1": 20,   // Dead Slow Ahead: 微速前進 (約4 knots)
-     "0": 0,    // Stop: 停止
-    "-1": -15,  // Dead Slow Astern: 微速後進
-    "-2": -25,  // Slow Astern
-    "-3": -50,  // Half Astern
-    "-4": -80   // Full Astern
-  };
-  P.targetRpm = rpmMap[P.engineOrder] || 0;
-
-  // 【変更】エンジンRPMは約5秒かけて滑らかに目標値へ到達（指数関数的カーブ）
-  P.rpm += (P.targetRpm - P.rpm) * 0.6 * dt;
-  if (Math.abs(P.targetRpm - P.rpm) < 0.1) P.rpm = P.targetRpm; // 微小なブレをピタッと止める
+  // エンジンのレスポンスも sDt に
+  const maxRpmDt = 5.5 * sDt; 
+  if (Math.abs(P.targetRpm - P.rpm) < maxRpmDt) P.rpm = P.targetRpm; 
+  else P.rpm += Math.sign(P.targetRpm - P.rpm) * maxRpmDt;
 
   const L = P.Lpp;
   const d = P.d;
@@ -170,50 +157,57 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const dr = (Nh + Nr_force) / ( (P.mass * L**2 / 12) + Jzz );
 
   // 速度の更新
-  // 【変更】巨大船の慣性：船速はRPMの出力に対して約10秒かけて滑らかに追従する
+  // 【変更】船速をリニア加速に変更（22ノット到達にジャスト40秒）
   let targetSpeedKts = P.rpm * 0.20; 
   let targetSpeedMs = targetSpeedKts * 0.514444; // ノットから m/s 変換
   
-  // スピード(P.u)を目標速度に約10秒で到達させる
-  P.u += (targetSpeedMs - P.u) * 0.3 * dt;
-  if (Math.abs(targetSpeedMs - P.u) < 0.01) P.u = targetSpeedMs;
+  // 最大加速度：1秒あたり 0.55ノットのペースでしか加速・減速できない (22ノット ÷ 40秒 = 0.55)
+  let maxAccelMs = (0.55 * 0.514444) * sDt; 
+  
+  if (Math.abs(targetSpeedMs - P.u) < maxAccelMs) P.u = targetSpeedMs;
+  else P.u += Math.sign(targetSpeedMs - P.u) * maxAccelMs;
 
-  P.v = v + dv * dt;
-  P.r = r + dr * dt;
+  // 加速度(dv, dr)の積分にも sDt をかける！ これで旋回が倍速になる
+  P.v = v + dv * sDt; 
+  P.r = r + dr * sDt; 
 
-  // 横流れ（風・潮流の影響）※環境の力も正しい方向へ修正
+  // --- 6. 横流れと波の揺れ ---
   const wr = P.windDir * Math.PI / 180;
   const cr = P.currDir * Math.PI / 180;
-  const windX = -Math.sin(wr) * P.windSpeed * 0.000022; // マイナスを追加
-  const windZ =  Math.cos(wr) * P.windSpeed * 0.000022; // マイナスを削除
-  const currX = -Math.sin(cr) * P.currSpeed * 0.514 * dt; // マイナスを追加
-  const currZ =  Math.cos(cr) * P.currSpeed * 0.514 * dt; // マイナスを削除
+  const windX = -Math.sin(wr) * P.windSpeed * 0.000022; 
+  const windZ =  Math.cos(wr) * P.windSpeed * 0.000022; 
+  const currX = -Math.sin(cr) * P.currSpeed * 0.514 * sDt; // sDtに変更
+  const currZ =  Math.cos(cr) * P.currSpeed * 0.514 * sDt; // sDtに変更
 
-  P.driftX += (windX - P.driftX * 0.018) * dt * 60;
-  P.driftZ += (windZ - P.driftZ * 0.018) * dt * 60;
-  P.driftX *= DRIFT_D;
-  P.driftZ *= DRIFT_D;
+  P.driftX += (windX - P.driftX * 0.018) * sDt * 60; // sDtに変更
+  P.driftZ += (windZ - P.driftZ * 0.018) * sDt * 60; // sDtに変更
+  
+  // 【修正】フレーム依存の減衰係数を倍速に対応させる
+  const driftDecay = Math.pow(0.98, timeScale);
+  P.driftX *= driftDecay;
+  P.driftZ *= driftDecay;
 
   if (waveAmp > 2) {
     const stormF = (waveAmp - 2) * 0.5;
-    P.heading += (Math.random() - 0.5) * 0.003 * stormF;
-    P.driftX  += (Math.random() - 0.5) * 0.025 * stormF;
-    P.driftZ  += (Math.random() - 0.5) * 0.025 * stormF;
+    P.heading += (Math.random() - 0.5) * 0.003 * stormF * timeScale;
+    P.driftX  += (Math.random() - 0.5) * 0.025 * stormF * timeScale;
+    P.driftZ  += (Math.random() - 0.5) * 0.025 * stormF * timeScale;
   }
 
-  // 【変更】Date.now() を currentTime に置き換える
   const wRoll  = Math.sin(currentTime * 0.001)  * 0.013 * waveAmp + Math.sin(currentTime * 0.00137) * 0.008 * waveAmp;
   const wPitch = Math.cos(currentTime * 0.00088) * 0.009 * waveAmp;
-  P.rollAngle  += (wRoll  - P.rollAngle)  * ROLL_F;
-  P.pitchAngle += (wPitch - P.pitchAngle) * PITCH_F;
+  
+  const rollDecay = Math.min(1.0, 0.05 * timeScale);
+  const pitchDecay = Math.min(1.0, 0.03 * timeScale);
+  P.rollAngle  += (wRoll  - P.rollAngle)  * rollDecay;
+  P.pitchAngle += (wPitch - P.pitchAngle) * pitchDecay;
 
-  // --- 5. 座標更新 (船体固定座標から絶対座標へ) ---
+  // --- 7. 絶対座標への変換 ---
   const cosH = Math.cos(P.heading);
   const sinH = Math.sin(P.heading);
   
-  // 【修正】3Dモデルの正面方向に正しく進むように、u(前進)とv(横滑り)の符号ベクトルを反転
-  P.posX += (-P.u * sinH + P.v * cosH) * dt + P.driftX * dt + currX;
-  P.posZ += (P.u * cosH + P.v * sinH) * dt + P.driftZ * dt + currZ;
+  P.posX += (-P.u * sinH + P.v * cosH) * sDt + P.driftX * sDt + currX; // sDtに変更
+  P.posZ += (P.u * cosH + P.v * sinH) * sDt + P.driftZ * sDt + currZ; // sDtに変更
   
   // 【修正】旋回方向を反転させる（-= に変更）
   P.heading -= P.r * dt;

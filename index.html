@@ -64,9 +64,6 @@
           <div id="tg-rev-half">HALF ASTERN</div>
           <div id="tg-rev-full">FULL ASTERN</div>
       </div>
-  <div id="flash"></div>
-  <div id="msb">MISSION COMPLETE</div>
-  <div id="cw">⚠ COLLISION ALERT</div>
   <div id="ptst"></div>
 
 
@@ -92,69 +89,6 @@
     <div id="hdl">HEADING</div>
   </div>
 
-  <div id="ch">
-    <span class="hk">W</span> 前進増速 &nbsp;<span class="hk">S</span> 減速/後進<br>
-    <span class="hk">A</span> 左舵 &nbsp;<span class="hk">D</span> 右舵<br>
-    <span class="hk">Q</span> 舵中央 &nbsp;<span class="hk">E</span> 機関停止<br>
-    <span class="hk">H</span> 汽笛<br>
-    <span class="hk">↑↓←→</span> 視点 &nbsp;<span class="hk">T</span> 海図<br>
-    <span class="hk">M</span> ミッション
-  </div>
-
-  <div id="vhf" class="h">
-    <div class="vh"><div class="vb"></div><span id="vch">VHF CH.16</span></div>
-    <div id="vt"></div>
-  </div>
-
-  <div id="dg" class="h">
-    <div class="dgl">DOCKING GUIDE</div>
-    <div class="dbr">DIST<div class="dbw"><div class="dbf g" id="db0" style="width:0%"></div></div><span id="dv0">--</span></div>
-    <div class="dbr">SPD <div class="dbw"><div class="dbf g" id="db1" style="width:0%"></div></div><span id="dv1">--</span></div>
-    <div class="dbr">ANG <div class="dbw"><div class="dbf g" id="db2" style="width:0%"></div></div><span id="dv2">--</span></div>
-  </div>
-
-  <div id="pl">
-    <div style="display:flex;justify-content:center"><div>
-      <div id="radar">
-        <div id="rxh"></div><div id="rxv"></div>
-        <div class="rring" style="width:33%;height:33%;top:33%;left:33%;"></div>
-        <div class="rring" style="width:66%;height:66%;top:17%;left:17%;"></div>
-        <div id="rsw"></div>
-        <canvas id="rcv" style="position:absolute;top:0;left:0;border-radius:50%;opacity:.75;"></canvas>
-      </div>
-      <div class="rl">RADAR / 3nm</div>
-    </div></div>
-    <div class="gr">
-      <div class="gb"><div class="gl">SPEED</div><div class="gv" id="spd">0.0</div><div class="gu">KNOTS</div><div class="sbw"><div class="sb" id="sbar" style="width:0%"></div></div></div>
-      <div class="gb"><div class="gl">DEPTH</div><div class="gv" id="dep">32</div><div class="gu">METERS</div></div>
-    </div>
-    <div class="gr">
-      <div class="gb"><div class="gl">WIND</div><div class="gv" id="wnd" style="font-size:14px;">NW 8kt</div><div class="gu">DIR / SPD</div></div>
-      <div class="gb"><div class="gl">CURRENT</div><div class="gv" id="cur" style="font-size:14px;">N 1kt</div><div class="gu">TIDE</div></div>
-    </div>
-  </div>
-
-  <div id="pr">
-    <div id="tele">
-      <div class="tll">ENGINE TELEGRAPH</div>
-      <div id="td">STOP</div>
-      <div class="ts">
-        <div class="ti fwd" id="tf8"><div class="tid"></div>FULL AHEAD</div>
-        <div class="ti fwd" id="tf7"><div class="tid"></div>HALF AHEAD</div>
-        <div class="ti fwd" id="tf6"><div class="tid"></div>SLOW AHEAD</div>
-        <div class="ti fwd" id="tf5"><div class="tid"></div>DEAD SLOW AHEAD</div>
-        <div class="ti stp" id="tf4"><div class="tid"></div>STOP</div>
-        <div class="ti rev" id="tf3"><div class="tid"></div>DEAD SLOW ASTERN</div>
-        <div class="ti rev" id="tf2"><div class="tid"></div>SLOW ASTERN</div>
-        <div class="ti rev" id="tf1"><div class="tid"></div>HALF ASTERN</div>
-        <div class="ti rev" id="tf0"><div class="tid"></div>FULL ASTERN</div>
-      </div>
-    </div>
-    <div id="rub">
-      <div class="rul">RUDDER ANGLE</div>
-      <canvas id="rucv" width="234" height="52"></canvas>
-      <div id="ruv">0°</div>
-    </div>
   </div>
   <!-- ダッシュボード (アナログ計器) -->
   <div id="gauges-container">

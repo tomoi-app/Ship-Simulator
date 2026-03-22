@@ -49,50 +49,6 @@ export function drawRudder(rudder) {
 }
 
 // ---- レーダー ----
-export function drawRadar(posX, posZ, heading, AIships, fishBoats, curM) {
-  const cv  = document.getElementById('rcv');
-  const el  = document.getElementById('radar');
-  if (!cv) return;
-  cv.width  = el ? el.clientWidth  || 128 : 128;
-  cv.height = cv.width;
-  const ctx = cv.getContext('2d');
-  const w = cv.width, h = cv.height, cx = w / 2, cy = h / 2, r = w / 2 - 2;
-  ctx.clearRect(0, 0, w, h);
-
-  const RM = 3 * 1852;
-  const zoom = r / RM;
-
-  // 他船
-  for (const s of [...AIships, ...fishBoats]) {
-    const dx = s.x - posX, dz = s.z - posZ;
-    const dist = Math.sqrt(dx*dx + dz*dz);
-    if (dist > RM) continue;
-    const rot = -heading;
-    const rx = dx * Math.cos(rot) - dz * Math.sin(rot);
-    const rz = dx * Math.sin(rot) + dz * Math.cos(rot);
-    ctx.beginPath();
-    ctx.arc(cx + rx * zoom, cy - rz * zoom, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffcc00'; ctx.fill();
-  }
-
-  // ターゲット
-  if (curM) {
-    const dx = curM.tx - posX, dz = curM.tz - posZ;
-    const dist = Math.sqrt(dx*dx + dz*dz);
-    if (dist <= RM) {
-      const rot = -heading;
-      const rx = dx * Math.cos(rot) - dz * Math.sin(rot);
-      const rz = dx * Math.sin(rot) + dz * Math.cos(rot);
-      ctx.beginPath();
-      ctx.arc(cx + rx * zoom, cy - rz * zoom, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#00ff88'; ctx.fill();
-    }
-  }
-
-  // 自船
-  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff'; ctx.fill();
-}
 
 // ---- ナビゲーションデータ ----
 export function updateNavData(P, curM) {
@@ -153,12 +109,6 @@ export function togglePanels(show) {
 }
 
 // ---- 接岸ガイドバー ----
-export function setDockBar(i, pct, cls, val) {
-  const b = document.getElementById('db' + i);
-  const v = document.getElementById('dv' + i);
-  if (b) { b.style.width = pct + '%'; b.className = 'dbf ' + cls; }
-  if (v) v.textContent = val;
-}
 
 // ---- ペナルティトースト ----
 let ptTimer = null;
@@ -170,19 +120,6 @@ export function showPenaltyToast(msg) {
   ptTimer = setTimeout(() => el.classList.remove('on'), 2600);
 }
 
-// ---- VHF ----
-let vhfTimer = null;
-export function showVHF(txt, ch) {
-  const p = document.getElementById('vhf');
-  const t = document.getElementById('vt');
-  const c = document.getElementById('vch');
-  if (!p || !t) return;
-  t.textContent = txt;
-  if (ch && c) c.textContent = ch;
-  p.classList.remove('h');
-  clearTimeout(vhfTimer);
-  vhfTimer = setTimeout(() => p.classList.add('h'), 9000);
-}
 
 // ---- フラッシュ ----
 export function flashScreen(cls) {
@@ -192,14 +129,6 @@ export function flashScreen(cls) {
   setTimeout(() => f.className = '', 500);
 }
 
-// ---- ミッションバナー ----
-export function showMissionBanner() {
-  const b = document.getElementById('msb');
-  if (!b) return;
-  b.classList.add('v');
-  flashScreen('w');
-  setTimeout(() => b.classList.remove('v'), 2900);
-}
 
 // ---- スコアレーダーチャート ----
 export function drawResultRadar(items, collision) {
@@ -495,75 +424,56 @@ export function setNight(night) {
     if (n) n.style.backgroundColor = night ? NIGHT_C : 'transparent';
 }
 
-function updateClock(ctx) {
+// ==================================================================
+// 【修正】updateClock: ゲーム内仮想時間と天候に連動する時計
+// ==================================================================
+function updateClock(ctx, simTime, curM, mst) {
     if (!ctx) return;
-    const cx = 80, cy = 80, r = 70;
-    const now = new Date();
-    const h = now.getHours() % 12, m = now.getMinutes(), s = now.getSeconds();
-
     ctx.clearRect(0, 0, 160, 160);
 
-    // 文字盤
-    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = '#222'; ctx.stroke();
+    // ミッション開始からの経過シミュレーション時間（ミリ秒）
+    let elapsed = 0;
+    if (mst && mst.t0) elapsed = simTime - mst.t0;
+    else elapsed = simTime; // フリー走行時など
 
-    // 目盛り
-    for (let i = 0; i < 60; i++) {
-        const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
-        const isMaj = i % 5 === 0;
-        const inner = r - (isMaj ? 12 : 6);
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
-        ctx.lineTo(cx + Math.cos(a) * r,     cy + Math.sin(a) * r);
-        ctx.lineWidth = isMaj ? 1.5 : 0.7;
-        ctx.strokeStyle = isMaj ? '#000' : '#555';
-        ctx.stroke();
+    // 天候(時間帯)に合わせたベース時刻（ミリ秒）
+    let baseTime = 10 * 3600 * 1000; // デフォルトは昼 (10:00)
+    let dateTxt = '4/01';            // デフォルトの日付（春）
+
+    if (curM) {
+        if (curM.wx === 'ngt') {
+            baseTime = 2 * 3600 * 1000;  // 夜ミッションは 02:00 スタート
+            dateTxt = '12/15';           // 冬の夜をイメージ
+        } 
+        else if (curM.wx === 'str') {
+            baseTime = 17 * 3600 * 1000; // 嵐ミッションは 夕暮れ 17:00 スタート
+            dateTxt = '9/10';            // 台風シーズンをイメージ
+        } 
+        else if (curM.wx === 'rain') {
+            baseTime = 14 * 3600 * 1000; // 雨ミッションは 14:00 スタート
+            dateTxt = '6/20';            // 梅雨をイメージ
+        }
     }
 
-    // 数字（12・3・6・9）
-    ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#111';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    [[12,0],[ 3,90],[ 6,180],[ 9,270]].forEach(([n, deg]) => {
-        const a = (deg - 90) * Math.PI / 180;
-        ctx.fillText(n, cx + Math.cos(a) * (r - 20), cy + Math.sin(a) * (r - 20));
-    });
+    // 経過時間を足して現在のゲーム内時刻を計算
+    let totalSeconds = Math.floor((baseTime + elapsed) / 1000);
+    let hours = Math.floor(totalSeconds / 3600) % 24;
+    let mins = Math.floor(totalSeconds / 60) % 60;
 
-    // 時針
-    const ha = ((h + m / 60) / 12) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - Math.cos(ha) * 10, cy - Math.sin(ha) * 10);
-    ctx.lineTo(cx + Math.cos(ha) * (r * 0.5), cy + Math.sin(ha) * (r * 0.5));
-    ctx.lineWidth = 4; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.stroke();
+    // デジタル表示
+    const txt = hours.toString().padStart(2, '0') + ':' + mins.toString().padStart(2, '0');
+    ctx.font = 'bold 36px sans-serif'; ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, 80, 80);
 
-    // 分針
-    const ma = ((m + s / 60) / 60) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - Math.cos(ma) * 12, cy - Math.sin(ma) * 12);
-    ctx.lineTo(cx + Math.cos(ma) * (r * 0.72), cy + Math.sin(ma) * (r * 0.72));
-    ctx.lineWidth = 2.5; ctx.strokeStyle = '#222'; ctx.stroke();
-
-    // 秒針
-    const sa = (s / 60) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - Math.cos(sa) * 14, cy - Math.sin(sa) * 14);
-    ctx.lineTo(cx + Math.cos(sa) * (r * 0.85), cy + Math.sin(sa) * (r * 0.85));
-    ctx.lineWidth = 1.2; ctx.strokeStyle = '#d32f2f'; ctx.stroke();
-
-    // 中心
-    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#d32f2f'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff'; ctx.fill();
-
-    ctx.lineCap = 'butt';
+    // 日付表示
+    ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#555'; ctx.fillText(dateTxt, 80, 115);
 }
 
 // ==================================================================
 // updateDashboard: 全メーターを以前のクリーンなレイアウトに差し戻し
 // ==================================================================
-export function updateDashboard(P) {
+// 【変更】引数に simTime, curM, mst を追加
+export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
     const cvs = {
         shipSpeed: document.getElementById('ship-speed-canvas'),
         rudder: document.getElementById('rudder-canvas'),
@@ -657,5 +567,5 @@ export function updateDashboard(P) {
     drawNeedleCompass(ctx, relativeWindDir, true);
 
     // 7. CLOCK
-    if (cvs.clock) updateClock(cvs.clock.getContext('2d'));
+    if (cvs.clock) updateClock(cvs.clock.getContext('2d'), simTime, curM, mst);
 }

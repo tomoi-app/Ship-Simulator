@@ -173,54 +173,6 @@ body {
 #hd { font-size: clamp(20px,4vw,26px); color: #00ff88; text-shadow: 0 0 12px #00ff88; letter-spacing: 2px; background: #0a0e12; padding: 3px 12px; border: 1px solid #00ff8828; border-radius: 4px; }
 #hdl { font-size: 8px; color: #00ff8858; letter-spacing: 3px; }
 
-/* ミッションパネル */
-#mp {
-  position: absolute; top: 16px; left: 16px;
-  background: rgba(10,14,18,.88); border: 1px solid rgba(0,255,136,.18); border-left: 3px solid #00ff88;
-  border-radius: 0 4px 4px 0; padding: 10px 14px; max-width: min(230px,42vw);
-}
-#mr  { font-size: 8px; color: #00ff8868; letter-spacing: 3px; margin-bottom: 3px; }
-#mt  { font-size: 11px; color: #00ff88; text-shadow: 0 0 6px #00ff88; margin-bottom: 6px; line-height: 1.35; }
-.sl  { display: flex; align-items: center; gap: 5px; font-size: 9px; color: #00ff8868; line-height: 1.85; }
-
-/* 操作ガイド */
-#ch {
-  position: absolute; top: 16px; right: 16px;
-  background: rgba(10,14,18,.85); border: 1px solid rgba(0,255,136,.18); border-radius: 4px;
-  padding: 10px 13px; font-size: 9px; color: #00ff8868; line-height: 1.9; letter-spacing: 1px;
-}
-.hk { color: #00ff88; background: #00ff8812; padding: 1px 4px; border-radius: 2px; border: 1px solid #00ff8828; font-size: 8px; }
-
-/* 天候 */
-#wi { position: absolute; top: 148px; left: 16px; background: rgba(10,14,18,.85); border: 1px solid rgba(0,255,136,.18); border-radius: 4px; padding: 6px 11px; font-size: 9px; color: #aaa; line-height: 1.8; }
-#wi.h { display: none; }
-
-/* VHF */
-#vhf {
-  position: absolute; left: 0; width: min(280px,44vw);
-  background: rgba(10,14,18,.93); border-top: 1px solid rgba(0,255,136,.18); border-right: 1px solid rgba(0,255,136,.18);
-  padding: 9px 12px; transition: opacity .5s;
-}
-#vhf.h { opacity: 0; pointer-events: none; }
-.vh  { font-size: 7px; color: #00ff8858; letter-spacing: 3px; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
-.vb  { width: 6px; height: 6px; border-radius: 50%; background: #00ff88; animation: vblk 1s step-end infinite; }
-@keyframes vblk { 0%,100%{opacity:1} 50%{opacity:0} }
-#vt  { font-size: 10px; color: #00ff88cc; line-height: 1.7; font-style: italic; }
-
-/* 接岸ガイド */
-#dg {
-  position: absolute; right: 0; width: min(280px,44vw);
-  background: rgba(10,14,18,.93); border-top: 1px solid rgba(0,255,136,.18); border-left: 1px solid rgba(0,255,136,.18);
-  padding: 9px 12px;
-}
-#dg.h { display: none; }
-.dgl  { font-size: 7px; color: #00ff8868; letter-spacing: 3px; margin-bottom: 6px; }
-.dbr  { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; font-size: 9px; color: #00ff8868; }
-.dbw  { flex: 1; height: 4px; background: #00ff8810; border-radius: 2px; overflow: hidden; }
-.dbf  { height: 100%; border-radius: 2px; transition: width .3s, background .3s; }
-.dbf.g { background: #00ff88; box-shadow: 0 0 4px #00ff88; }
-.dbf.w { background: #ffcc00; box-shadow: 0 0 4px #ffcc00; }
-.dbf.b { background: #ff4444; box-shadow: 0 0 4px #ff4444; }
 
 /* バナー・警告 */
 #msb {
@@ -426,18 +378,6 @@ body {
     color: #fff;
 }
 
-/* ==========================================================
-   不要な旧UI（左下・右下パネルなど）を完全に非表示にする
-========================================================== */
-#pl,       /* 左下パネル（旧レーダー・速力・風・潮流） */
-#pr,       /* 右下パネル（旧テレグラフ・舵角計） */
-#comp-c,   /* 画面上部のコンパスバー */
-#mp,       /* 左上のミッション情報（新テレグラフと被るため非表示） */
-#ch,       /* 右上の操作ガイドキー一覧 */
-#wi        /* 天候・風のテキストインフォメーション */
-{
-    display: none !important;
-}
 
 /* ==========================================================
    倍速切り替えボタン (画面右上・目立たないデザイン)
