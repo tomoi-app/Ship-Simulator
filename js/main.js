@@ -272,6 +272,9 @@ window.startM = function(id) {
   curM = m;
   document.getElementById('ms-sel')?.classList.add('h');
   document.getElementById('gauges-container')?.classList.remove('h');
+  document.getElementById('comp-c')?.classList.remove('h');
+  document.getElementById('telegraph-panel')?.classList.remove('h');
+  document.getElementById('time-scale-btn')?.classList.remove('h');
 
   // 物理リセット
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
@@ -506,6 +509,9 @@ window.goSel = function() {
   document.getElementById('go')?.classList.remove('v', 'dk');
   document.getElementById('ms-sel')?.classList.remove('h');
   document.getElementById('gauges-container')?.classList.add('h');
+  document.getElementById('comp-c')?.classList.add('h');
+  document.getElementById('telegraph-panel')?.classList.add('h');
+  document.getElementById('time-scale-btn')?.classList.add('h');
   buildSel();
 };
 window.retry = function() { if (curM) startM(curM.id); };

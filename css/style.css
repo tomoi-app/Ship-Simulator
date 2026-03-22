@@ -13,6 +13,7 @@ body {
   -webkit-user-select: none;
   touch-action: none;
 }
+.h { display: none !important; }
 
 #cv {
   position: fixed; top: 0; left: 0;
@@ -298,6 +299,7 @@ body {
     z-index: 9999; /* ゲーム画面より手前に表示 */
     pointer-events: none; /* メーター下の画面UIもさわれるように透過させる */
 }
+#gauges-container.h { display: none; }
 
 .gauge-unit {
     display: flex;

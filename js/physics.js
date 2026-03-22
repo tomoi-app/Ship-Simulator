@@ -161,24 +161,28 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const Nr_force =  Yr_force * ( -P.Lpp / 2 ); // 船尾に働くのでマイナス方向モーメントの距離を考慮
 
   // --- 5. 運動方程式の求解 ---
-  // const du = (Xh + Xp + Xr) / (P.mass + mx); // ★サスペンド (リニア加速に強制置換)
-  const dv = (Yh + Yr_force - (P.mass + mx) * u * r) / (P.mass + my);
-  const dr = (Nh + Nr_force) / ( (P.mass * L**2 / 12) + Jzz );
-
-  // 速度の更新
-  // 【変更】船速をリニア加速に変更（22ノット到達にジャスト40秒）
-  let targetSpeedKts = P.rpm * 0.20; 
-  let targetSpeedMs = targetSpeedKts * 0.514444; // ノットから m/s 変換
   
-  // 最大加速度：1秒あたり 0.55ノットのペースでしか加速・減速できない (22ノット ÷ 40秒 = 0.55)
+  // 【修正】350m巨大船の鈍重な旋回性能に調整
+  // 舵の力(Yr, Nr)を激減させ、水からの回転抵抗(Nh)と船の回転慣性(Jzz)を増大させる
+  const realistic_Yr = Yr_force * 0.20; // 舵の横滑り力を 1/5 に
+  const realistic_Nr = Nr_force * 0.18; // 舵の旋回力を約 1/5 に
+  const realistic_Nh = Nh * 1.5;        // 水の抵抗（ダンプ）を 1.5倍 に
+  const heavy_Jzz    = Jzz * 2.0;       // 回転しにくさ（慣性モーメント）を 2倍 に
+
+  const dv = (Yh + realistic_Yr - (P.mass + mx) * u * r) / (P.mass + my);
+  const dr = (realistic_Nh + realistic_Nr) / ( (P.mass * L**2 / 12) + heavy_Jzz );
+
+  // 船速の追従 (sDtを使用)
+  let targetSpeedKts = P.rpm * 0.20; 
+  let targetSpeedMs = targetSpeedKts * 0.514444; 
   let maxAccelMs = (0.55 * 0.514444) * sDt; 
   
   if (Math.abs(targetSpeedMs - P.u) < maxAccelMs) P.u = targetSpeedMs;
   else P.u += Math.sign(targetSpeedMs - P.u) * maxAccelMs;
 
-  // 加速度(dv, dr)の積分にも sDt をかける！ これで旋回が倍速になる
+  // 加速度(dv, dr)の積分
   P.v = v + dv * sDt; 
-  P.r = r + dr * sDt; 
+  P.r = r + dr * sDt;
 
   // --- 6. 横流れと波の揺れ ---
   const wr = P.windDir * Math.PI / 180;
