@@ -271,6 +271,7 @@ window.startM = function(id) {
   const m = MISSIONS.find(x => x.id === id); if (!m) return;
   curM = m;
   document.getElementById('ms-sel')?.classList.add('h');
+  document.getElementById('gauges-container')?.classList.remove('h');
 
   // 物理リセット
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
@@ -504,6 +505,7 @@ window.goSel = function() {
   document.getElementById('dr')?.classList.remove('v');
   document.getElementById('go')?.classList.remove('v', 'dk');
   document.getElementById('ms-sel')?.classList.remove('h');
+  document.getElementById('gauges-container')?.classList.add('h');
   buildSel();
 };
 window.retry = function() { if (curM) startM(curM.id); };

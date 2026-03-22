@@ -7,9 +7,6 @@
 
 // ---- コンパス（画面上のHDG表示） ----
 export function updateCompass(heading) {
-  const hdg = ((heading * 180 / Math.PI) % 360 + 360) % 360;
-  const hd = document.getElementById('hd');
-  if (hd) hd.textContent = hdg.toFixed(0).padStart(3, '0') + '°';
   const cn = document.getElementById('cn');
   if (cn) cn.style.transform = `rotate(${-heading * 180 / Math.PI}deg)`;
 }
