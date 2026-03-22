@@ -213,7 +213,8 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   );
 
   // 直進抵抗 (速度²に比例)
-  const R0 = 0.5 * RHO * L * d * 0.015 * u * Math.abs(u);
+  // KCS設計速度24kt(12.35m/s)でFULL AHEAD推力と釣り合う係数: C≈0.096
+  const R0 = 0.5 * RHO * L * d * 0.096 * u * Math.abs(u);
 
   // 有次元化
   const Xh = 0.5 * RHO * L * d * U * U * X_H_nd - R0;
@@ -269,16 +270,33 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   //   (m + my)*dv/dt = Yh + Yr - (m + mx)*u*r
   //   (Izz + Jzz)*dr/dt = Nh + Nr
   // ----------------------------------------------------------
-  const du = (Xh + Xp + Xr + (P.mass + my) * v * r) / (P.mass + mx);
-  const dv = (Yh + Yr - (P.mass + mx) * u * r)       / (P.mass + my);
-  const dr = (Nh + Nr)                                / (Izz + Jzz);
+  // ----------------------------------------------------------
+  // surge (前後速度) — 元のロジックを維持
+  //   rpm × 0.20 kt を目標速度とし、0.55 kt/s で線形追従
+  //   旋回中の速度低下も再現（旋回角速度に比例して減速）
+  // ----------------------------------------------------------
+  const targetSpeedKts = P.rpm * 0.20;
+  const targetSpeedMs  = targetSpeedKts * 0.514444;
+  const maxAccelMs     = (0.55 * 0.514444) * sDt;
+  const turnDrag       = Math.abs(P.r) * 8.0; // 旋回時の速度低下
+  const effectiveTarget = targetSpeedMs * Math.max(0, 1 - turnDrag);
+  if (Math.abs(effectiveTarget - P.u) < maxAccelMs) P.u = effectiveTarget;
+  else P.u += Math.sign(effectiveTarget - P.u) * maxAccelMs;
 
-  P.u = u + du * sDt;
+  // sway — MMGのYh+Yrで計算（横流れのリアルさを維持）
+  const dv = (Yh + Yr - (P.mass + mx) * u * r) / (P.mass + my);
   P.v = v + dv * sDt;
-  P.r = r + dr * sDt;
 
-  // 速度クランプ（物理的上限）
-  P.u = Math.max(-P.maxRev * 0.514, Math.min(P.maxFwd * 0.514, P.u));
+  // yaw — 現象論モデル（MMGのrn発散問題を回避）
+  // 目標ROT: 35度舵・8kt超で20度/min。浅水・後進補正あり
+  const MAX_ROT_RAD_S = (20 / 60) * (Math.PI / 180);
+  const speedFactor   = Math.min(1, Math.abs(P.u) / (8 * 0.514));
+  const rudderFactor  = P.rudder / 35;
+  const sternFactor   = P.u >= 0 ? 1.0 : -0.4;
+  const shallowFactor = 1 / sw.Nf;
+  const targetR = rudderFactor * speedFactor * MAX_ROT_RAD_S * sternFactor * shallowFactor;
+  const TAU_R = 15.0; // 旋回応答時定数（秒）
+  P.r += (targetR - P.r) * Math.min(1, sDt / TAU_R);
 
   // ----------------------------------------------------------
   // STEP 7. 風・潮流の外力（旧版と同構造）
@@ -329,14 +347,14 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
 
   P.posX += (-P.u * sinH + P.v * cosH) * sDt + P.driftX * sDt + currX;
   P.posZ += ( P.u * cosH + P.v * sinH) * sDt + P.driftZ * sDt + currZ;
-  P.heading -= P.r * sDt;
+  P.heading += P.r * sDt;  // Three.jsのrotation.y=-P.headingと符号を合わせる
 
   // ----------------------------------------------------------
   // STEP 10. HUD互換パラメータの更新（旧版と完全互換）
   // ----------------------------------------------------------
   P.speed = Math.sqrt(P.u * P.u + P.v * P.v) / 0.514;
   if (P.u < 0) P.speed = -P.speed;
-  P.yawRate = -P.r;
+  P.yawRate = P.r;
 }
 
 // ============================================================
