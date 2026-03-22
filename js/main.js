@@ -203,10 +203,25 @@ window.addEventListener('touchend', () => { isDragging = false; });
 // ============================================================
 function applyWeatherScene(m) {
   // 基本光源リセット
+  let fogC = 0x5a8fb0, fogD = 0.00012;
   sun.intensity  = 1.2; moon.intensity = 0; amb.intensity = 0.6;
   sky.material.color.set(0x5a8fb0); sun.color.set(0xfff4e0);
-  
-  else if (m.wx === 'str') {
+  wu.uBaseColor.value.setHex(0x1a3a50);
+  wu.uShallowColor.value.setHex(0x2a6080);
+  wu.uLightColor.value.setHex(0xfff4e0);
+  wu.uLightDir.value.copy(sun.position).normalize();
+
+  if (m.wx === 'ngt') {
+    sky.material.color.set(0x05080f); sun.intensity = 0; moon.intensity = 0.55; amb.intensity = 0.18;
+    fogC = 0x05080f; fogD = 0.00018;
+    wu.uBaseColor.value.setHex(0x050d15);
+    wu.uShallowColor.value.setHex(0x0a1a25);
+    wu.uLightColor.value.setHex(0x334455);
+    wu.uLightDir.value.copy(sun.position).normalize();
+    toggleNight(true);
+  } else { toggleNight(false); }
+
+  if (m.wx === 'str') {
     sky.material.color.set(0x223344); sun.color.set(0x7788aa); sun.intensity = 0.38;
     fogC = 0x2a3344; fogD = 0.00028;
     // 嵐の海
@@ -215,7 +230,7 @@ function applyWeatherScene(m) {
     wu.uLightColor.value.setHex(0x7788aa);
     wu.uLightDir.value.copy(sun.position).normalize();
   }
-  else if (m.wx === 'rain') { 
+  else if (m.wx === 'rain') {
     sky.material.color.set(0x3a4a5a); sun.intensity = 0.55; 
     fogC = 0x3a4a5a; fogD = 0.0004;
     // 雨の海
@@ -259,9 +274,11 @@ window.startM = function(id) {
   // 物理リセット
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
   P.speed = 0; P.rudder = 0; P.yawRate = 0; P.engineOrder = 0;
+  P.u = 0; P.v = 0; P.r = 0; P.rpm = 0;
   P.driftX = 0; P.driftZ = 0; P.rollAngle = 0; P.pitchAngle = 0;
   P.windSpeed = m.wind; P.windDir = 180 + Math.random() * 180;
   P.currSpeed = m.curr; P.currDir  = Math.random() * 360;
+  P.waterDepth = m.depth ?? 200;
   updateTelegraph(P.engineOrder);
 
   // 【変更】mst.t0 を Date.now() から simTime に変更
@@ -441,7 +458,10 @@ function upd3D(t) {
 
   if (curM?.wx === 'ngt') {
     const fl = 0.82 + Math.sin(t * 0.003) * 0.18;
-    navL.mast.intensity = 3.8 * fl;
+    const navLights = shipGroup.getObjectByName('NavLights');
+    if (navLights) {
+      navLights.children.forEach(l => { if (l.intensity !== undefined) l.intensity = 3.8 * fl; });
+    }
   }
 
   prop.rotation.x += P.speed * 0.06;
