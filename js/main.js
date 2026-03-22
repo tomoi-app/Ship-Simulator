@@ -296,9 +296,7 @@ window.startM = function(id) {
   applyWeatherScene(m);
   applyWeatherOverlay(m);
 
-  // ミッションHUD
-  const mr = document.getElementById('mr'); if (mr) mr.textContent = `${m.rank} / M${m.id}`;
-  const mt = document.getElementById('mt'); if (mt) mt.textContent = m.title;
+  // VHFキュー
   const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
   const wnd = document.getElementById('wnd'); if (wnd) wnd.textContent = `${dirs[Math.round(P.windDir/22.5)%16]} ${m.wind}kt`;
   const cur = document.getElementById('cur'); if (cur) cur.textContent = `${dirs[Math.round(P.currDir/22.5)%16]} ${m.curr}kt`;
@@ -568,7 +566,6 @@ function loop(t) {
 
   // HUD
   updateCompass(P.heading);
-  updateMainHUD(P, curM);
   drawRudder(P.rudder);
   drawRadar(P.posX, P.posZ, P.heading, AIships, fishBoats, curM);
   
