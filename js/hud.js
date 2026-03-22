@@ -124,13 +124,6 @@ export function updateNavData(P, curM) {
 
   const rv = document.getElementById('ruv');
   if (rv) rv.textContent = (P.rudder >= 0 ? '+' : '') + P.rudder.toFixed(1) + '°';
-
-  // This line was causing a syntax error due to being outside a conditional or function.
-  // Assuming it was meant to be part of a conditional related to 'curM' and 'ddEl'.
-  // Since 'ddEl' is not defined here, and the original instruction was to fix a syntax error,
-  // I'm removing this orphaned line. If it was intended to be part of a new feature,
-  // more context would be needed.
-  // if (ddEl) ddEl.textContent = (Math.sqrt(dx*dx + dz*dz) / 1852).toFixed(1) + ' nm';
 }
 
 // ---- エンジンテレグラフ ----

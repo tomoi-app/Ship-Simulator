@@ -10,7 +10,7 @@ import { P, ENG_LABELS, ENG_RATIOS, initInput, keys, camOffset, updatePhysics, c
 import { initAudio, updateEngineSound, playHorn, playCrash, playVHF, playClear, isReady as audioReady } from './audio.js';
 import { buildScene, buildOcean, buildShip, buildWorld, buildAI } from './scene.js';
 import {
-  drawRudder, drawRadar, updateCompass, updateMainHUD, updateTelegraph,
+  drawRudder, drawRadar, updateCompass, updateTelegraph,
   setDockBar, showPenaltyToast, showVHF, flashScreen, showMissionBanner,
   drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard
 } from './hud.js';
