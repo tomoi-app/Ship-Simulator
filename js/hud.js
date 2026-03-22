@@ -372,110 +372,156 @@ export function applyWeatherOverlay(m) {
   }
 }
 
-// ==== アナログ計器ダッシュボード ====
-
 // ==================================================================
-// drawBase: 以前の「中央に白フチ文字」のクリーンなデザインに復元
+// drawBase: 航海計器風リデザイン（参考画像ベース）
 // ==================================================================
 function drawBase(ctx, title, unit, minVal, maxVal, numStep, majStep, minStep) {
-    const cx = 80; const cy = 80; const radius = 70;
+    const cx = 80, cy = 80, R = 70;
     ctx.clearRect(0, 0, 160, 160);
 
-    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius);
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
-    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+    // --- 外側ベゼル（ダーク金属風）---
+    const bevelGrad = ctx.createRadialGradient(cx, cy, R - 8, cx, cy, R + 2);
+    bevelGrad.addColorStop(0, '#888');
+    bevelGrad.addColorStop(0.4, '#ccc');
+    bevelGrad.addColorStop(1, '#555');
+    ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2);
+    ctx.fillStyle = bevelGrad; ctx.fill();
 
-    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = '#222'; ctx.stroke();
+    // --- 文字盤（白）---
+    ctx.beginPath(); ctx.arc(cx, cy, R - 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5f5f5'; ctx.fill();
 
-    const startAngleBase = -Math.PI * 1.25;
-    const endAngleBase   =  Math.PI * 0.25;
-    const range = maxVal - minVal;
+    const startA = -Math.PI * 1.25;
+    const endA   =  Math.PI * 0.25;
+    const range  = maxVal - minVal;
 
-    // 目盛りと数字
+    // --- 目盛り ---
     for (let i = minVal; i <= maxVal; i += minStep) {
         const ratio = (i - minVal) / range;
-        const angle = startAngleBase + ratio * (endAngleBase - startAngleBase);
-        const cosA = Math.cos(angle); const sinA = Math.sin(angle);
+        const angle = startA + ratio * (endA - startA);
+        const c = Math.cos(angle), s = Math.sin(angle);
+        const isMaj = (i % majStep === 0);
+        const isMid = (majStep / minStep > 2) && ((i - minVal) % (majStep / 2) === 0);
+        const len   = isMaj ? 12 : isMid ? 8 : 5;
+        const lw    = isMaj ? 1.8 : 0.8;
 
-        if (i % majStep === 0) {
-            ctx.beginPath();
-            ctx.moveTo(cx + cosA * (radius - 12), cy + sinA * (radius - 12));
-            ctx.lineTo(cx + cosA * radius, cy + sinA * radius);
-            ctx.lineWidth = 1.5; ctx.strokeStyle = '#000'; ctx.stroke();
-        } else if (i % minStep === 0) {
-            ctx.beginPath();
-            ctx.moveTo(cx + cosA * (radius - 6), cy + sinA * (radius - 6));
-            ctx.lineTo(cx + cosA * radius, cy + sinA * radius);
-            ctx.lineWidth = 0.5; ctx.strokeStyle = '#333'; ctx.stroke();
-        }
+        ctx.beginPath();
+        ctx.moveTo(cx + c * (R - 3 - len), cy + s * (R - 3 - len));
+        ctx.lineTo(cx + c * (R - 3),       cy + s * (R - 3));
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = '#111';
+        ctx.stroke();
 
         if (i % numStep === 0) {
-            ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            const textR = radius - 18;
-            ctx.fillText(Math.abs(i), cx + cosA * textR, cy + sinA * textR);
+            const textR = R - 3 - len - 8;
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(Math.abs(i), cx + c * textR, cy + s * textR);
         }
     }
 
-    // --- タイトルを中央に戻す（白フチ付きで視認性アップ） ---
-    ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.strokeText(title, cx, cy - 36); ctx.fillText(title, cx, cy - 36);
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444';
-    ctx.strokeText(unit, cx, cy - 36 + 12); ctx.fillText(unit, cx, cy - 36 + 12);
+    // --- タイトル（下部中央）---
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillStyle = '#222';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title, cx, cy + 28);
+    ctx.font = '8px sans-serif';
+    ctx.fillStyle = '#555';
+    ctx.fillText(unit, cx, cy + 38);
 }
 
 function drawColorArc(ctx, minVal, maxVal, startVal, endVal, color, radius, width) {
-    const range = maxVal - minVal;
-    const startAngleBase = -Math.PI * 1.25; 
-    const endAngleBase   =  Math.PI * 0.25; 
-    function valToAngle(val) {
-        const ratio = (val - minVal) / range;
-        return startAngleBase + ratio * (endAngleBase - startAngleBase);
-    }
-    const startAngle = valToAngle(startVal);
-    const endAngle   = valToAngle(endVal);
-
+    const startA = -Math.PI * 1.25;
+    const endA   =  Math.PI * 0.25;
+    const range  = maxVal - minVal;
+    const sa = startA + ((startVal - minVal) / range) * (endA - startA);
+    const ea = startA + ((endVal   - minVal) / range) * (endA - startA);
     ctx.beginPath();
-    ctx.arc(80, 80, radius, startAngle, endAngle);
+    ctx.arc(80, 80, radius, sa, ea);
     ctx.lineWidth = width;
     ctx.strokeStyle = color;
+    ctx.lineCap = 'butt';
     ctx.stroke();
 }
 
 // ==================================================================
-// drawNeedle: 以前のシンプルで視認性の高い黒い針に復元
+// drawNeedle: 鋭くシャープな航海計器針
 // ==================================================================
 function drawNeedle(ctx, val, minVal, maxVal, isRudder=false) {
-    const cx = 80; const cy = 80; const radius = 70;
-    const startAngleBase = -Math.PI * 1.25; 
-    const endAngleBase   =  Math.PI * 0.25; 
-    const range = maxVal - minVal;
-    let v = Math.min(Math.max(val, minVal), maxVal);
-    const ratio = (v - minVal) / range;
-    const angle = startAngleBase + ratio * (endAngleBase - startAngleBase);
-    const cosA = Math.cos(angle); const sinA = Math.sin(angle);
+    const cx = 80, cy = 80, R = 70;
+    const startA = -Math.PI * 1.25;
+    const endA   =  Math.PI * 0.25;
+    const v = Math.min(Math.max(val, minVal), maxVal);
+    const angle = startA + ((v - minVal) / (maxVal - minVal)) * (endA - startA);
+    const c = Math.cos(angle), s = Math.sin(angle);
 
     ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle + Math.PI / 2);
+
+    // 針本体（細い三角形）
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + cosA * (radius - 5), cy + sinA * (radius - 5));
-    ctx.lineWidth = 2.5; ctx.strokeStyle = isRudder ? '#d32f2f' : '#000'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fillStyle = '#000'; ctx.fill();
+    ctx.moveTo(0, -(R - 8));   // 先端
+    ctx.lineTo(-2.5, 10);      // 左根元
+    ctx.lineTo( 2.5, 10);      // 右根元
+    ctx.closePath();
+    ctx.fillStyle = '#111';
+    ctx.fill();
+
+    // カウンターウェイト（反対側の短い部分）
+    ctx.beginPath();
+    ctx.moveTo(0, 10);
+    ctx.lineTo(-3, 22);
+    ctx.lineTo( 3, 22);
+    ctx.closePath();
+    ctx.fillStyle = isRudder ? '#d32f2f' : '#555';
+    ctx.fill();
+
     ctx.restore();
+
+    // 中心軸
+    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#333'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ddd'; ctx.fill();
 }
 
 function drawNeedleCompass(ctx, valDeg, isWind=false) {
-    const cx = 80; const cy = 80; const radius = 70;
+    const cx = 80, cy = 80, R = 70;
     const angle = (valDeg * Math.PI / 180) - (Math.PI / 2);
-    const cosA = Math.cos(angle); const sinA = Math.sin(angle);
+    const c = Math.cos(angle), s = Math.sin(angle);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle + Math.PI / 2);
+
+    // 先端側（濃い色）
     ctx.beginPath();
-    ctx.moveTo(cx + cosA * (radius - 5), cy + sinA * (radius - 5)); 
-    ctx.lineTo(cx + Math.cos(angle+Math.PI*0.9) * 15, cy + Math.sin(angle+Math.PI*0.9) * 15);
-    ctx.lineTo(cx + Math.cos(angle-Math.PI*0.9) * 15, cy + Math.sin(angle-Math.PI*0.9) * 15);
+    ctx.moveTo(0, -(R - 8));
+    ctx.lineTo(-3, 5);
+    ctx.lineTo( 3, 5);
     ctx.closePath();
-    ctx.fillStyle = isWind ? '#3f51b5' : '#000'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fillStyle = isWind ? '#3f51b5' : '#000'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.fillStyle = isWind ? '#1a237e' : '#111';
+    ctx.fill();
+
+    // 反対側（薄い色）
+    ctx.beginPath();
+    ctx.moveTo(0, 20);
+    ctx.lineTo(-3, 5);
+    ctx.lineTo( 3, 5);
+    ctx.closePath();
+    ctx.fillStyle = isWind ? '#7986cb' : '#888';
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#333'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ddd'; ctx.fill();
 }
 
 export function setNight(night) {
@@ -486,13 +532,67 @@ export function setNight(night) {
 
 function updateClock(ctx) {
     if (!ctx) return;
-    ctx.clearRect(0, 0, 160, 160);
+    const cx = 80, cy = 80, r = 70;
     const now = new Date();
-    const txt = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-    ctx.font = 'bold 36px sans-serif'; ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(txt, 80, 80);
-    const dateTxt = (now.getMonth()+1) + '/' + now.getDate();
-    ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#555'; ctx.fillText(dateTxt, 80, 115);
+    const h = now.getHours() % 12, m = now.getMinutes(), s = now.getSeconds();
+
+    ctx.clearRect(0, 0, 160, 160);
+
+    // 文字盤
+    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = '#222'; ctx.stroke();
+
+    // 目盛り
+    for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
+        const isMaj = i % 5 === 0;
+        const inner = r - (isMaj ? 12 : 6);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+        ctx.lineTo(cx + Math.cos(a) * r,     cy + Math.sin(a) * r);
+        ctx.lineWidth = isMaj ? 1.5 : 0.7;
+        ctx.strokeStyle = isMaj ? '#000' : '#555';
+        ctx.stroke();
+    }
+
+    // 数字（12・3・6・9）
+    ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#111';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [[12,0],[ 3,90],[ 6,180],[ 9,270]].forEach(([n, deg]) => {
+        const a = (deg - 90) * Math.PI / 180;
+        ctx.fillText(n, cx + Math.cos(a) * (r - 20), cy + Math.sin(a) * (r - 20));
+    });
+
+    // 時針
+    const ha = ((h + m / 60) / 12) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.cos(ha) * 10, cy - Math.sin(ha) * 10);
+    ctx.lineTo(cx + Math.cos(ha) * (r * 0.5), cy + Math.sin(ha) * (r * 0.5));
+    ctx.lineWidth = 4; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.stroke();
+
+    // 分針
+    const ma = ((m + s / 60) / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.cos(ma) * 12, cy - Math.sin(ma) * 12);
+    ctx.lineTo(cx + Math.cos(ma) * (r * 0.72), cy + Math.sin(ma) * (r * 0.72));
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#222'; ctx.stroke();
+
+    // 秒針
+    const sa = (s / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.cos(sa) * 14, cy - Math.sin(sa) * 14);
+    ctx.lineTo(cx + Math.cos(sa) * (r * 0.85), cy + Math.sin(sa) * (r * 0.85));
+    ctx.lineWidth = 1.2; ctx.strokeStyle = '#d32f2f'; ctx.stroke();
+
+    // 中心
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#d32f2f'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+
+    ctx.lineCap = 'butt';
 }
 
 // ==================================================================
@@ -522,33 +622,24 @@ export function updateDashboard(P) {
     // 2. RUDDER (DEG)
     ctx = cvs.rudder.getContext('2d');
     drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 5, 1);
-    drawColorArc(ctx, -35, 35, -35, 0, '#d32f2f', 35, 6);
-    drawColorArc(ctx, -35, 35, 0, 35, '#388e3c', 35, 6);
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 30, 85);
-    ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 130, 85);
+    drawColorArc(ctx, -35, 35, -35, 0, 'rgba(200,30,30,0.7)', 62, 8);
+    drawColorArc(ctx, -35, 35, 0, 35, 'rgba(40,140,60,0.7)', 62, 8);
     drawNeedle(ctx, P.rudder, -35, 35, true);
 
     // 3. RATE OF TURN (DEG/MIN)
     ctx = cvs.rot.getContext('2d');
     drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 5, 1);
-    drawColorArc(ctx, -30, 30, -30, 0, '#d32f2f', 35, 6);
-    drawColorArc(ctx, -30, 30, 0, 30, '#388e3c', 35, 6);
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillStyle = '#d32f2f'; ctx.fillText('PORT', 30, 85);
-    ctx.fillStyle = '#388e3c'; ctx.fillText('STBD', 130, 85);
+    drawColorArc(ctx, -30, 30, -30, 0, 'rgba(200,30,30,0.7)', 62, 8);
+    drawColorArc(ctx, -30, 30, 0, 30, 'rgba(40,140,60,0.7)', 62, 8);
     drawNeedle(ctx, P.yawRate * (180 / Math.PI) * 60, -30, 30, true);
 
     // 4. ENGINE (RPM)
     ctx = cvs.rpm.getContext('2d');
     drawBase(ctx, 'ENGINE', 'RPM', -50, 120, 20, 10, 5);
-    drawColorArc(ctx, -50, 120, -50, 0, '#ff8800', 35, 6);
-    drawColorArc(ctx, -50, 120, 0, 80, '#388e3c', 35, 6);
-    drawColorArc(ctx, -50, 120, 80, 100, '#ffcc00', 35, 6);
-    drawColorArc(ctx, -50, 120, 100, 120, '#d32f2f', 35, 6);
-    ctx.font = 'bold 10px sans-serif';
-    ctx.fillStyle = '#ff8800'; ctx.fillText('ASTERN', 33, 85);
-    ctx.fillStyle = '#388e3c'; ctx.fillText('AHEAD', 127, 85);
+    drawColorArc(ctx, -50, 120, -50,   0, 'rgba(220,100,0,0.75)',  62, 8);
+    drawColorArc(ctx, -50, 120,   0,  80, 'rgba(40,140,60,0.7)',   62, 8);
+    drawColorArc(ctx, -50, 120,  80, 100, 'rgba(230,190,0,0.75)',  62, 8);
+    drawColorArc(ctx, -50, 120, 100, 120, 'rgba(200,30,30,0.7)',   62, 8);
     drawNeedle(ctx, P.rpm, -50, 120);
 
     // 5. WIND SPEED (KNOTS)
@@ -556,40 +647,53 @@ export function updateDashboard(P) {
     drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 10, 5);
     drawNeedle(ctx, P.windSpeed, 0, 100);
 
-    // 6. WIND DIRECTION (REL)
+    // 6. WIND DIRECTION (REL) — コンパスローズ
     ctx = cvs.windDir.getContext('2d');
-    const cx = 80; const cy = 80; const radius = 70;
+    const cx = 80, cy = 80, R = 70;
     ctx.clearRect(0, 0, 160, 160);
-    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, radius); 
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
-    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+
+    // ベゼル
+    const bGrad = ctx.createRadialGradient(cx, cy, R - 8, cx, cy, R + 2);
+    bGrad.addColorStop(0, '#888'); bGrad.addColorStop(0.4, '#ccc'); bGrad.addColorStop(1, '#555');
+    ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2); ctx.fillStyle = bGrad; ctx.fill();
+
+    // 文字盤
+    ctx.beginPath(); ctx.arc(cx, cy, R - 3, 0, Math.PI * 2); ctx.fillStyle = '#f5f5f5'; ctx.fill();
+
+    // 船体シルエット（中央）
     ctx.save();
-    ctx.fillStyle = 'rgba(60, 80, 100, 0.25)'; ctx.translate(cx, cy); ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(12, 1); ctx.lineTo(10, 23); ctx.lineTo(0, 28); ctx.lineTo(-10, 23); ctx.lineTo(-12, 1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(60,80,100,0.18)'; ctx.translate(cx, cy);
+    ctx.beginPath(); ctx.moveTo(0,-26); ctx.lineTo(10,0); ctx.lineTo(8,20); ctx.lineTo(0,26); ctx.lineTo(-8,20); ctx.lineTo(-10,0); ctx.closePath(); ctx.fill();
     ctx.restore();
+
+    // 目盛り＆数字
     for (let i = 0; i < 360; i += 10) {
-        let angleCompass = (i * Math.PI / 180) - (Math.PI / 2);
-        let startR = radius - 6; let endR = radius; if (i % 30 === 0) startR -= 6;
-        ctx.beginPath(); ctx.moveTo(cx + Math.cos(angleCompass) * startR, cy + Math.sin(angleCompass) * startR); ctx.lineTo(cx + Math.cos(angleCompass) * endR, cy + Math.sin(angleCompass) * endR); ctx.lineWidth = i % 30 === 0 ? 2 : 1; ctx.strokeStyle = '#333'; ctx.stroke();
-        if (i % 30 === 0 && i !== 0) {
-            ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            let textR = radius - 18; ctx.fillText(i, cx + Math.cos(angleCompass) * textR, cy + Math.sin(angleCompass) * textR);
+        const ac = (i * Math.PI / 180) - (Math.PI / 2);
+        const isMaj = i % 30 === 0;
+        const len = isMaj ? 12 : 6;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(ac) * (R - 3 - len), cy + Math.sin(ac) * (R - 3 - len));
+        ctx.lineTo(cx + Math.cos(ac) * (R - 3),       cy + Math.sin(ac) * (R - 3));
+        ctx.lineWidth = isMaj ? 1.8 : 0.8; ctx.strokeStyle = '#111'; ctx.stroke();
+        if (isMaj && i !== 0) {
+            ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = '#222';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(i, cx + Math.cos(ac)*(R - 19), cy + Math.sin(ac)*(R - 19));
         }
     }
-    
-    // 相対風向の計算と表示
-    let headingDeg = P.heading * (180 / Math.PI);
-    let relativeWindDir = P.windDir - headingDeg;
-    relativeWindDir = ((relativeWindDir % 360) + 360) % 360;
-    drawNeedleCompass(ctx, relativeWindDir, true);
 
-    // 風向計のタイトル
-    ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.strokeText('WIND DIR', cx, cy - 36); ctx.fillText('WIND DIR', cx, cy - 36);
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444';
-    ctx.strokeText('DEG (REL)', cx, cy - 36 + 12); ctx.fillText('DEG (REL)', cx, cy - 36 + 12);
+    // タイトル
+    ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = '#222';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('WIND DIR', cx, cy + 28);
+    ctx.font = '8px sans-serif'; ctx.fillStyle = '#555';
+    ctx.fillText('DEG (REL)', cx, cy + 38);
+
+    // 相対風向の計算と描画
+    const headingDeg = P.heading * (180 / Math.PI);
+    let relativeWindDir = ((P.windDir - headingDeg) % 360 + 360) % 360;
+    drawNeedleCompass(ctx, relativeWindDir, true);
 
     // 7. CLOCK
     if (cvs.clock) updateClock(cvs.clock.getContext('2d'));
 }
-
