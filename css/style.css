@@ -384,6 +384,7 @@ body {
     width: 140px;
     height: 160px;
     justify-content: space-between;
+    pointer-events: auto;
 }
 
 #telegraph-panel div {
@@ -455,6 +456,7 @@ body {
     font-weight: bold;
     cursor: pointer;
     z-index: 1000;
+    pointer-events: auto;
     user-select: none;
     transition: all 0.2s;
 }

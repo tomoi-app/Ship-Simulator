@@ -290,7 +290,6 @@ window.startM = function(id) {
   document.getElementById('dg')?.classList.add('h');
   document.getElementById('vhf')?.classList.add('h');
   document.getElementById('msb')?.classList.remove('v');
-  document.getElementById('wi')?.classList.add('h');
   tugs.forEach(t => { t.active = false; t.mesh.position.set(m.tx + 100, 0, m.tz - 200); });
 
   applyWeatherScene(m);

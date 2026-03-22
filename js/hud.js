@@ -317,21 +317,20 @@ export function applyWeatherOverlay(m) {
   const ni  = document.getElementById('night-ov');
   const wo  = document.getElementById('wx-ov');
   const rc  = document.getElementById('rain-cv');
-  const wi  = document.getElementById('wi');
-  const wxLabels = { day: '☀ 晴れ', ngt: '🌙 夜間', fog: '🌫 濃霧', str: '⛈ 台風', rain: '🌧 雨' };
+
+  if (ni)  ni.style.background = 'rgba(0,4,16,0)';
+  if (wo)  wo.style.background = 'rgba(0,0,0,0)';
+  if (rc)  rc.style.opacity    = '0';
 
   if (m.wx === 'ngt') {
     if (ni) ni.style.background = 'rgba(0,4,18,.75)';
-    if (wi) { wi.classList.remove('h'); wi.textContent = '🌙 夜間航行 — 灯台・灯火に注意'; }
   }
   if (m.wx === 'str') {
     if (rc) rc.style.opacity = '1';
     if (wo) wo.style.background = 'rgba(40,55,65,.22)';
-    if (wi) { wi.classList.remove('h'); wi.textContent = `⛈ 台風 — ${m.wind}kt / 波高${m.waves}m`; }
   }
   if (m.wx === 'rain') {
     if (rc) rc.style.opacity = '.7';
-    if (wi) { wi.classList.remove('h'); wi.textContent = '🌧 雨天 — 視界不良'; }
   }
   if (m.fog > 0.4) {
     if (wi) { wi.classList.remove('h'); wi.textContent = `🌫 視程${Math.round((1 - m.fog) * 10 + 1)}km — レーダー活用`; }
