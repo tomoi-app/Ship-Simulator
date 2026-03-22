@@ -612,12 +612,11 @@ export function updateDashboard(P) {
 
     let ctx;
 
-    // 1. SHIP SPEED (0-30 KNOTS)
+    // 1. SHIP SPEED (-10〜30 KNOTS) — 後進目盛り付き
     ctx = cvs.shipSpeed.getContext('2d');
-    drawBase(ctx, 'SPEED', 'KNOTS', 0, 30, 5, 5, 1);
-    drawColorArc(ctx, 0, 30, 10, 15, '#ffcc00', 35, 6);
-    drawColorArc(ctx, 0, 30, 20, 30, '#d32f2f', 35, 6);
-    drawNeedle(ctx, Math.abs(P.speed), 0, 30);
+    drawBase(ctx, 'SPEED', 'KNOTS', -10, 30, 5, 5, 1);
+    drawColorArc(ctx, -10, 30, -10, 0, 'rgba(200,30,30,0.7)', 62, 8); // 後進（赤）
+    drawNeedle(ctx, P.speed, -10, 30);
 
     // 2. RUDDER (DEG)
     ctx = cvs.rudder.getContext('2d');
@@ -633,14 +632,12 @@ export function updateDashboard(P) {
     drawColorArc(ctx, -30, 30, 0, 30, 'rgba(40,140,60,0.7)', 62, 8);
     drawNeedle(ctx, P.yawRate * (180 / Math.PI) * 60, -30, 30, true);
 
-    // 4. ENGINE (RPM)
+    // 4. ENGINE (RPM) — 0を真上（中央）に配置、後進赤/前進緑に分割
     ctx = cvs.rpm.getContext('2d');
-    drawBase(ctx, 'ENGINE', 'RPM', -50, 120, 20, 10, 5);
-    drawColorArc(ctx, -50, 120, -50,   0, 'rgba(220,100,0,0.75)',  62, 8);
-    drawColorArc(ctx, -50, 120,   0,  80, 'rgba(40,140,60,0.7)',   62, 8);
-    drawColorArc(ctx, -50, 120,  80, 100, 'rgba(230,190,0,0.75)',  62, 8);
-    drawColorArc(ctx, -50, 120, 100, 120, 'rgba(200,30,30,0.7)',   62, 8);
-    drawNeedle(ctx, P.rpm, -50, 120);
+    drawBase(ctx, 'ENGINE', 'RPM', -120, 120, 20, 10, 5);
+    drawColorArc(ctx, -120, 120, -120, 0, 'rgba(200,30,30,0.7)', 62, 8); // 後進（赤）
+    drawColorArc(ctx, -120, 120, 0, 120, 'rgba(40,140,60,0.7)', 62, 8); // 前進（緑）
+    drawNeedle(ctx, P.rpm, -120, 120);
 
     // 5. WIND SPEED (KNOTS)
     ctx = cvs.windSpeed.getContext('2d');

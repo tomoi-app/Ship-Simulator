@@ -71,6 +71,11 @@ let mst       = { done: false, t0: 0, tugOn: false, pens: [], spdP: 0, colP: 0, 
 let vhfQ      = [];
 let vhfFired  = new Set();
 
+// 倍速管理
+let timeScale = 1;                   // 現在の倍速係数
+const TIME_SCALES = [1, 2, 4, 8];    // 選べる倍速の段階
+let simTime = 0;                     // ゲーム内の経過時間(ms)
+
 // ============================================================
 //  キー入力 & タッチ
 // ============================================================
@@ -108,14 +113,17 @@ function initTouch() {
     knob.style.top  = (stick.clientHeight / 2 - 20) + 'px';
     P.rudder = (dx / JR) * 35;
   }, { passive: false });
-  const te = e => {
-    e.preventDefault(); jActive = false; P.rudder = 0;
-    knob.style.left = (stick.clientWidth  / 2 - 20) + 'px';
-    knob.style.top  = (stick.clientHeight / 2 - 20) + 'px';
-  };
-  area.addEventListener('touchend',   te, { passive: false });
-  area.addEventListener('touchcancel',te, { passive: false });
+  area.addEventListener('touchend', () => { jActive = false; knob.style.transform = `translate(-50%,-50%)`; P.targetRudder = 0; });
+  area.addEventListener('touchcancel', () => { jActive = false; knob.style.transform = `translate(-50%,-50%)`; P.targetRudder = 0; });
 }
+
+// 倍速ボタンのイベントリスナー
+document.getElementById('time-scale-btn')?.addEventListener('click', (e) => {
+    let idx = TIME_SCALES.indexOf(timeScale);
+    idx = (idx + 1) % TIME_SCALES.length;
+    timeScale = TIME_SCALES[idx];
+    e.target.textContent = 'x' + timeScale;
+});
 
 // ============================================================
 //  マウス・タッチによる視点（カメラ）操作
@@ -194,25 +202,63 @@ window.addEventListener('touchend', () => { isDragging = false; });
 //  天候 → Three.js 反映
 // ============================================================
 function applyWeatherScene(m) {
+  // 基本光源リセット
   sun.intensity  = 1.2; moon.intensity = 0; amb.intensity = 0.6;
   sky.material.color.set(0x5a8fb0); sun.color.set(0xfff4e0);
-  scene.fog = new THREE.FogExp2(0x8fb5cc, 0.00012);
-  navL.mast.intensity = 0.5; navL.green.intensity = 0.8; navL.red.intensity = 0.8;
+  
+  let fogC = 0x8fb5cc;
+  let fogD = 0.00012;
+
+  // 海シェーダーへのデフォルト設定（晴れの昼）
+  wu.uBaseColor.value.setHex(0x051e38);
+  wu.uShallowColor.value.setHex(0x0f4770);
+  wu.uLightColor.value.setHex(0xfff4e0);
+  wu.uLightDir.value.copy(sun.position).normalize();
 
   if (m.wx === 'ngt') {
     sun.intensity = 0.04; moon.intensity = 0.7; amb.intensity = 0.16;
     sky.material.color.set(0x03050d);
-    scene.fog = new THREE.FogExp2(0x03050d, 0.00022);
+    fogC = 0x03050d; fogD = 0.00022;
+    // 夜の海（月光）
+    wu.uBaseColor.value.setHex(0x010308); 
+    wu.uShallowColor.value.setHex(0x020815);
+    wu.uLightColor.value.setHex(0x6688aa); // 月明かりのきらめき
+    wu.uLightDir.value.copy(moon.position).normalize();
     navL.mast.intensity = 3.8; navL.green.intensity = 2.8; navL.red.intensity = 2.8;
   }
-  if (m.wx === 'str') {
+  else if (m.wx === 'str') {
     sky.material.color.set(0x223344); sun.color.set(0x7788aa); sun.intensity = 0.38;
-    scene.fog = new THREE.FogExp2(0x2a3344, 0.00028);
+    fogC = 0x2a3344; fogD = 0.00028;
+    // 嵐の海
+    wu.uBaseColor.value.setHex(0x111b24);
+    wu.uShallowColor.value.setHex(0x1a2b38);
+    wu.uLightColor.value.setHex(0x7788aa);
+    wu.uLightDir.value.copy(sun.position).normalize();
   }
-  if (m.wx === 'rain') { sky.material.color.set(0x3a4a5a); sun.intensity = 0.55; }
-  if (m.fog > 0.4) scene.fog = new THREE.FogExp2(0xaabbc8, 0.0009 + m.fog * 0.0022);
-  else if (m.fog > 0) scene.fog = new THREE.FogExp2(0x8fb5cc, 0.00016 + m.fog * 0.001);
+  else if (m.wx === 'rain') { 
+    sky.material.color.set(0x3a4a5a); sun.intensity = 0.55; 
+    fogC = 0x3a4a5a; fogD = 0.0004;
+    // 雨の海
+    wu.uBaseColor.value.setHex(0x1a2530);
+    wu.uShallowColor.value.setHex(0x253545);
+    wu.uLightColor.value.setHex(0x8899aa);
+    wu.uLightDir.value.copy(sun.position).normalize();
+  }
+  
+  // 霧の上書き（濃霧ミッションなど）
+  if (m.fog > 0.4) {
+    fogD = 0.0009 + m.fog * 0.0022; fogC = 0xaabbc8;
+    wu.uLightColor.value.setHex(0xaaaaaa);
+  } else if (m.fog > 0) {
+    fogD = 0.00016 + m.fog * 0.001; fogC = 0x8fb5cc;
+  }
 
+  // シーン全体と海シェーダーの両方にフォグを適用
+  scene.fog = new THREE.FogExp2(fogC, fogD);
+  wu.uFogColor.value.setHex(fogC);
+  wu.uFogDensity.value = fogD;
+
+  // 波の高さと白波の設定
   wu.uWH.value   = 0.35 * m.waves;
   wu.uWS.value   = 0.55 + m.waves * 0.28;
   wu.uWind.value = m.waves;
@@ -234,7 +280,8 @@ window.startM = function(id) {
   P.currSpeed = m.curr; P.currDir  = Math.random() * 360;
   updateTelegraph(P.engineOrder);
 
-  mst      = { done: false, t0: Date.now(), tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
+  // 【変更】mst.t0 を Date.now() から simTime に変更
+  mst      = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
   goActive = false;
   vhfFired = new Set();
 
@@ -304,7 +351,8 @@ function chkMission() {
 }
 
 function _dockRes(dist, spd, angle, col) {
-  const elapsed = Math.round((Date.now() - mst.t0) / 1000);
+  // 【変更】Date.now() から simTime を基準にスコアタイムを計算
+  const elapsed = Math.round((simTime - mst.t0) / 1000);
   const sd      = calcScore(dist, spd, angle, elapsed, col, curM);
   // ペナルティ適用
   sd.pens.push(...mst.pens);
@@ -501,13 +549,22 @@ let lastT = -1, running = false;
 function loop(t) {
   requestAnimationFrame(loop);
   if (!running) return;
-  if (lastT < 0) { lastT = t; return; }
-  const dt = Math.min((t - lastT) / 1000, 0.05); lastT = t;
+  if (lastT < 0) { lastT = t; simTime = t; return; }
+  
+  const dt = Math.min((t - lastT) / 1000, 0.05); 
+  lastT = t;
 
-  wu.uT.value = t * 0.001;
-  updatePhysics(dt, curM ? curM.waves : 1, goActive);
-  updAI(dt); updTugs(dt);
-  upd3D(t);
+  // 【追加】物理演算を指定倍率の回数分ループさせる（性能を保ったまま早送り）
+  for (let i = 0; i < timeScale; i++) {
+      updatePhysics(dt, curM ? curM.waves : 1, goActive, simTime);
+      updAI(dt); 
+      updTugs(dt);
+      simTime += dt * 1000; // ゲーム内時間を進める
+  }
+
+  // アニメーションと3Dの更新にはゲーム内時間(simTime)を使う
+  wu.uT.value = simTime * 0.001;
+  upd3D(simTime);
 
   // HUD
   updateCompass(P.heading);

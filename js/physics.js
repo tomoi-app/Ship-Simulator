@@ -100,7 +100,8 @@ let keyLockA = false;
 let keyLockD = false;
 
 // ---- メイン物理更新 ----
-export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
+// 【変更】引数に currentTime を追加
+export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTime = Date.now()) {
   if (gameOverActive) return;
 
   // --- 1. 舵と主機のレスポンス ---
@@ -200,8 +201,9 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false) {
     P.driftZ  += (Math.random() - 0.5) * 0.025 * stormF;
   }
 
-  const wRoll  = Math.sin(Date.now() * 0.001)  * 0.013 * waveAmp + Math.sin(Date.now() * 0.00137) * 0.008 * waveAmp;
-  const wPitch = Math.cos(Date.now() * 0.00088) * 0.009 * waveAmp;
+  // 【変更】Date.now() を currentTime に置き換える
+  const wRoll  = Math.sin(currentTime * 0.001)  * 0.013 * waveAmp + Math.sin(currentTime * 0.00137) * 0.008 * waveAmp;
+  const wPitch = Math.cos(currentTime * 0.00088) * 0.009 * waveAmp;
   P.rollAngle  += (wRoll  - P.rollAngle)  * ROLL_F;
   P.pitchAngle += (wPitch - P.pitchAngle) * PITCH_F;
 

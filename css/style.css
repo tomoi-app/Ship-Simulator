@@ -437,3 +437,29 @@ body {
 {
     display: none !important;
 }
+
+/* ==========================================================
+   倍速切り替えボタン (画面右上・目立たないデザイン)
+========================================================== */
+#time-scale-btn {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    background-color: rgba(10, 15, 20, 0.4); /* 半透明で暗く */
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    color: rgba(0, 255, 136, 0.5); /* 文字色も控えめに */
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1000;
+    user-select: none;
+    transition: all 0.2s;
+}
+#time-scale-btn:hover {
+    background-color: rgba(10, 15, 20, 0.8);
+    border-color: rgba(0, 255, 136, 0.8);
+    color: #00ff88; /* ホバー時だけ明るくする */
+}

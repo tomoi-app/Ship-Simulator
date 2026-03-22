@@ -153,7 +153,7 @@ export function buildScene(THREE) {
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー ----
+// ---- 海シェーダー (フォトリアル版) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:    { value: 0 },
@@ -162,16 +162,25 @@ export function buildOcean(THREE, scene) {
     uWD:   { value: new THREE.Vector2(1, 0.3) },
     uCur:  { value: new THREE.Vector2(0.1, 0) },
     uWind: { value: 1.0 },
-    uOffset: { value: new THREE.Vector2(0, 0) } // 追加: 船の座標オフセット
+    uOffset: { value: new THREE.Vector2(0, 0) },
+    // 【追加】環境連動用のUniforms
+    uLightDir:     { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
+    uBaseColor:    { value: new THREE.Color(0x051e38) },
+    uShallowColor: { value: new THREE.Color(0x0f4770) },
+    uLightColor:   { value: new THREE.Color(0xffffff) },
+    uFogColor:     { value: new THREE.Color(0x8fb5cc) },
+    uFogDensity:   { value: 0.00012 }
   };
+
   const vert = `
     uniform float uT,uWH,uWS,uWind; uniform vec2 uWD,uCur,uOffset;
     varying vec3 vN; varying float vWY,vFoam;
+    varying vec3 vViewPosition; // 【追加】カメラベクトル計算用
+    
     float W(vec2 p,vec2 d,float f,float s,float a){
       return a*sin(dot(p/1000.+uCur*uT*.05,normalize(d))*f-uT*s);
     }
     void main(){
-      // 波のスクロールを25倍速に強調し、「表示速度（メーター）に合った」圧倒的な視覚的スピード感を出します
       vec3 pos=position; vec2 wp=pos.xz + uOffset * 25.0;
       float h=W(wp,uWD,6.,uWS,uWH)+W(wp,vec2(uWD.y,-uWD.x),9.,uWS*1.3,uWH*.5)
              +W(wp,vec2(-.7,.9),15.,uWS*1.7,uWH*.25)+W(wp,vec2(.5,-.8),22.,uWS*2.1,uWH*.14)
@@ -181,19 +190,58 @@ export function buildOcean(THREE, scene) {
       float hR=W(wp+vec2(e,0.),uWD,6.,uWS,uWH),hF=W(wp+vec2(0.,e),uWD,6.,uWS,uWH);
       vN=normalize(vec3(h-hR,e,h-hF));
       vFoam=smoothstep(.22,.85,h)*uWind;
-      gl_Position=projectionMatrix*modelViewMatrix*vec4(pos,1.);
+      
+      // 【追加】カメラからの視点ベクトルを取得
+      vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+      vViewPosition = -mvPosition.xyz; 
+      gl_Position = projectionMatrix * mvPosition;
     }`;
+
   const frag = `
-    uniform float uT; varying vec3 vN; varying float vWY,vFoam;
+    uniform float uT;
+    uniform vec3 uLightDir;
+    uniform vec3 uBaseColor;
+    uniform vec3 uShallowColor;
+    uniform vec3 uLightColor;
+    uniform vec3 uFogColor;
+    uniform float uFogDensity;
+    
+    varying vec3 vN; varying float vWY,vFoam;
+    varying vec3 vViewPosition;
+
     void main(){
-      vec3 deep=vec3(.02,.12,.22),sh=vec3(.06,.28,.42),foam=vec3(.78,.9,.96),spray=vec3(.92,.96,.99);
-      vec3 ld=normalize(vec3(.5,.8,.3));
-      float df=max(dot(vN,ld),0.),sp=pow(max(dot(reflect(-ld,vN),vec3(0,1,0)),0.),80.);
-      float fres=pow(1.-max(dot(vN,vec3(0,1,0)),0.),.6);
-      vec3 c=mix(deep,sh,df*.65+.18)+sp*.55*foam;
-      c=mix(c,foam,vFoam*.42); c=mix(c,spray,fres*.12);
-      gl_FragColor=vec4(c,1.);
+      vec3 foam = vec3(.78,.9,.96), spray = vec3(.92,.96,.99);
+      
+      // 法線と視点ベクトル
+      vec3 normal = normalize(vN);
+      vec3 viewDir = normalize(vViewPosition);
+      vec3 lightDir = normalize(uLightDir);
+      
+      // 拡散反射
+      float df = max(dot(normal, lightDir), 0.0);
+      
+      // 【追加】鏡面反射 (Blinn-Phong) - 太陽や月の強烈なきらめき
+      vec3 halfVector = normalize(lightDir + viewDir);
+      float sp = max(0.0, dot(normal, halfVector));
+      sp = pow(sp, 150.0); // 鋭いハイライト
+      
+      // フレネル反射 (かすめる角度で反射率が上がる)
+      float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.0); 
+      
+      // 海の色の合成
+      vec3 c = mix(uBaseColor, uShallowColor, df * 0.6 + 0.2);
+      c += sp * 0.8 * uLightColor; // 太陽・月の反射を加算
+      c = mix(c, spray, fres * 0.25); // 水平線付近の反射
+      c = mix(c, foam, vFoam * 0.42); // 白波
+      
+      // 【追加】フォグの適用（海面と空の境界をシームレスに溶かす）
+      float depth = length(vViewPosition);
+      float fogFactor = exp2(-uFogDensity * uFogDensity * depth * depth * 1.442695);
+      fogFactor = clamp(fogFactor, 0.0, 1.0);
+      
+      gl_FragColor = vec4(mix(uFogColor, c, fogFactor), 1.0);
     }`;
+
   const geo = new THREE.PlaneGeometry(18000, 18000, 200, 200);
   geo.rotateX(-Math.PI / 2);
   const ocean = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: wu, vertexShader: vert, fragmentShader: frag }));
