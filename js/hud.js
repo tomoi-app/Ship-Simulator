@@ -1,7 +1,7 @@
 import * as tools from './tools.js';
 
 // ============================================================
-//  hud.js — HUD・UI 描画管理 (統合版 v5.1)
+//  hud.js — HUD・UI 描画管理 (統合版 v5.2)
 // ============================================================
 
 // --- HUD用のグローバル変数 ---
@@ -16,7 +16,7 @@ const angleSmoothRate = 2.0;
 const degToRad = (deg) => deg * Math.PI / 180;
 const map = (value, in_min, in_max, out_min, out_max) => (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 
-// --- 外部へのエクスポート関数群 (認識率向上のため上部に集約) ---
+// --- 外部へのエクスポート関数群 ---
 
 export function animScore(target) {
   const el = document.getElementById('drsn');
@@ -393,7 +393,18 @@ function drawNewCanvasHUD(P, simTime) {
     ctx.clearRect(0,0,canvas.width,gaugeBarHeight); ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,canvas.width,gaugeBarHeight);
     const gw=canvas.width/8, yc=gaugeBarHeight/2, fS="14px 'BIZ UDMincho', serif", fB="bold 16px 'BIZ UDMincho', serif", fL="bold 20px 'BIZ UDMincho', serif";
     ctx.fillStyle='white'; ctx.strokeStyle='white'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    drawHDT(ctx, gw*0.5, yc, 50, V.telegraph, fS); drawWindGauge(ctx, gw*1.5, yc, 50, V.windDir, V.windSpeed, fB, fS); drawHDS(ctx, gw*2.5, yc, 50, V.windSpeed, 'WIND SPD', 'Knots', 60, fB, fS, fL); drawHDS(ctx, gw*3.5, yc, 50, V.shipSpeed, 'SHIP SPD', function drawBaseCircle(ctx, x, y, r, t) { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.strokeStyle='#444'; ctx.lineWidth=1; ctx.stroke(); ctx.font="14px 'BIZ UDMincho', serif"; ctx.fillStyle='#aaa'; ctx.fillText(t,x,y-r*1.2); ctx.fillStyle='white'; }
+    drawHDT(ctx, gw*0.5, yc, 50, V.telegraph, fS); 
+    drawWindGauge(ctx, gw*1.5, yc, 50, V.windDir, V.windSpeed, fB, fS); 
+    drawHDS(ctx, gw*2.5, yc, 50, V.windSpeed, 'WIND SPD', 'Knots', 60, fB, fS, fL); 
+    drawHDS(ctx, gw*3.5, yc, 50, V.shipSpeed, 'SHIP SPD', 'Knots', 30, fB, fS, fL); 
+    drawHDR(ctx, gw*4.5, yc, 50, V.rudderAngle, fB, fS); 
+    drawHDO(ctx, gw*5.5, yc, 50, V.yawRate, fB, fS); 
+    drawHDP(ctx, gw*6.5, yc, 50, V.rpm, P.engineOverload, fB, fS, fL); 
+    drawHDC(ctx, gw*7.5, yc, 50, simTime, fB, fS);
+    overloadTimer += dt;
+}
+
+function drawBaseCircle(ctx, x, y, r, t) { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.strokeStyle='#444'; ctx.lineWidth=1; ctx.stroke(); ctx.font="14px 'BIZ UDMincho', serif"; ctx.fillStyle='#aaa'; ctx.fillText(t,x,y-r*1.2); ctx.fillStyle='white'; }
 function drawHND(ctx, x, y, l, a, c, w) { const rad=degToRad(a-90); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+Math.cos(rad)*l, y+Math.sin(rad)*l); ctx.strokeStyle=c; ctx.lineWidth=w; ctx.stroke(); }
 function drawHTK(ctx, x, y, r, a, l) { const rad=degToRad(a-90); ctx.beginPath(); ctx.moveTo(x+Math.cos(rad)*(r-l), y+Math.sin(rad)*(r-l)); ctx.lineTo(x+Math.cos(rad)*r, y+Math.sin(rad)*r); ctx.strokeStyle='white'; ctx.lineWidth=1; ctx.stroke(); }
 function drawHDT(ctx, x, y, r, v, f) { drawBaseCircle(ctx,x,y,r,'TELEGRAPH'); const s=['FULL','HALF','SLOW','DEAD','STOP','DEAD','SLOW','HALF','FULL'], a=[-150,-120,-90,-60,0,60,90,120,150]; ctx.font=f; s.forEach((k,i)=>{ const rad=degToRad(a[i]-90); ctx.fillText(k,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); }); drawHND(ctx,x,y,r*0.9,map(v,-4,4,-150,150),'red',4); }
@@ -456,4 +467,3 @@ function drawHDR(ctx, x, y, r, a, fB, fS) { drawBaseCircle(ctx,x,y,r,'RUDDER'); 
 function drawHDO(ctx, x, y, r, yR, fB, fS) { drawBaseCircle(ctx,x,y,r,'R.O.T.'); for(let i=-60;i<=60;i+=10){ const ang=map(i,-60,60,-140,140); drawHTK(ctx,x,y,r,ang,i%20===0?10:5); if(i%20===0 && i!==0){ ctx.font=fS; ctx.fillText(Math.abs(i),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(yR,-60,60,-140,140),'white',3); ctx.font=fB; ctx.fillText(Math.abs(yR).toFixed(1),x,y+r*0.2); }
 function drawHDP(ctx, x, y, r, rpm, isO, fB, fS, fL) { drawBaseCircle(ctx,x,y,r,'RPM'); for(let i=0;i<=100;i+=10){ const ang=map(i,0,100,-140,140); drawHTK(ctx,x,y,r,ang,10); if(i%20===0){ ctx.font=fS; ctx.fillText(i,x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(rpm,0,100,-140,140),isO?'orange':'white',3); ctx.font=fL; ctx.fillText(Math.abs(rpm).toFixed(0),x,y+r*0.2); if(isO && overloadTimer%1<0.5){ ctx.font=fS; ctx.fillStyle='red'; ctx.fillText('OVERLOAD',x,y-r*0.6); } }
 function drawHDC(ctx, x, y, r, sT, fB, fS) { drawBaseCircle(ctx,x,y,r,'CLOCK'); ctx.font=fS; for(let i=1;i<=12;i++){ const rad=degToRad(i*30-90); ctx.fillText(i,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); } const ts=sT%(12*3600), h=ts/3600, m=(ts%3600)/60, s=ts%60; drawHND(ctx,x,y,r*0.5,(h*30)+(m*0.5),'white',4); drawHND(ctx,x,y,r*0.8,(m*6)+(s*0.1),'white',3); drawHND(ctx,x,y,r*0.9,s*6,'red',1); }
-ad(i*30-90); ctx.fillText(i,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); } const ts=sT%(12*3600), h=ts/3600, m=(ts%3600)/60, s=ts%60; drawHND(ctx,x,y,r*0.5,(h*30)+(m*0.5),'white',4); drawHND(ctx,x,y,r*0.8,(m*6)+(s*0.1),'white',3); drawHND(ctx,x,y,r*0.9,s*6,'red',1); }
