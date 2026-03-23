@@ -5,6 +5,16 @@
 // ============================================================
 
 
+// --- 針のスムージング用変数と関数 ---
+let V = { speed: 0, rudder: 0, rot: 0, rpm: 0, windSpeed: 0, windDir: 0 };
+function smoothVal(cur, tar, rate) { return cur + (tar - cur) * (1 - Math.exp(-rate * 0.016)); }
+function smoothAng(cur, tar, rate) {
+    let d = tar - cur;
+    while(d < -180) d += 360;
+    while(d > 180) d -= 360;
+    return cur + d * (1 - Math.exp(-rate * 0.016));
+}
+
 // ---- コンパス（画面上のHDG表示） ----
 export function updateCompass(heading) {
   const cn = document.getElementById('cn');
@@ -495,10 +505,21 @@ function updateClock(ctx, simTime, curM, mst) {
 }
 
 // ==================================================================
-// updateDashboard: 全メーターを以前のクリーンなレイアウトに差し戻し
-// ==================================================================
-// 【変更】引数に simTime, curM, mst を追加
 export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
+    // --- ★ここから追加：値のスムージング処理 ---
+    const smoothRate = 4.0;
+    const angleRate = 2.0;
+    V.speed = smoothVal(V.speed, P.speed, smoothRate);
+    V.rudder = smoothVal(V.rudder, P.rudder, smoothRate);
+    V.rot = smoothVal(V.rot, P.yawRate * (180 / Math.PI) * 60, angleRate);
+    V.rpm = smoothVal(V.rpm, P.rpm, smoothRate);
+    V.windSpeed = smoothVal(V.windSpeed, P.windSpeed, smoothRate);
+
+    const headingDeg = P.heading * (180 / Math.PI);
+    let targetRelWind = ((P.windDir - headingDeg) % 360 + 360) % 360;
+    V.windDir = smoothAng(V.windDir, targetRelWind, angleRate);
+    // --- ここまで追加 ---
+
     const cvs = {
         shipSpeed: document.getElementById('ship-speed-canvas'),
         rudder: document.getElementById('rudder-canvas'),
@@ -516,36 +537,39 @@ export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
     ctx = cvs.shipSpeed.getContext('2d');
     drawBase(ctx, 'SPEED', 'KNOTS', -10, 30, 5, 5, 1);
     drawColorArc(ctx, -10, 30, -10, 0, 'rgba(200,30,30,0.7)', 62, 8); // 後進（赤）
-    drawNeedle(ctx, P.speed, -10, 30);
+    // ★ P.speed ではなく V.speed を渡す
+    drawNeedle(ctx, V.speed, -10, 30);
 
     // 2. RUDDER (DEG)
     ctx = cvs.rudder.getContext('2d');
     drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 5, 1);
     drawColorArc(ctx, -35, 35, -35, 0, 'rgba(200,30,30,0.7)', 62, 8);
     drawColorArc(ctx, -35, 35, 0, 35, 'rgba(40,140,60,0.7)', 62, 8);
-    drawNeedle(ctx, P.rudder, -35, 35, true);
+    // ★ V.rudder を渡す
+    drawNeedle(ctx, V.rudder, -35, 35, true);
 
     // 3. RATE OF TURN (DEG/MIN)
     ctx = cvs.rot.getContext('2d');
     drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 5, 1);
     drawColorArc(ctx, -30, 30, -30, 0, 'rgba(200,30,30,0.7)', 62, 8);
     drawColorArc(ctx, -30, 30, 0, 30, 'rgba(40,140,60,0.7)', 62, 8);
-    drawNeedle(ctx, P.yawRate * (180 / Math.PI) * 60, -30, 30, true);
+    // ★ V.rot を渡す
+    drawNeedle(ctx, V.rot, -30, 30, true);
 
     // 4. ENGINE (RPM) — 0を真上（中央）に配置、後進赤/前進緑に分割
     ctx = cvs.rpm.getContext('2d');
     drawBase(ctx, 'ENGINE', 'RPM', -120, 120, 20, 10, 5);
     drawColorArc(ctx, -120, 120, -120, 0, 'rgba(200,30,30,0.7)', 62, 8); // 後進（赤）
     drawColorArc(ctx, -120, 120, 0, 120, 'rgba(40,140,60,0.7)', 62, 8); // 前進（緑）
-    drawNeedle(ctx, P.rpm, -120, 120);
+    // ★ V.rpm を渡す
+    drawNeedle(ctx, V.rpm, -120, 120);
 
-    // 【追加】エンジンの過負荷（OVERLOAD）アラームの点滅表示
+    // エンジンの過負荷（OVERLOAD）アラームの点滅表示
     if (P.engineOverload) {
         const cx = 80;
         ctx.font = 'bold 11px sans-serif';
         ctx.fillStyle = '#ff0000';
         ctx.textAlign = 'center';
-        // 0.5秒間隔で点滅させる
         if (Math.floor(Date.now() / 500) % 2 === 0) {
             ctx.fillText('OVERLOAD', cx, 115);
         }
@@ -554,7 +578,8 @@ export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
     // 5. WIND SPEED (KNOTS)
     ctx = cvs.windSpeed.getContext('2d');
     drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 10, 5);
-    drawNeedle(ctx, P.windSpeed, 0, 100);
+    // ★ V.windSpeed を渡す
+    drawNeedle(ctx, V.windSpeed, 0, 100);
 
     // 6. WIND DIRECTION (REL) — コンパスローズ
     ctx = cvs.windDir.getContext('2d');
@@ -598,10 +623,9 @@ export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
     ctx.font = '8px sans-serif'; ctx.fillStyle = '#555';
     ctx.fillText('DEG (REL)', cx, cy + 38);
 
-    // 相対風向の計算と描画
-    const headingDeg = P.heading * (180 / Math.PI);
-    let relativeWindDir = ((P.windDir - headingDeg) % 360 + 360) % 360;
-    drawNeedleCompass(ctx, relativeWindDir, true);
+    // 相対風向の描画
+    // ★ 計算済みの V.windDir を渡す
+    drawNeedleCompass(ctx, V.windDir, true);
 
     // 7. CLOCK
     if (cvs.clock) updateClock(cvs.clock.getContext('2d'), simTime, curM, mst);
