@@ -139,13 +139,13 @@ export function buildScene(THREE) {
   scene.fog = new THREE.FogExp2(0xb8d0e0, 0.00009);
 
   // ---- 空（グラデーション対応シェーダースカイ） ----
-  const skyVert = \`
+  const skyVert = `
     varying vec3 vWorldPos;
     void main(){
       vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-    }\`;
-  const skyFrag = \`
+    }`;
+  const skyFrag = `
     uniform vec3 uSkyTop;
     uniform vec3 uSkyHorizon;
     uniform vec3 uSunDir;
@@ -164,7 +164,7 @@ export function buildScene(THREE) {
       float halo = pow(max(0.0, 1.0 - abs(dir.y) * 4.0), 3.0) * 0.25;
       col += vec3(0.9, 0.95, 1.0) * halo;
       gl_FragColor = vec4(col, 1.0);
-    }\`;
+    }`;
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(9500, 64, 32),
     new THREE.ShaderMaterial({
@@ -192,7 +192,7 @@ export function buildScene(THREE) {
       const px = rng(i * 3) * 512, py = rng(i * 3 + 1) * 256 + 128;
       const r = 20 + rng(i * 3 + 2) * 90;
       const g = cx.createRadialGradient(px, py, 0, px, py, r);
-      g.addColorStop(0, \`rgba(255,255,255,\${0.3 + rng(i) * 0.35})\`);
+      g.addColorStop(0, `rgba(255,255,255,${0.3 + rng(i) * 0.35})`);
       g.addColorStop(1, 'rgba(255,255,255,0)');
       cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2);
       cx.fillStyle = g; cx.fill();

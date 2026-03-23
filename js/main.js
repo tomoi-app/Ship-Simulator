@@ -211,6 +211,24 @@ function applyWeatherScene(m) {
   } else { sky.material.color.set(0x5a8fb0); }
   sun.color.set(0xfff8e8);
 
+  if (m.wx === 'ngt') {
+    sun.intensity = 0.04; moon.intensity = 0.7; amb.intensity = 0.16;
+    if(sky.material.uniforms){
+      sky.material.uniforms.uSkyTop.value.set(0x03050d);
+      sky.material.uniforms.uSkyHorizon.value.set(0x010308);
+      sky.material.uniforms.uSunSize.value = 0.0;
+    } else { sky.material.color.set(0x03050d); }
+    fogC = 0x03050d; fogD = 0.00022;
+    wu.uBaseColor.value.setHex(0x010308); 
+    wu.uSkyColor.value.setHex(0x020815);
+    wu.uSunColor.value.setHex(0x6688aa);
+    wu.uFogColor.value.setHex(0x03050d);
+    wu.uLightDir.value.copy(moon.position).normalize();
+    toggleNight(scene, true);
+  } else {
+    toggleNight(scene, false);
+  }
+
   if (m.wx === 'str') {
     if(sky.material.uniforms){
       sky.material.uniforms.uSkyTop.value.set(0x1a2a3a);
