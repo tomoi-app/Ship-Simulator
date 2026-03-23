@@ -210,14 +210,8 @@ function applyWeatherScene(m) {
     sky.material.uniforms.uSunSize.value = 1200.0;
   } else { sky.material.color.set(0x5a8fb0); }
   sun.color.set(0xfff8e8);
-  // 晴天時の海デフォルト
-  wu.uBaseColor.value.setHex(0x1a5070);
-  wu.uSkyColor.value.setHex(0x5599cc);
-  wu.uSunColor.value.setHex(0xfff8e8);
-  wu.uFogColor.value.setHex(0xb8d0e0);
-  wu.uLightDir.value.copy(sun.position).normalize();
 
-  else if (m.wx === 'str') {
+  if (m.wx === 'str') {
     if(sky.material.uniforms){
       sky.material.uniforms.uSkyTop.value.set(0x1a2a3a);
       sky.material.uniforms.uSkyHorizon.value.set(0x3a4a5a);
@@ -246,6 +240,15 @@ function applyWeatherScene(m) {
     wu.uLightDir.value.copy(sun.position).normalize();
   }
   
+  // 晴天時（str/rain/ngt以外）の海デフォルト
+  if (!['str','rain','ngt'].includes(m.wx)) {
+    wu.uBaseColor.value.setHex(0x1a5070);
+    wu.uSkyColor.value.setHex(0x5599cc);
+    wu.uSunColor.value.setHex(0xfff8e8);
+    wu.uFogColor.value.setHex(0xb8d0e0);
+    wu.uLightDir.value.copy(sun.position).normalize();
+  }
+
   // 霧の上書き（濃霧ミッションなど）
   if (m.fog > 0.4) {
     fogD = 0.0009 + m.fog * 0.0022; fogC = 0xaabbc8;
