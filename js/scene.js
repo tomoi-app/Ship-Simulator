@@ -136,43 +136,52 @@ export function makeGrassTexture() {
 // ============================================================
 export function buildScene(THREE) {
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0xb8d0e0, 0.00009);
+  scene.fog = new THREE.FogExp2(0xaac8dc, 0.000075);
 
-  // ---- 空（グラデーション対応シェーダースカイ） ----
+  // ---- 空シェーダー（3層グラデーション + 太陽 + 散乱） ----
   const skyVert = `
-    varying vec3 vWorldPos;
+    varying vec3 vWorldDir;
     void main(){
-      vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      vWorldDir = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }`;
   const skyFrag = `
-    uniform vec3 uSkyTop;
-    uniform vec3 uSkyHorizon;
+    uniform vec3 uZenith;
+    uniform vec3 uMidsky;
+    uniform vec3 uHorizon;
     uniform vec3 uSunDir;
-    uniform float uSunSize;
-    varying vec3 vWorldPos;
+    uniform float uSunIntensity;
+    varying vec3 vWorldDir;
     void main(){
-      vec3 dir = normalize(vWorldPos);
-      float t = clamp(dir.y * 1.8 + 0.1, 0.0, 1.0);
-      vec3 col = mix(uSkyHorizon, uSkyTop, t);
-      // 太陽
-      float sunDot = max(0.0, dot(dir, normalize(uSunDir)));
-      float sun = pow(sunDot, uSunSize);
-      float corona = pow(sunDot, 8.0) * 0.4;
-      col += vec3(1.0, 0.95, 0.8) * sun + vec3(1.0, 0.9, 0.7) * corona;
-      // 地平線ハロ（明るい帯）
-      float halo = pow(max(0.0, 1.0 - abs(dir.y) * 4.0), 3.0) * 0.25;
-      col += vec3(0.9, 0.95, 1.0) * halo;
+      vec3 d = normalize(vWorldDir);
+      // 3層グラデーション: 天頂→中空→地平線
+      float yt = clamp(d.y, 0.0, 1.0);
+      float ym = clamp(1.0 - abs(d.y) * 2.5, 0.0, 1.0);
+      vec3 col = mix(uHorizon, uMidsky, smoothstep(0.0, 0.3, d.y));
+      col = mix(col, uZenith, smoothstep(0.25, 0.8, d.y));
+      // 地平線ハロ（大気散乱）
+      float halo = pow(clamp(1.0 - abs(d.y) * 3.5, 0.0, 1.0), 4.0);
+      col += vec3(0.95, 0.98, 1.0) * halo * 0.35;
+      // 太陽本体
+      float sunCos = dot(d, normalize(uSunDir));
+      float sunDisk = pow(max(sunCos, 0.0), 3000.0) * uSunIntensity;
+      float sunGlow = pow(max(sunCos, 0.0), 80.0) * 0.5 * uSunIntensity;
+      float sunScatter = pow(max(sunCos, 0.0), 12.0) * 0.2 * uSunIntensity;
+      col += vec3(1.0, 0.97, 0.85) * sunDisk;
+      col += vec3(1.0, 0.88, 0.6) * sunGlow;
+      col += vec3(1.0, 0.92, 0.75) * sunScatter;
       gl_FragColor = vec4(col, 1.0);
     }`;
+
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(9500, 64, 32),
     new THREE.ShaderMaterial({
       uniforms: {
-        uSkyTop:     { value: new THREE.Color(0x4488cc) },
-        uSkyHorizon: { value: new THREE.Color(0xc0d8ee) },
-        uSunDir:     { value: new THREE.Vector3(0.5, 0.35, 0.8).normalize() },
-        uSunSize:    { value: 1200.0 },
+        uZenith:       { value: new THREE.Color(0x1a5fa8) },
+        uMidsky:       { value: new THREE.Color(0x4899cc) },
+        uHorizon:      { value: new THREE.Color(0xc4dff0) },
+        uSunDir:       { value: new THREE.Vector3(0.6, 0.42, 0.68).normalize() },
+        uSunIntensity: { value: 1.0 },
       },
       vertexShader: skyVert,
       fragmentShader: skyFrag,
@@ -182,168 +191,211 @@ export function buildScene(THREE) {
   );
   scene.add(sky);
 
-  // ---- 雲（Planeにプロシージャルテクスチャ） ----
-  const mkCloud = (seed, y, size, opacity) => {
-    const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+  // ---- 雲（プロシージャル 2層） ----
+  const mkCloud = (seed, y, opacity) => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1024;
     const cx = cv.getContext('2d');
-    cx.clearRect(0, 0, 512, 512);
-    const rng = (n) => { let x = Math.sin(n * seed) * 43758.5; return x - Math.floor(x); };
-    for (let i = 0; i < 60; i++) {
-      const px = rng(i * 3) * 512, py = rng(i * 3 + 1) * 256 + 128;
-      const r = 20 + rng(i * 3 + 2) * 90;
-      const g = cx.createRadialGradient(px, py, 0, px, py, r);
-      g.addColorStop(0, `rgba(255,255,255,${0.3 + rng(i) * 0.35})`);
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2);
+    cx.clearRect(0, 0, 1024, 1024);
+    const rng = n => { const x = Math.sin(n * seed + 1.3) * 43758.5; return x - Math.floor(x); };
+    for (let i = 0; i < 80; i++) {
+      const px = rng(i*3)   * 1024;
+      const py = rng(i*3+1) * 400 + 312;
+      const r  = 35 + rng(i*3+2) * 130;
+      const g  = cx.createRadialGradient(px, py, 0, px, py, r);
+      const a  = 0.25 + rng(i) * 0.38;
+      g.addColorStop(0,   `rgba(255,255,255,${a})`);
+      g.addColorStop(0.5, `rgba(240,248,255,${a * 0.4})`);
+      g.addColorStop(1,   'rgba(255,255,255,0)');
+      cx.beginPath(); cx.arc(px, py, r, 0, Math.PI*2);
       cx.fillStyle = g; cx.fill();
     }
     const tex = new THREE.CanvasTexture(cv);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(3, 1.5);
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(20000, 10000),
+    tex.repeat.set(2.5, 1.2);
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(24000, 12000),
       new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide })
     );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = y;
-    scene.add(mesh);
-    return mesh;
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = y;
+    scene.add(m);
+    return m;
   };
-  mkCloud(1.3, 900,  20000, 0.55);
-  mkCloud(2.7, 1400, 20000, 0.35);
+  mkCloud(1.7,  800, 0.6);
+  mkCloud(3.1, 1400, 0.38);
 
   // ---- ライト ----
-  const sun  = new THREE.DirectionalLight(0xfff8e8, 1.6);
-  sun.position.set(500, 350, 800);
+  const sun  = new THREE.DirectionalLight(0xfff6e0, 1.8);
+  sun.position.set(600, 420, 680);
   scene.add(sun);
-  const amb  = new THREE.AmbientLight(0x88aabb, 0.7); scene.add(amb);
-  const moon = new THREE.DirectionalLight(0x3355aa, 0); moon.position.set(-300, 200, -600); scene.add(moon);
-  // 海面に映る空の色（補助光）
-  const skyFill = new THREE.HemisphereLight(0x88ccee, 0x1a4466, 0.4); scene.add(skyFill);
+  const amb  = new THREE.AmbientLight(0x7799bb, 0.55); scene.add(amb);
+  const moon = new THREE.DirectionalLight(0x2244aa, 0); moon.position.set(-300, 200, -600); scene.add(moon);
+  const hemi = new THREE.HemisphereLight(0x99ccee, 0x224466, 0.45); scene.add(hemi);
 
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (フォトリアル強化版) ----
+// ---- 海シェーダー (Gerstner波 + フレネル + 空反射) ----
 export function buildOcean(THREE, scene) {
   const wu = {
-    uT:    { value: 0 },
-    uWH:   { value: 0.55 },
-    uWS:   { value: 0.75 },
-    uWD:   { value: new THREE.Vector2(1, 0.3) },
-    uCur:  { value: new THREE.Vector2(0.1, 0) },
-    uWind: { value: 1.0 },
-    uOffset: { value: new THREE.Vector2(0, 0) },
-    uLightDir:     { value: new THREE.Vector3(0.5, 0.35, 0.8).normalize() },
-    uSunColor:     { value: new THREE.Color(0xfff8e8) },
-    uSkyColor:     { value: new THREE.Color(0x5599cc) },
-    uBaseColor:    { value: new THREE.Color(0x1a5070) },
-    uFogColor:     { value: new THREE.Color(0xb8d0e0) },
-    uFogDensity:   { value: 0.00009 },
+    uT:          { value: 0 },
+    uWH:         { value: 0.6 },
+    uWS:         { value: 0.8 },
+    uWD:         { value: new THREE.Vector2(1.0, 0.3) },
+    uWind:       { value: 1.0 },
+    uOffset:     { value: new THREE.Vector2(0, 0) },
+    uSunDir:     { value: new THREE.Vector3(0.6, 0.42, 0.68).normalize() },
+    uSunColor:   { value: new THREE.Color(0xfff6e0) },
+    uSkyZenith:  { value: new THREE.Color(0x1a5fa8) },
+    uSkyHorizon: { value: new THREE.Color(0xc4dff0) },
+    uDeepColor:  { value: new THREE.Color(0x0d3d5c) },
+    uFogColor:   { value: new THREE.Color(0xaac8dc) },
+    uFogDensity: { value: 0.000075 },
   };
 
+  // ---- 頂点シェーダー: Gerstner波 ----
+  // Gerstner波はサイン波より自然な「とんがり」を作る
+  // x,z も横に移動するので水面の渦感が出る
   const vert = `
-    uniform float uT,uWH,uWS,uWind;
-    uniform vec2 uWD,uCur,uOffset;
+    uniform float uT, uWH, uWS, uWind;
+    uniform vec2 uWD, uOffset;
     varying vec3 vNormal;
+    varying vec3 vWorldPos;
     varying vec3 vViewPos;
     varying float vFoam;
     varying vec2 vUV;
 
-    float wave(vec2 p, vec2 d, float freq, float spd, float amp){
-      return amp * sin(dot(normalize(d), p / 800.0) * freq - uT * spd);
+    // Gerstner波 1成分
+    // p: 水平位置, d: 方向, wavelength, steepness, speed
+    vec3 gerstner(vec2 p, vec2 d, float wl, float steep, float spd){
+      float k = 6.2832 / wl;
+      float c = sqrt(9.8 / k);
+      float f = k * (dot(normalize(d), p) - c * spd * uT);
+      float a = steep / k;
+      return vec3(
+        normalize(d).x * a * cos(f),
+        a * sin(f),
+        normalize(d).y * a * cos(f)
+      );
     }
+
     void main(){
       vec3 pos = position;
-      vec2 wp = pos.xz + uOffset * 20.0;
-      // 複数方向の波を合成（細かい波も追加）
-      float h = wave(wp, uWD,           6.0,  uWS,       uWH)
-              + wave(wp, vec2(uWD.y,-uWD.x), 9.0,  uWS*1.3,  uWH*0.5)
-              + wave(wp, vec2(-0.7, 0.9),    15.0, uWS*1.7,  uWH*0.22)
-              + wave(wp, vec2(0.5, -0.8),    24.0, uWS*2.2,  uWH*0.12)
-              + wave(wp, uWD*1.5,            40.0, uWS*3.2,  uWH*0.055)
-              + wave(wp, vec2(0.3, 0.7),     65.0, uWS*4.5,  uWH*0.025)
-              + wave(wp, vec2(-0.5, 0.3),    90.0, uWS*5.0,  uWH*0.012);
-      pos.y = h;
-      float e = 3.0;
-      float hR = wave(wp+vec2(e,0.), uWD, 6., uWS, uWH);
-      float hF = wave(wp+vec2(0.,e), uWD, 6., uWS, uWH);
-      vNormal = normalize(vec3(h - hR, e, h - hF));
-      vFoam = smoothstep(0.18, 0.8, h) * uWind;
-      vUV = wp * 0.001;
+      vec2 wp  = pos.xz + uOffset * 18.0;
+
+      // 複数のGerstner波を合成（方向・波長・急峻さが異なる）
+      vec3 g = vec3(0.0);
+      g += gerstner(wp, uWD,               60.0, uWH * 0.55, uWS);
+      g += gerstner(wp, vec2(uWD.y,-uWD.x),38.0, uWH * 0.38, uWS * 1.2);
+      g += gerstner(wp, vec2(-0.7, 0.9),   22.0, uWH * 0.22, uWS * 1.6);
+      g += gerstner(wp, vec2(0.5, -0.8),   14.0, uWH * 0.14, uWS * 2.0);
+      g += gerstner(wp, vec2(0.3, 0.7),     8.0, uWH * 0.07, uWS * 2.8);
+      g += gerstner(wp, vec2(-0.5, 0.3),    4.5, uWH * 0.035,uWS * 3.5);
+      // 細かいリップル（sine）
+      float ripple = sin(dot(wp, vec2(0.8, 0.6)) * 0.15 - uT * 2.5) * uWH * 0.018
+                   + sin(dot(wp, vec2(-0.5, 0.9)) * 0.22 - uT * 3.1) * uWH * 0.012;
+      pos += g;
+      pos.y += ripple;
+
+      // 法線を中心差分で精密計算（隣接4点）
+      float e  = 2.5;
+      vec3 gR  = gerstner(wp+vec2(e,0.), uWD, 60., uWH*0.55, uWS)
+               + gerstner(wp+vec2(e,0.), vec2(uWD.y,-uWD.x), 38., uWH*0.38, uWS*1.2);
+      vec3 gL  = gerstner(wp-vec2(e,0.), uWD, 60., uWH*0.55, uWS)
+               + gerstner(wp-vec2(e,0.), vec2(uWD.y,-uWD.x), 38., uWH*0.38, uWS*1.2);
+      vec3 gF  = gerstner(wp+vec2(0.,e), uWD, 60., uWH*0.55, uWS)
+               + gerstner(wp+vec2(0.,e), vec2(uWD.y,-uWD.x), 38., uWH*0.38, uWS*1.2);
+      vec3 gB  = gerstner(wp-vec2(0.,e), uWD, 60., uWH*0.55, uWS)
+               + gerstner(wp-vec2(0.,e), vec2(uWD.y,-uWD.x), 38., uWH*0.38, uWS*1.2);
+      vec3 dx  = vec3(2.*e, gR.y - gL.y, gR.z - gL.z);
+      vec3 dz  = vec3(gF.x - gB.x, gF.y - gB.y, 2.*e);
+      vNormal  = normalize(cross(dz, dx));
+
+      vFoam    = smoothstep(0.15, 0.75, pos.y / (uWH + 0.001)) * uWind;
+      vUV      = wp * 0.0008;
+      vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
       vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
-      vViewPos = -mvPos.xyz;
+      vViewPos   = -mvPos.xyz;
       gl_Position = projectionMatrix * mvPos;
     }`;
 
+  // ---- フラグメントシェーダー: フレネル + 空反射 + 太陽光路 ----
   const frag = `
-    uniform float uT;
-    uniform vec3 uLightDir;
-    uniform vec3 uSunColor;
-    uniform vec3 uSkyColor;
-    uniform vec3 uBaseColor;
-    uniform vec3 uFogColor;
-    uniform float uFogDensity;
-    varying vec3 vNormal;
-    varying vec3 vViewPos;
+    uniform float uT, uFogDensity;
+    uniform vec3 uSunDir, uSunColor;
+    uniform vec3 uSkyZenith, uSkyHorizon;
+    uniform vec3 uDeepColor, uFogColor;
+    varying vec3 vNormal, vWorldPos, vViewPos;
     varying float vFoam;
     varying vec2 vUV;
 
-    // 簡易ノイズ（白波のテクスチャ感）
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-    float noise(vec2 p){
-      vec2 i = floor(p); vec2 f = fract(p);
+    // 値ノイズ（白波のテクスチャ感）
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+    float vnoise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
       f = f*f*(3.0-2.0*f);
       return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
                  mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
     }
 
+    // 空のグラデーション色（シェーダースカイと連動）
+    vec3 skyColor(vec3 dir){
+      float t = clamp(dir.y * 1.5 + 0.1, 0.0, 1.0);
+      return mix(uSkyHorizon, uSkyZenith, t);
+    }
+
     void main(){
       vec3 N = normalize(vNormal);
       vec3 V = normalize(vViewPos);
-      vec3 L = normalize(uLightDir);
+      vec3 L = normalize(uSunDir);
 
-      // 拡散反射
-      float diff = max(dot(N, L), 0.0) * 0.6 + 0.4;
+      // ---- フレネル反射（水面の角度依存反射） ----
+      float NdotV  = max(dot(N, V), 0.0);
+      float fresnel = pow(1.0 - NdotV, 4.0);   // 浅い角度で強く反射
+      fresnel = mix(0.02, 1.0, fresnel);         // 正面でも少し反射
 
-      // 鏡面反射（太陽の光路）
-      vec3 H = normalize(L + V);
-      float spec = pow(max(dot(N, H), 0.0), 280.0);
-      float spec2 = pow(max(dot(N, H), 0.0), 40.0) * 0.12; // 広がる光路
+      // ---- 反射方向を計算して空をサンプリング ----
+      vec3 R     = reflect(-V, N);
+      vec3 refl  = skyColor(normalize(R));       // 空のグラデーションを反射
 
-      // フレネル（水平線方向で反射強く）
-      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.5);
+      // ---- 太陽の光路（鏡面反射） ----
+      vec3 H     = normalize(L + V);
+      float NdotH = max(dot(N, H), 0.0);
+      float spec  = pow(NdotH, 400.0);          // 鋭い太陽ディスク
+      float glow  = pow(NdotH, 35.0) * 0.18;   // 広がる光路
 
-      // 海の色：深部 → 浅部 → 空の反射
-      vec3 deepColor  = uBaseColor;
-      vec3 shallowCol = uBaseColor * 1.6 + vec3(0.05, 0.12, 0.15);
-      vec3 skyRefl    = uSkyColor;
-      vec3 c = mix(deepColor, shallowCol, diff * 0.5);
-      c = mix(c, skyRefl, fresnel * 0.55);   // 空の反射
-      c += uSunColor * spec * 1.8;           // 太陽の光路（強いハイライト）
-      c += uSunColor * spec2;                // 広がる光路
+      // ---- 海の基本色（深さ・拡散） ----
+      float diff = max(dot(N, L), 0.0) * 0.5 + 0.5;
+      vec3 water = mix(uDeepColor, uDeepColor * 1.8 + vec3(0.02, 0.08, 0.12), diff * 0.6);
 
-      // 白波（ノイズで粒感を加える）
-      float foamNoise = noise(vUV * 120.0 + uT * 0.3) * 0.5 + 0.5;
-      float foam = vFoam * foamNoise;
-      c = mix(c, vec3(0.88, 0.94, 0.97), foam * 0.55);
+      // ---- 合成：水の色 + 空反射（フレネル）+ 太陽 ----
+      vec3 c = mix(water, refl, fresnel);
+      c += uSunColor * spec * 2.2;
+      c += uSunColor * vec3(1.0, 0.88, 0.6) * glow;
 
-      // 遠距離の白波（水平線付近の細かい波）
-      float distFoam = noise(vUV * 60.0 - uT * 0.15) * 0.08;
-      c += vec3(distFoam);
+      // ---- 白波（ノイズ） ----
+      float n1    = vnoise(vUV * 180.0 + uT * 0.25);
+      float n2    = vnoise(vUV * 80.0  - uT * 0.18);
+      float foam  = vFoam * (n1 * 0.6 + n2 * 0.4);
+      c = mix(c, vec3(0.90, 0.95, 0.98), foam * 0.65);
+      // 遠景のさざ波白味
+      c += vec3(vnoise(vUV * 45.0 - uT * 0.1) * 0.06);
 
-      // フォグ
+      // ---- フォグ（大気遠近法） ----
       float dist = length(vViewPos);
-      float fog = exp2(-uFogDensity * uFogDensity * dist * dist * 1.442695);
-      fog = clamp(fog, 0.0, 1.0);
+      float fog  = clamp(exp2(-uFogDensity * uFogDensity * dist * dist * 1.4427), 0.0, 1.0);
       c = mix(uFogColor, c, fog);
 
       gl_FragColor = vec4(c, 1.0);
     }`;
 
-  const geo = new THREE.PlaneGeometry(18000, 18000, 256, 256);
+  const geo = new THREE.PlaneGeometry(20000, 20000, 300, 300);
   geo.rotateX(-Math.PI / 2);
-  const ocean = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: wu, vertexShader: vert, fragmentShader: frag }));
+  const ocean = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+    uniforms: wu,
+    vertexShader: vert,
+    fragmentShader: frag,
+  }));
   scene.add(ocean);
   return { ocean, wu };
 }

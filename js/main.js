@@ -205,66 +205,58 @@ function applyWeatherScene(m) {
   // 基本光源リセット
   sun.intensity  = 1.6; moon.intensity = 0; amb.intensity = 0.7;
   if(sky.material.uniforms){
-    sky.material.uniforms.uSkyTop.value.set(0x4488cc);
-    sky.material.uniforms.uSkyHorizon.value.set(0xc0d8ee);
-    sky.material.uniforms.uSunSize.value = 1200.0;
+    sky.material.uniforms.uZenith.value.set(0x1a5fa8);
+    sky.material.uniforms.uMidsky.value.set(0x4899cc);
+    sky.material.uniforms.uHorizon.value.set(0xc4dff0);
+    sky.material.uniforms.uSunIntensity.value = 1.0;
   } else { sky.material.color.set(0x5a8fb0); }
   sun.color.set(0xfff8e8);
 
-  if (m.wx === 'ngt') {
-    sun.intensity = 0.04; moon.intensity = 0.7; amb.intensity = 0.16;
-    if(sky.material.uniforms){
-      sky.material.uniforms.uSkyTop.value.set(0x03050d);
-      sky.material.uniforms.uSkyHorizon.value.set(0x010308);
-      sky.material.uniforms.uSunSize.value = 0.0;
-    } else { sky.material.color.set(0x03050d); }
-    fogC = 0x03050d; fogD = 0.00022;
-    wu.uBaseColor.value.setHex(0x010308); 
-    wu.uSkyColor.value.setHex(0x020815);
-    wu.uSunColor.value.setHex(0x6688aa);
-    wu.uFogColor.value.setHex(0x03050d);
-    wu.uLightDir.value.copy(moon.position).normalize();
-    toggleNight(scene, true);
-  } else {
-    toggleNight(scene, false);
-  }
-
   if (m.wx === 'str') {
     if(sky.material.uniforms){
-      sky.material.uniforms.uSkyTop.value.set(0x1a2a3a);
-      sky.material.uniforms.uSkyHorizon.value.set(0x3a4a5a);
-      sky.material.uniforms.uSunSize.value = 0.0;
+      sky.material.uniforms.uZenith.value.set(0x111e2a);
+      sky.material.uniforms.uMidsky.value.set(0x1e3040);
+      sky.material.uniforms.uHorizon.value.set(0x3a4a5a);
+      sky.material.uniforms.uSunIntensity.value = 0.0;
     } else { sky.material.color.set(0x223344); }
     sun.color.set(0x7788aa); sun.intensity = 0.38;
     fogC = 0x2a3344; fogD = 0.00028;
     // 嵐の海
-    wu.uBaseColor.value.setHex(0x111b24);
-    wu.uSkyColor.value.setHex(0x2a3a4a);
-    wu.uSunColor.value.setHex(0x7788aa);
+    wu.uDeepColor.value.setHex(0x0a1520);
+    wu.uSkyZenith.value.setHex(0x1a2a3a);
+    wu.uSkyHorizon.value.setHex(0x3a4a5a);
+    wu.uSunColor.value.setHex(0x556677);
     wu.uFogColor.value.setHex(0x2a3344);
-    wu.uLightDir.value.copy(sun.position).normalize();
+    wu.uFogDensity.value = 0.00025;
+    wu.uSunDir.value.copy(sun.position).normalize();
   }
   else if (m.wx === 'rain') {
     if(sky.material.uniforms){
-      sky.material.uniforms.uSkyTop.value.set(0x2a3a4a);
-      sky.material.uniforms.uSkyHorizon.value.set(0x4a5a6a);
-      sky.material.uniforms.uSunSize.value = 0.0;
+      sky.material.uniforms.uZenith.value.set(0x222e3a);
+      sky.material.uniforms.uMidsky.value.set(0x344455);
+      sky.material.uniforms.uHorizon.value.set(0x4a5a6a);
+      sky.material.uniforms.uSunIntensity.value = 0.0;
     } else { sky.material.color.set(0x3a4a5a); }
     sun.intensity = 0.55;
     fogC = 0x3a4a5a; fogD = 0.0004;
-    wu.uBaseColor.value.setHex(0x1a2530);
-    wu.uSkyColor.value.setHex(0x3a4a5a);
+    wu.uDeepColor.value.setHex(0x111e28);
+    wu.uSkyZenith.value.setHex(0x222e3a);
+    wu.uSkyHorizon.value.setHex(0x4a5a6a);
+    wu.uSunColor.value.setHex(0x7788aa);
     wu.uFogColor.value.setHex(0x3a4a5a);
-    wu.uLightDir.value.copy(sun.position).normalize();
+    wu.uFogDensity.value = 0.0004;
+    wu.uSunDir.value.copy(sun.position).normalize();
   }
   
   // 晴天時（str/rain/ngt以外）の海デフォルト
   if (!['str','rain','ngt'].includes(m.wx)) {
-    wu.uBaseColor.value.setHex(0x1a5070);
-    wu.uSkyColor.value.setHex(0x5599cc);
-    wu.uSunColor.value.setHex(0xfff8e8);
-    wu.uFogColor.value.setHex(0xb8d0e0);
-    wu.uLightDir.value.copy(sun.position).normalize();
+    wu.uDeepColor.value.setHex(0x0d3d5c);
+    wu.uSkyZenith.value.setHex(0x1a5fa8);
+    wu.uSkyHorizon.value.setHex(0xc4dff0);
+    wu.uSunColor.value.setHex(0xfff6e0);
+    wu.uFogColor.value.setHex(0xaac8dc);
+    wu.uFogDensity.value = 0.000075;
+    wu.uSunDir.value.copy(sun.position).normalize();
   }
 
   // 霧の上書き（濃霧ミッションなど）
