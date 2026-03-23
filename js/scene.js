@@ -336,6 +336,7 @@ export function buildOcean(THREE, scene) {
     }
 
     void main(){
+      // ノイズによる細かな波の生成 (変更なし)
       vec2 uv1 = vUV * 8.0  + vec2( uT * 0.012,  uT * 0.008);
       vec2 uv2 = vUV * 18.0 + vec2(-uT * 0.018,  uT * 0.014);
       vec2 uv3 = vUV * 45.0 + vec2( uT * 0.025, -uT * 0.020);
@@ -345,29 +346,40 @@ export function buildOcean(THREE, scene) {
       float n2z = fbm(uv2 + vec2(0.,0.1)) - fbm(uv2 - vec2(0.,0.1));
       float n3x = (vnoise(uv3+vec2(0.05,0.))-vnoise(uv3-vec2(0.05,0.)))*0.5;
       float n3z = (vnoise(uv3+vec2(0.,0.05))-vnoise(uv3-vec2(0.,0.05)))*0.5;
-      vec3 N = normalize(vNormal + vec3(n1x*0.25 + n2x*0.18 + n3x*0.10, 0., n1z*0.25 + n2z*0.18 + n3z*0.10));
+      
+      // 法線の強さを微調整してギラつきを増す
+      vec3 N = normalize(vNormal + vec3(n1x*0.3 + n2x*0.2 + n3x*0.15, 0., n1z*0.3 + n2z*0.2 + n3z*0.15));
 
       vec3 V = normalize(vViewPos);
       vec3 L = normalize(uSunDir);
 
+      // ★1. リアルなフレネル反射 (Schlick近似: 水の基本反射率0.02)
       float NdotV  = max(dot(N, V), 0.001);
-      float fresnel = mix(0.04, 1.0, pow(1.0 - NdotV, 3.8));
+      float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
+      
       vec3 R    = reflect(-V, N);
       vec3 refl = skyCol(normalize(R));
 
+      // ★2. 太陽の乱反射 (マルチレイヤースペキュラ)
+      // 単一の強い光ではなく、広いハイライトと鋭いハイライトを合成して「ギラギラ感」を出す
       vec3 H     = normalize(L + V);
       float NdotH = max(dot(N, H), 0.0);
-      float spec  = pow(NdotH, 500.0) * 2.5;
-      float glow  = pow(NdotH, 28.0)  * 0.22;
+      float specSharp = pow(NdotH, 1200.0) * 2.0;  // 中心部の極めて強い光
+      float specBroad = pow(NdotH, 150.0) * 0.8;   // 周辺に散乱する光
+      float specScatter = pow(NdotH, 30.0) * 0.15; // 波頭全体に広がる光
+      float spec = specSharp + specBroad + specScatter;
 
+      // 深度による海の色
       float depthFactor = clamp(vDepth / 1200.0, 0.0, 1.0);
       vec3 waterCol = mix(uShallowColor, uDeepColor, depthFactor);
-      float diff = max(dot(N, L), 0.0) * 0.45 + 0.55;
+      
+      // 光の当たり具合（ディフューズ）
+      float diff = max(dot(N, L), 0.0) * 0.4 + 0.6;
       waterCol *= diff;
 
+      // ★3. 色の合成
       vec3 c = mix(waterCol, refl, fresnel);
       c += uSunColor * spec;
-      c += uSunColor * vec3(1.0, 0.85, 0.55) * glow;
 
       // ★ 船を中心としたローカル座標の計算
       vec2 toShip = vWorldPos.xz - uShipPos;
