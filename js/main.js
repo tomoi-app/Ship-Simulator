@@ -223,6 +223,7 @@ function applyWeatherScene(m) {
     fogC = 0x2a3344; fogD = 0.00028;
     // 嵐の海
     wu.uDeepColor.value.setHex(0x0a1520);
+    wu.uShallowColor.value.setHex(0x122030);
     wu.uSkyZenith.value.setHex(0x1a2a3a);
     wu.uSkyHorizon.value.setHex(0x3a4a5a);
     wu.uSunColor.value.setHex(0x556677);
@@ -250,7 +251,8 @@ function applyWeatherScene(m) {
   
   // 晴天時（str/rain/ngt以外）の海デフォルト
   if (!['str','rain','ngt'].includes(m.wx)) {
-    wu.uDeepColor.value.setHex(0x0d3d5c);
+    wu.uDeepColor.value.setHex(0x0a2d48);
+    wu.uShallowColor.value.setHex(0x1a6080);
     wu.uSkyZenith.value.setHex(0x1a5fa8);
     wu.uSkyHorizon.value.setHex(0xc4dff0);
     wu.uSunColor.value.setHex(0xfff6e0);
@@ -273,8 +275,8 @@ function applyWeatherScene(m) {
   wu.uFogDensity.value = fogD;
 
   // 波の高さと白波の設定
-  wu.uWH.value   = 0.35 * m.waves;
-  wu.uWS.value   = 0.55 + m.waves * 0.28;
+  wu.uWH.value   = 0.22 * m.waves;   // 波高を抑える
+  wu.uWS.value   = 0.45 + m.waves * 0.18; // 波速（船速と分離）
   wu.uWind.value = m.waves;
 }
 
@@ -554,6 +556,8 @@ function loop(t) {
 
   // 3Dとアニメーションの更新
   wu.uT.value = simTime * 0.001;
+  wu.uShipSpeed.value = Math.max(0, P.speed) / 16.0; // 0〜1 に正規化
+  wu.uShipPos.value.set(P.posX, P.posZ);
   upd3D(simTime);
 
   // HUD
