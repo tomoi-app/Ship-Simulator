@@ -1,608 +1,325 @@
-// hud.js
-'use strict';
-// ============================================================
-//  hud.js — HUD・UI 描画管理
-// ============================================================
+import * as tools from './tools.js';
 
+// --- HUD用のグローバル変数 ---
+let canvas, ctx;
+const gaugeBarHeight = 120; // 計器バーの高さ
+let overloadTimer = 0; // OVERLOAD点滅用タイマー
 
-// ---- コンパス（画面上のHDG表示） ----
-export function updateCompass(heading) {
-  const cn = document.getElementById('cn');
-  if (cn) cn.style.transform = `rotate(${-heading * 180 / Math.PI}deg)`;
+// --- ★滑らかな描画のための「表示用変数（Visual values）」 ---
+let V = {
+    telegraph: 0,
+    windDir: 0,
+    windSpeed: 0,
+    shipSpeed: 0,
+    rudderAngle: 0,
+    yawRate: 0,
+    rpm: 0
+};
+
+// --- ★スムージング設定 ---
+const smoothRate = 4.0; // 値が大きいほど追従が速い (秒間の追従率)
+const angleSmoothRate = 2.0; // 角度（風向、ROT）は少しゆっくり
+
+// 角度のスムージング関数 (360度ジャンプ対応)
+function smoothAngle(current, target, rate, delta) {
+    let diff = target - current;
+    // -180 〜 +180 の範囲に正規化
+    while (diff < -180) diff += 360;
+    while (diff > 180) diff -= 360;
+    return current + diff * (1 - Math.exp(-rate * delta));
 }
 
-
-// ---- 舵角アーク ----
-
-export function drawRudder(rudder) {
-  const cv  = document.getElementById('rucv');
-  if (!cv) return;
-  const ctx = cv.getContext('2d');
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  const cx = cv.width / 2, cy = cv.height - 4, r = cv.height - 9;
-
-  ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0);
-  ctx.strokeStyle = 'rgba(0,255,136,.09)'; ctx.lineWidth = 7; ctx.stroke();
-
-  for (let d = -35; d <= 35; d += 5) {
-    const a   = Math.PI - (d + 35) / 70 * Math.PI;
-    const inn = d % 10 === 0 ? r - 11 : r - 6;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-    ctx.lineTo(cx + Math.cos(a) * inn, cy + Math.sin(a) * inn);
-    ctx.strokeStyle = d === 0 ? '#00ff8848' : '#00ff8820';
-    ctx.lineWidth   = d % 10 === 0 ? 1.4 : 0.7;
-    ctx.stroke();
-  }
-
-  const ra = Math.PI - (rudder + 35) / 70 * Math.PI;
-  ctx.beginPath(); ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(ra) * (r + 2), cy + Math.sin(ra) * (r + 2));
-  ctx.strokeStyle = '#00ccff'; ctx.lineWidth = 2.2;
-  ctx.shadowColor = '#00ccff'; ctx.shadowBlur = 7;
-  ctx.stroke(); ctx.shadowBlur = 0;
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - r);
-  ctx.strokeStyle = '#00ff8828'; ctx.lineWidth = 0.9; ctx.stroke();
+// スカラー値（速度、RPMなど）のスムージング関数
+function smoothValue(current, target, rate, delta) {
+    // 指数緩和関数 (Eased)
+    return current + (target - current) * (1 - Math.exp(-rate * delta));
 }
 
-// ---- レーダー ----
-
-// ---- ナビゲーションデータ ----
-export function updateNavData(P, curM) {
-  const ids = ['td1','td2','td3','td4','td5','td6'];
-  const as = Math.abs(P.speed);
-  const hdg = ((P.heading * 180 / Math.PI) % 360 + 360) % 360;
-
-  if (document.getElementById('td1')) {
-    document.getElementById('td1').textContent = hdg.toFixed(1) + '°';
-  }
-  if (document.getElementById('td2')) {
-    document.getElementById('td2').textContent = as.toFixed(1) + ' kt';
-  }
-  if (document.getElementById('td3')) {
-    const rotDeg = (P.yawRate * 180 / Math.PI * 60).toFixed(1);
-    document.getElementById('td3').textContent = rotDeg + '°/min';
-  }
-  if (document.getElementById('td4')) {
-    document.getElementById('td4').textContent = P.rudder.toFixed(1) + '°';
-  }
-  if (document.getElementById('td5')) {
-    document.getElementById('td5').textContent = Math.round(P.rpm) + ' RPM';
-  }
-
-  const EL = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
-  if (document.getElementById('td6')) {
-    document.getElementById('td6').textContent = EL[P.engineOrder + 4] || 'STOP';
-  }
-
-  const rv = document.getElementById('ruv');
-  if (rv) rv.textContent = (P.rudder >= 0 ? '+' : '') + P.rudder.toFixed(1) + '°';
+export function initHUD() {
+    canvas = document.getElementById('hudCanvas');
+    ctx = canvas.getContext('2d');
+    resizeHUD();
+    window.addEventListener('resize', resizeHUD);
 }
 
-// ---- エンジンテレグラフ ----
-const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
-const ENG_IDS    = ['tf0','tf1','tf2','tf3','tf4','tf5','tf6','tf7','tf8'];
-
-// ---- 新しいテレグラフ（画面左上） ----
-const NEW_ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
-const NEW_ENG_IDS = ['tg-rev-full','tg-rev-half','tg-rev-slow','tg-rev-dead','tg-stop','tg-fwd-dead','tg-fwd-slow','tg-fwd-half','tg-fwd-full'];
-
-export function updateTelegraph(engineOrder) {
-    const idx = engineOrder + 4; 
-    NEW_ENG_IDS.forEach((id, i) => {
-        document.getElementById(id)?.classList.toggle('on', i === idx);
-    });
-    ENG_IDS.forEach((id, i) => document.getElementById(id)?.classList.toggle('on', i === idx));
-    const td = document.getElementById('td');
-    if (td) td.textContent = ENG_LABELS[idx];
+function resizeHUD() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight; // フルスクリーンで描画
 }
 
-export function togglePanels(show) {
-    const panels = document.querySelector('#hud .panels');
-    if (!panels) return;
-    const HUD_MIN_Y = 170;
-    panels.style.transform = show ? 'translateY(0)' : `translateY(${HUD_MIN_Y}px)`;
-    localStorage.setItem('ss_hud_panels', show);
-}
+// メインループから毎フレーム呼び出される描画関数
+// P: 物理状態 (physics.js), simTime: 仮想時間, timeDelta: 物理Delta
+export function drawDashboard(P, simTime, timeDelta) {
+    if (!ctx) return;
 
-// ---- 接岸ガイドバー ----
+    // 物理Deltaを使う (等速な追従のため)
+    const dt = timeDelta;
 
-// ---- ペナルティトースト ----
-let ptTimer = null;
-export function showPenaltyToast(msg) {
-  const el = document.getElementById('ptst');
-  if (!el) return;
-  el.textContent = msg; el.classList.add('on');
-  clearTimeout(ptTimer);
-  ptTimer = setTimeout(() => el.classList.remove('on'), 2600);
-}
+    // --- ★1. 針のスムージング処理 (P から V へ) ---
+    V.telegraph = smoothValue(V.telegraph, P.telegraph, smoothRate * 2.0, dt); // テレグラフは速く
+    V.windDir = smoothAngle(V.windDir, P.windDir, angleSmoothRate, dt);
+    V.windSpeed = smoothValue(V.windSpeed, P.windSpeed, smoothRate, dt);
+    V.shipSpeed = smoothValue(V.shipSpeed, P.speed * tools.mpsToKnots, smoothRate, dt); // Knotsに変換
+    V.rudderAngle = smoothValue(V.rudderAngle, -P.rudder, smoothRate, dt); // 舵角は逆（Portがプラス）
+    V.yawRate = smoothValue(V.yawRate, -P.yawRate, angleSmoothRate, dt); // ROTも逆
+    V.rpm = smoothValue(V.rpm, P.rpm, smoothRate, dt);
 
+    // --- 2. 描画ロジック ---
+    // 画面全体をクリア (計器バー以外は透明)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-// ---- フラッシュ ----
-export function flashScreen(cls) {
-  const f = document.getElementById('flash');
-  if (!f) return;
-  f.className = cls + ' on';
-  setTimeout(() => f.className = '', 500);
-}
+    // ★計器バーの背景（半透明の黒帯）
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // 70%の透明度で海を透けさせる
+    ctx.fillRect(0, 0, canvas.width, gaugeBarHeight);
 
+    // --- 各計器の描画 (★物理Pではなく、スムージングされた表示Vの値を使う) ---
+    const gaugeWidth = canvas.width / 8; // 8個の計器
+    const yCenter = gaugeBarHeight / 2;
 
-// ---- スコアレーダーチャート ----
-export function drawResultRadar(items, collision) {
-  const cv  = document.getElementById('drrc2');
-  if (!cv) return;
-  const ctx = cv.getContext('2d');
-  const W = cv.width, H = cv.height, cx = W / 2, cy = H / 2, r = 50;
-  ctx.clearRect(0, 0, W, H);
-  const n = items.length, angs = items.map((_, i) => i / n * Math.PI * 2 - Math.PI / 2);
+    // ★フォントを統一 (BIZ UDMincho)
+    const fontBold = "bold 16px 'BIZ UDMincho', serif";
+    const fontSmall = "normal 14px 'BIZ UDMincho', serif";
+    const fontLarge = "bold 20px 'BIZ UDMincho', serif";
 
-  [0.25, 0.5, 0.75, 1].forEach(f => {
-    ctx.beginPath();
-    angs.forEach((a, i) => {
-      const x = cx + Math.cos(a)*r*f, y = cy + Math.sin(a)*r*f;
-      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    });
-    ctx.closePath(); ctx.strokeStyle = `rgba(0,255,136,${0.05+f*0.05})`; ctx.lineWidth = 0.8; ctx.stroke();
-  });
-  angs.forEach(a => {
-    ctx.beginPath(); ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a)*r, cy + Math.sin(a)*r);
-    ctx.strokeStyle = 'rgba(0,255,136,.1)'; ctx.lineWidth = 0.8; ctx.stroke();
-  });
-
-  ctx.beginPath();
-  items.forEach((it, i) => {
-    const f = it.pct / 100, x = cx + Math.cos(angs[i])*r*f, y = cy + Math.sin(angs[i])*r*f;
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  });
-  ctx.closePath();
-  const sc = collision ? '#ff4444' : '#00ff88';
-  ctx.fillStyle = collision ? 'rgba(255,68,68,.16)' : 'rgba(0,255,136,.14)'; ctx.fill();
-  ctx.strokeStyle = sc; ctx.lineWidth = 1.4; ctx.shadowColor = sc; ctx.shadowBlur = 5; ctx.stroke(); ctx.shadowBlur = 0;
-
-  items.forEach((it, i) => {
-    const f = it.pct / 100, x = cx + Math.cos(angs[i])*r*f, y = cy + Math.sin(angs[i])*r*f;
-    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = sc; ctx.shadowColor = sc; ctx.shadowBlur = 3; ctx.fill(); ctx.shadowBlur = 0;
-  });
-
-  ctx.font = '8px Courier New'; ctx.fillStyle = 'rgba(0,255,136,.55)'; ctx.textAlign = 'center';
-  items.forEach((it, i) => {
-    const x = cx + Math.cos(angs[i]) * (r + 13), y = cy + Math.sin(angs[i]) * (r + 13) + 3;
-    ctx.fillText(it.n, x, y);
-  });
-}
-
-// ---- スコアカウントアップ ----
-export function animScore(target) {
-  const el = document.getElementById('drsn');
-  if (!el) return;
-  let cur = 0;
-  const step = Math.ceil(target / 40);
-  const tm = setInterval(() => {
-    cur = Math.min(cur + step, target);
-    el.textContent = cur;
-    if (cur >= target) clearInterval(tm);
-  }, 28);
-}
-
-// ---- スコア結果画面表示 ----
-export function showDockResult(scoreData, stars, collision, elapsed, curM) {
-  const mm = Math.floor(elapsed / 60), ss = elapsed % 60;
-  const dm = document.getElementById('drm');
-  if (!dm) return;
-  dm.textContent = collision ? '衝突！' : stars === 3 ? '完璧な接岸' : stars === 2 ? '接岸成功' : stars === 1 ? '接岸完了' : '接岸失敗';
-  dm.className   = 'drm' + (collision ? ' col' : '');
-  const sn = document.getElementById('drsn');
-  if (sn) sn.className = 'drsn' + (collision ? ' col' : '');
-  const s2 = document.getElementById('drs2');
-  if (s2) s2.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-  const mid = document.getElementById('drmid');
-  if (mid) mid.textContent = curM ? curM.id : '';
-
-  const ranks = ['', '3等航海士', '2等航海士', '1等航海士', '船長'];
-  const rcols = ['', '#00ff88', '#00ccff', '#ffcc00', '#ff8844'];
-  const ri = stars >= 3 ? 4 : stars >= 2 ? 3 : stars >= 1 ? 2 : 1;
-  const rk = document.getElementById('drrank');
-  if (rk) { rk.textContent = ranks[ri]; rk.style.color = rcols[ri]; }
-
-  const bd = document.getElementById('drbd');
-  if (bd) {
-    bd.innerHTML = scoreData.items.map((it, i) => `
-      <div class="dri">
-        <div class="drih">
-          <span class="drin">${it.n}</span>
-          <span class="driv${it.p < it.m * 0.35 ? ' bad' : ''}">${it.p}/${it.m}pt</span>
-        </div>
-        <div class="dribw"><div class="drib" id="drb${i}" style="width:0%"></div></div>
-      </div>`).join('')
-      + `<div style="margin-top:5px;padding-top:5px;border-top:1px solid #00ff8812;font-size:9px;display:flex;justify-content:space-between;">
-           <span style="color:#00ff8858">所要時間</span>
-           <span style="color:#00ff88">${mm}分${String(ss).padStart(2,'0')}秒</span>
-         </div>`;
-    setTimeout(() => {
-      scoreData.items.forEach((it, i) => {
-        const b = document.getElementById('drb' + i);
-        if (b) {
-          b.style.width      = it.pct + '%';
-          b.style.background = it.pct > 70 ? '#00ff88' : it.pct > 40 ? '#ffcc00' : '#ff6644';
-          if (it.pct > 70) b.style.boxShadow = '0 0 4px #00ff88';
-        }
-      });
-    }, 320);
-  }
-
-  const pen = document.getElementById('drp');
-  if (pen) pen.innerHTML = scoreData.pens.length ? scoreData.pens.map(p => `<div>${p}</div>`).join('') : '';
-
-  document.getElementById('dr')?.classList.add('v');
-}
-
-// ---- 天候インジケーター ----
-export function applyWeatherOverlay(m) {
-  const ni  = document.getElementById('night-ov');
-  const wo  = document.getElementById('wx-ov');
-  const rc  = document.getElementById('rain-cv');
-
-  if (ni)  ni.style.background = 'rgba(0,4,16,0)';
-  if (wo)  wo.style.background = 'rgba(0,0,0,0)';
-  if (rc)  rc.style.opacity    = '0';
-
-  if (m.wx === 'ngt') {
-    if (ni) ni.style.background = 'rgba(0,4,18,.75)';
-  }
-  if (m.wx === 'str') {
-    if (rc) rc.style.opacity = '1';
-    if (wo) wo.style.background = 'rgba(40,55,65,.22)';
-  }
-  if (m.wx === 'rain') {
-    if (rc) rc.style.opacity = '.7';
-  }
-  if (m.fog > 0.4) {
-    if (wi) { wi.classList.remove('h'); wi.textContent = `🌫 視程${Math.round((1 - m.fog) * 10 + 1)}km — レーダー活用`; }
-  }
-}
-
-// ==================================================================
-// drawBase: 航海計器風リデザイン（参考画像ベース）
-// ==================================================================
-function drawBase(ctx, title, unit, minVal, maxVal, numStep, majStep, minStep) {
-    const cx = 80, cy = 80, R = 70;
-    ctx.clearRect(0, 0, 160, 160);
-
-    // --- 外側ベゼル（ダーク金属風）---
-    const bevelGrad = ctx.createRadialGradient(cx, cy, R - 8, cx, cy, R + 2);
-    bevelGrad.addColorStop(0, '#888');
-    bevelGrad.addColorStop(0.4, '#ccc');
-    bevelGrad.addColorStop(1, '#555');
-    ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2);
-    ctx.fillStyle = bevelGrad; ctx.fill();
-
-    // --- 文字盤（白）---
-    ctx.beginPath(); ctx.arc(cx, cy, R - 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#f5f5f5'; ctx.fill();
-
-    const startA = -Math.PI * 1.25;
-    const endA   =  Math.PI * 0.25;
-    const range  = maxVal - minVal;
-
-    // --- 目盛り ---
-    for (let i = minVal; i <= maxVal; i += minStep) {
-        const ratio = (i - minVal) / range;
-        const angle = startA + ratio * (endA - startA);
-        const c = Math.cos(angle), s = Math.sin(angle);
-        const isMaj = (i % majStep === 0);
-        const isMid = (majStep / minStep > 2) && ((i - minVal) % (majStep / 2) === 0);
-        const len   = isMaj ? 12 : isMid ? 8 : 5;
-        const lw    = isMaj ? 1.8 : 0.8;
-
-        ctx.beginPath();
-        ctx.moveTo(cx + c * (R - 3 - len), cy + s * (R - 3 - len));
-        ctx.lineTo(cx + c * (R - 3),       cy + s * (R - 3));
-        ctx.lineWidth = lw;
-        ctx.strokeStyle = '#111';
-        ctx.stroke();
-
-        if (i % numStep === 0) {
-            const textR = R - 3 - len - 8;
-            ctx.font = 'bold 10px sans-serif';
-            ctx.fillStyle = '#000';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(Math.abs(i), cx + c * textR, cy + s * textR);
-        }
-    }
-
-    // --- タイトル（下部中央）---
-    ctx.font = 'bold 9px sans-serif';
-    ctx.fillStyle = '#222';
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'white';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(title, cx, cy + 28);
-    ctx.font = '8px sans-serif';
-    ctx.fillStyle = '#555';
-    ctx.fillText(unit, cx, cy + 38);
+
+    // 1. TELEGRAPH (TELEGRAPH)
+    drawTelegraph(ctx, gaugeWidth * 0.5, yCenter, 50, V.telegraph, fontSmall);
+
+    // 2. WIND DIR (WIND DIR)
+    drawWindGauge(ctx, gaugeWidth * 1.5, yCenter, 50, V.windDir, V.windSpeed, fontBold, fontSmall);
+
+    // 3. WIND SPEED (WIND SPD)
+    drawSpeedGauge(ctx, gaugeWidth * 2.5, yCenter, 50, V.windSpeed, 'WIND SPD', 'Knots', 60, fontBold, fontSmall, fontLarge);
+
+    // 4. SHIP SPEED (SHIP SPD)
+    drawSpeedGauge(ctx, gaugeWidth * 3.5, yCenter, 50, V.shipSpeed, 'SHIP SPD', 'Knots', 30, fontBold, fontSmall, fontLarge);
+
+    // 5. RUDDER ANGLE (RUDDER)
+    drawRudderGauge(ctx, gaugeWidth * 4.5, yCenter, 50, V.rudderAngle, fontBold, fontSmall);
+
+    // 6. RATE OF TURN (R.O.T.)
+    drawRotGauge(ctx, gaugeWidth * 5.5, yCenter, 50, V.yawRate, fontBold, fontSmall);
+
+    // 7. ENGINE RPM (RPM)
+    drawRpmGauge(ctx, gaugeWidth * 6.5, yCenter, 50, V.rpm, P.crashAsternActive, overloadTimer, fontBold, fontSmall, fontLarge);
+
+    // 8. CLOCK (CLOCK)
+    drawClock(ctx, gaugeWidth * 7.5, yCenter, 50, simTime, fontBold, fontSmall);
+
+    // OVERLOAD タイマー更新
+    overloadTimer += dt;
 }
 
-function drawColorArc(ctx, minVal, maxVal, startVal, endVal, color, radius, width) {
-    const startA = -Math.PI * 1.25;
-    const endA   =  Math.PI * 0.25;
-    const range  = maxVal - minVal;
-    const sa = startA + ((startVal - minVal) / range) * (endA - startA);
-    const ea = startA + ((endVal   - minVal) / range) * (endA - startA);
+// --- 各計器の具体的な描画関数群 (文字盤のディテールを調整) ---
+
+// 1. TELEGRAPH (MOLスタイル)
+function drawTelegraph(ctx, x, y, r, value, fontSmall) {
+    drawBaseCircle(ctx, x, y, r, 'TELEGRAPH');
+    const steps = ['FULL', 'HALF', 'SLOW', 'DEAD', 'STOP', 'DEAD', 'SLOW', 'HALF', 'FULL'];
+    const angles = [-150, -120, -90, -60, 0, 60, 90, 120, 150];
+
+    // 文字盤
+    ctx.font = fontSmall;
+    ctx.fillStyle = 'white';
+    steps.forEach((step, i) => {
+        const rad = tools.degToRad(angles[i] - 90);
+        const tx = x + Math.cos(rad) * (r * 0.75);
+        const ty = y + Math.sin(rad) * (r * 0.75);
+        ctx.fillText(step, tx, ty);
+    });
+
+    // 針 (valueにスムーズに追従)
+    const angle = tools.map(value, -4, 4, -150, 150); // FULL AHEAD(+4) 〜 FULL ASTERN(-4)
+    drawNeedle(ctx, x, y, r * 0.9, angle, 'red', 4);
+}
+
+// 2. WIND GAUGE (WIND DIR)
+function drawWindGauge(ctx, x, y, r, dir, speed, fontBold, fontSmall) {
+    drawBaseCircle(ctx, x, y, r, 'WIND DIR');
+    ctx.font = fontSmall;
+    // N, E, S, W
+    [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([label, ang]) => {
+        const rad = tools.degToRad(ang - 90);
+        ctx.fillText(label, x + Math.cos(rad) * (r * 0.75), y + Math.sin(rad) * (r * 0.75));
+    });
+
+    // 風向の針
+    drawNeedle(ctx, x, y, r * 0.9, dir, 'skyblue', 3);
+    // 中央に風速数値
+    ctx.font = fontBold;
+    ctx.fillText(speed.toFixed(1), x, y + r * 0.2);
+}
+
+// 3, 4. SPEED GAUGE (WIND SPD, SHIP SPD)
+function drawSpeedGauge(ctx, x, y, r, speed, title, unit, maxSpeed, fontBold, fontSmall, fontLarge) {
+    drawBaseCircle(ctx, x, y, r, title);
+    // 目盛り (0 〜 maxSpeed)
+    for (let i = 0; i <= maxSpeed; i += (maxSpeed / 6)) {
+        const ang = tools.map(i, 0, maxSpeed, -140, 140);
+        drawTick(ctx, x, y, r, ang, i % (maxSpeed/3) === 0 ? 10 : 5);
+        if (i % (maxSpeed/3) === 0) {
+            ctx.font = fontSmall;
+            const rad = tools.degToRad(ang - 90);
+            ctx.fillText(i.toFixed(0), x + Math.cos(rad) * (r * 0.7), y + Math.sin(rad) * (r * 0.7));
+        }
+    }
+    // 針
+    const angle = tools.map(speed, 0, maxSpeed, -140, 140);
+    drawNeedle(ctx, x, y, r * 0.9, angle, title.includes('WIND') ? 'skyblue' : 'white', 3);
+    // 中央下部に数値と単位
+    ctx.font = fontLarge;
+    ctx.fillText(speed.toFixed(1), x, y + r * 0.2);
+    ctx.font = fontSmall;
+    ctx.fillText(unit, x, y + r * 0.5);
+}
+
+// 5. RUDDER GAUGE (RUDDER)
+function drawRudderGauge(ctx, x, y, r, angle, fontBold, fontSmall) {
+    drawBaseCircle(ctx, x, y, r, 'RUDDER');
+    // 目盛り (Port 35 〜 Starboard 35)
+    for (let i = -35; i <= 35; i += 5) {
+        const ang = tools.map(i, -35, 35, -140, 140);
+        drawTick(ctx, x, y, r, ang, i % 10 === 0 ? 10 : 5);
+        if (i % 10 === 0 && i !== 0) {
+            ctx.font = fontSmall;
+            const rad = tools.degToRad(ang - 90);
+            ctx.fillText(Math.abs(i), x + Math.cos(rad) * (r * 0.7), y + Math.sin(rad) * (r * 0.7));
+        }
+    }
+    // P, S
+    ctx.font = fontBold;
+    ctx.fillStyle = 'red'; ctx.fillText('P', x - r * 0.8, y); // Port
+    ctx.fillStyle = 'green'; ctx.fillText('S', x + r * 0.8, y); // Starboard
+    ctx.fillStyle = 'white';
+
+    // 針
+    drawNeedle(ctx, x, y, r * 0.9, tools.map(angle, -35, 35, -140, 140), 'white', 3);
+    // 中央に数値
+    ctx.font = fontBold;
+    ctx.fillText(Math.abs(angle).toFixed(1) + '°', x, y + r * 0.2);
+}
+
+// 6. RATE OF TURN (R.O.T.)
+function drawRotGauge(ctx, x, y, r, yawRate, fontBold, fontSmall) {
+    drawBaseCircle(ctx, x, y, r, 'R.O.T.');
+    // 目盛り (Port 60 〜 Starboard 60 deg/min)
+    for (let i = -60; i <= 60; i += 10) {
+        const ang = tools.map(i, -60, 60, -140, 140);
+        drawTick(ctx, x, y, r, ang, i % 20 === 0 ? 10 : 5);
+        if (i % 20 === 0 && i !== 0) {
+            ctx.font = fontSmall;
+            const rad = tools.degToRad(ang - 90);
+            ctx.fillText(Math.abs(i), x + Math.cos(rad) * (r * 0.7), y + Math.sin(rad) * (r * 0.7));
+        }
+    }
+    // 針
+    drawNeedle(ctx, x, y, r * 0.9, tools.map(yawRate, -60, 60, -140, 140), 'white', 3);
+    // 中央に数値 (deg/min)
+    ctx.font = fontBold;
+    ctx.fillText(Math.abs(yawRate).toFixed(1), x, y + r * 0.2);
+    ctx.font = fontSmall;
+    ctx.fillText('deg/min', x, y + r * 0.5);
+}
+
+// 7. ENGINE RPM (RPM)
+function drawRpmGauge(ctx, x, y, r, rpm, isCrashAstern, timer, fontBold, fontSmall, fontLarge) {
+    drawBaseCircle(ctx, x, y, r, 'RPM');
+    const maxRpm = 100;
+    // 目盛り (0 〜 100)
+    for (let i = 0; i <= maxRpm; i += 10) {
+        const ang = tools.map(i, 0, maxRpm, -140, 140);
+        drawTick(ctx, x, y, r, ang, 10);
+        if (i % 20 === 0) {
+            ctx.font = fontSmall;
+            const rad = tools.degToRad(ang - 90);
+            ctx.fillText(i, x + Math.cos(rad) * (r * 0.7), y + Math.sin(rad) * (r * 0.7));
+        }
+    }
+    // 針
+    const angle = tools.map(rpm, 0, maxRpm, -140, 140);
+    drawNeedle(ctx, x, y, r * 0.9, angle, isCrashAstern ? 'orange' : 'white', 3);
+    // 中央に数値
+    ctx.font = fontLarge;
+    ctx.fillText(Math.abs(rpm).toFixed(0), x, y + r * 0.2);
+
+    // ★OVERLOAD アラーム (Crash Astern時)
+    if (isCrashAstern) {
+        ctx.font = fontSmall;
+        ctx.fillStyle = 'orange';
+        ctx.fillText('ASTERN', x, y - r * 0.4);
+        // 点滅ロジック
+        if (timer % 1.0 < 0.5) { // 1秒周期、0.5秒点灯
+            ctx.fillStyle = 'red';
+            ctx.fillText('OVERLOAD', x, y - r * 0.6);
+        }
+    }
+}
+
+// 8. CLOCK (CLOCK)
+function drawClock(ctx, x, y, r, simTime, fontBold, fontSmall) {
+    drawBaseCircle(ctx, x, y, r, 'CLOCK');
+    ctx.font = fontSmall;
+    ctx.fillStyle = 'white';
+    // 1 〜 12 の数字
+    for (let i = 1; i <= 12; i++) {
+        const rad = tools.degToRad(i * 30 - 90);
+        ctx.fillText(i, x + Math.cos(rad) * (r * 0.75), y + Math.sin(rad) * (r * 0.75));
+    }
+
+    // ★仮想時間 (simTime) に基づく滑らかな針の移動
+    const totalSeconds = simTime % (12 * 3600); // 12時間周期
+    const hours = totalSeconds / 3600;
+    const minutes = (totalSeconds % 3600) / 60;
+    const seconds = totalSeconds % 60;
+
+    // 時針 (1時間で30度、1分で0.5度)
+    drawNeedle(ctx, x, y, r * 0.5, (hours * 30) + (minutes * 0.5), 'white', 4);
+    // 分針 (1分で6度、1秒で0.1度)
+    drawNeedle(ctx, x, y, r * 0.8, (minutes * 6) + (seconds * 0.1), 'white', 3);
+    // 秒針 (1秒で6度)
+    drawNeedle(ctx, x, y, r * 0.9, seconds * 6, 'red', 1);
+}
+
+// --- 共通描画補助関数 ---
+
+// 計器のベースとなる円とタイトル
+function drawBaseCircle(ctx, x, y, r, title) {
     ctx.beginPath();
-    ctx.arc(80, 80, radius, sa, ea);
-    ctx.lineWidth = width;
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#444'; // 目立たないグレー
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = "normal 14px 'BIZ UDMincho', serif";
+    ctx.fillStyle = '#aaa'; // 薄いグレー
+    ctx.fillText(title, x, y - r * 1.2); // タイトルを少し上に配置
+    ctx.fillStyle = 'white';
+}
+
+// 針の描画 (中央から指定角度、長さ、色)
+function drawNeedle(ctx, x, y, length, angleDeg, color, width) {
+    const rad = tools.degToRad(angleDeg - 90); // Canvasは右が0度、真上を0度にする
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(rad) * length, y + Math.sin(rad) * length);
     ctx.strokeStyle = color;
-    ctx.lineCap = 'butt';
+    ctx.lineWidth = width;
     ctx.stroke();
 }
 
-// ==================================================================
-// drawNeedle: 鋭くシャープな航海計器針
-// ==================================================================
-function drawNeedle(ctx, val, minVal, maxVal, isRudder=false) {
-    const cx = 80, cy = 80, R = 70;
-    const startA = -Math.PI * 1.25;
-    const endA   =  Math.PI * 0.25;
-    const v = Math.min(Math.max(val, minVal), maxVal);
-    const angle = startA + ((v - minVal) / (maxVal - minVal)) * (endA - startA);
-    const c = Math.cos(angle), s = Math.sin(angle);
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle + Math.PI / 2);
-
-    // 針本体（細い三角形）
+// 目盛りの描画
+function drawTick(ctx, x, y, r, angleDeg, length) {
+    const rad = tools.degToRad(angleDeg - 90);
+    const outerR = r;
+    const innerR = r - length;
     ctx.beginPath();
-    ctx.moveTo(0, -(R - 8));   // 先端
-    ctx.lineTo(-2.5, 10);      // 左根元
-    ctx.lineTo( 2.5, 10);      // 右根元
-    ctx.closePath();
-    ctx.fillStyle = '#111';
-    ctx.fill();
-
-    // カウンターウェイト（反対側の短い部分）
-    ctx.beginPath();
-    ctx.moveTo(0, 10);
-    ctx.lineTo(-3, 22);
-    ctx.lineTo( 3, 22);
-    ctx.closePath();
-    ctx.fillStyle = isRudder ? '#d32f2f' : '#555';
-    ctx.fill();
-
-    ctx.restore();
-
-    // 中心軸
-    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#333'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#ddd'; ctx.fill();
-}
-
-function drawNeedleCompass(ctx, valDeg, isWind=false) {
-    const cx = 80, cy = 80, R = 70;
-    const angle = (valDeg * Math.PI / 180) - (Math.PI / 2);
-    const c = Math.cos(angle), s = Math.sin(angle);
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle + Math.PI / 2);
-
-    // 先端側（濃い色）
-    ctx.beginPath();
-    ctx.moveTo(0, -(R - 8));
-    ctx.lineTo(-3, 5);
-    ctx.lineTo( 3, 5);
-    ctx.closePath();
-    ctx.fillStyle = isWind ? '#1a237e' : '#111';
-    ctx.fill();
-
-    // 反対側（薄い色）
-    ctx.beginPath();
-    ctx.moveTo(0, 20);
-    ctx.lineTo(-3, 5);
-    ctx.lineTo( 3, 5);
-    ctx.closePath();
-    ctx.fillStyle = isWind ? '#7986cb' : '#888';
-    ctx.fill();
-
-    ctx.restore();
-
-    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#333'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#ddd'; ctx.fill();
-}
-
-export function setNight(night) {
-    const NIGHT_C = 'rgba(230, 60, 40, 0.25)';
-    const n = document.getElementById('night');
-    if (n) n.style.backgroundColor = night ? NIGHT_C : 'transparent';
-}
-
-// ==================================================================
-// 【修正】updateClock: ゲーム内仮想時間と天候に連動する時計
-// ==================================================================
-function updateClock(ctx, simTime, curM, mst) {
-    if (!ctx) return;
-    const cx = 80, cy = 80, r = 70;
-    ctx.clearRect(0, 0, 160, 160);
-
-    // ミッション開始からの経過シミュレーション時間（ミリ秒）
-    let elapsed = 0;
-    if (mst && mst.t0) elapsed = simTime - mst.t0;
-    else elapsed = simTime;
-
-    // 天候(時間帯)に合わせたベース時刻（ミリ秒）
-    let baseTime = 10 * 3600 * 1000; // 10:00
-    let dateTxt = '4/01';
-
-    if (curM) {
-        if (curM.wx === 'ngt') { baseTime = 2 * 3600 * 1000; dateTxt = '12/15'; }
-        else if (curM.wx === 'str') { baseTime = 17 * 3600 * 1000; dateTxt = '9/10'; }
-        else if (curM.wx === 'rain') { baseTime = 14 * 3600 * 1000; dateTxt = '6/20'; }
-    }
-
-    let totalSeconds = (baseTime + elapsed) / 1000;
-    let h = (totalSeconds / 3600) % 12;
-    let m = (totalSeconds / 60) % 60;
-    let s = totalSeconds % 60;
-
-    // 文字盤
-    let grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r);
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#d5d5d5');
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.lineWidth = 3; ctx.strokeStyle = '#222'; ctx.stroke();
-
-    // 目盛り
-    for (let i = 0; i < 60; i++) {
-        const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
-        const isMaj = i % 5 === 0;
-        const inner = r - (isMaj ? 12 : 6);
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
-        ctx.lineTo(cx + Math.cos(a) * r,     cy + Math.sin(a) * r);
-        ctx.lineWidth = isMaj ? 1.5 : 0.7; ctx.strokeStyle = isMaj ? '#000' : '#555'; ctx.stroke();
-    }
-
-    // 数字
-    ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    [[12,0],[3,90],[6,180],[9,270]].forEach(([n, deg]) => {
-        const a = (deg - 90) * Math.PI / 180;
-        ctx.fillText(n, cx + Math.cos(a) * (r - 20), cy + Math.sin(a) * (r - 20));
-    });
-
-    // 時針
-    const ha = (h / 12) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath(); ctx.moveTo(cx - Math.cos(ha)*10, cy - Math.sin(ha)*10); ctx.lineTo(cx + Math.cos(ha)*(r*0.5), cy + Math.sin(ha)*(r*0.5));
-    ctx.lineWidth = 4; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.stroke();
-
-    // 分針
-    const ma = (m / 60) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath(); ctx.moveTo(cx - Math.cos(ma)*12, cy - Math.sin(ma)*12); ctx.lineTo(cx + Math.cos(ma)*(r*0.72), cy + Math.sin(ma)*(r*0.72));
-    ctx.lineWidth = 2.5; ctx.strokeStyle = '#222'; ctx.stroke();
-
-    // 秒針
-    const sa = (s / 60) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath(); ctx.moveTo(cx - Math.cos(sa)*14, cy - Math.sin(sa)*14); ctx.lineTo(cx + Math.cos(sa)*(r*0.85), cy + Math.sin(sa)*(r*0.85));
-    ctx.lineWidth = 1.2; ctx.strokeStyle = '#d32f2f'; ctx.stroke();
-
-    // 中心
-    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fillStyle = '#d32f2f'; ctx.fill();
-    ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = '#555'; ctx.fillText(dateTxt, 80, 115);
-    ctx.lineCap = 'butt';
-}
-
-// ==================================================================
-// updateDashboard: 全メーターを以前のクリーンなレイアウトに差し戻し
-// ==================================================================
-// 【変更】引数に simTime, curM, mst を追加
-export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
-    const cvs = {
-        shipSpeed: document.getElementById('ship-speed-canvas'),
-        rudder: document.getElementById('rudder-canvas'),
-        rot: document.getElementById('rot-canvas'),
-        rpm: document.getElementById('rpm-canvas'),
-        windSpeed: document.getElementById('wind-speed-canvas'),
-        windDir: document.getElementById('wind-dir-canvas'),
-        clock: document.getElementById('clock-canvas')
-    };
-    if (!cvs.shipSpeed) return;
-
-    let ctx;
-
-    // 1. SHIP SPEED (-10〜30 KNOTS) — 後進目盛り付き
-    ctx = cvs.shipSpeed.getContext('2d');
-    drawBase(ctx, 'SPEED', 'KNOTS', -10, 30, 5, 5, 1);
-    drawColorArc(ctx, -10, 30, -10, 0, 'rgba(200,30,30,0.7)', 62, 8); // 後進（赤）
-    drawNeedle(ctx, P.speed, -10, 30);
-
-    // 2. RUDDER (DEG)
-    ctx = cvs.rudder.getContext('2d');
-    drawBase(ctx, 'RUDDER', 'DEG', -35, 35, 10, 5, 1);
-    drawColorArc(ctx, -35, 35, -35, 0, 'rgba(200,30,30,0.7)', 62, 8);
-    drawColorArc(ctx, -35, 35, 0, 35, 'rgba(40,140,60,0.7)', 62, 8);
-    drawNeedle(ctx, P.rudder, -35, 35, true);
-
-    // 3. RATE OF TURN (DEG/MIN)
-    ctx = cvs.rot.getContext('2d');
-    drawBase(ctx, 'RATE OF TURN', 'DEG/MIN', -30, 30, 10, 5, 1);
-    drawColorArc(ctx, -30, 30, -30, 0, 'rgba(200,30,30,0.7)', 62, 8);
-    drawColorArc(ctx, -30, 30, 0, 30, 'rgba(40,140,60,0.7)', 62, 8);
-    drawNeedle(ctx, P.yawRate * (180 / Math.PI) * 60, -30, 30, true);
-
-    // 4. ENGINE (RPM) — 0を真上（中央）に配置、後進赤/前進緑に分割
-    ctx = cvs.rpm.getContext('2d');
-    drawBase(ctx, 'ENGINE', 'RPM', -120, 120, 20, 10, 5);
-    drawColorArc(ctx, -120, 120, -120, 0, 'rgba(200,30,30,0.7)', 62, 8); // 後進（赤）
-    drawColorArc(ctx, -120, 120, 0, 120, 'rgba(40,140,60,0.7)', 62, 8); // 前進（緑）
-    drawNeedle(ctx, P.rpm, -120, 120);
-
-    // 【追加】エンジンの過負荷（OVERLOAD）アラームの点滅表示
-    if (P.engineOverload) {
-        const cx = 80;
-        ctx.font = 'bold 11px sans-serif';
-        ctx.fillStyle = '#ff0000';
-        ctx.textAlign = 'center';
-        // 0.5秒間隔で点滅させる
-        if (Math.floor(Date.now() / 500) % 2 === 0) {
-            ctx.fillText('OVERLOAD', cx, 115);
-        }
-    }
-
-    // 5. WIND SPEED (KNOTS)
-    ctx = cvs.windSpeed.getContext('2d');
-    drawBase(ctx, 'WIND SPEED', 'KNOTS', 0, 100, 20, 10, 5);
-    drawNeedle(ctx, P.windSpeed, 0, 100);
-
-    // 6. WIND DIRECTION (REL) — コンパスローズ
-    ctx = cvs.windDir.getContext('2d');
-    const cx = 80, cy = 80, R = 70;
-    ctx.clearRect(0, 0, 160, 160);
-
-    // ベゼル
-    const bGrad = ctx.createRadialGradient(cx, cy, R - 8, cx, cy, R + 2);
-    bGrad.addColorStop(0, '#888'); bGrad.addColorStop(0.4, '#ccc'); bGrad.addColorStop(1, '#555');
-    ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2); ctx.fillStyle = bGrad; ctx.fill();
-
-    // 文字盤
-    ctx.beginPath(); ctx.arc(cx, cy, R - 3, 0, Math.PI * 2); ctx.fillStyle = '#f5f5f5'; ctx.fill();
-
-    // 船体シルエット（中央）
-    ctx.save();
-    ctx.fillStyle = 'rgba(60,80,100,0.18)'; ctx.translate(cx, cy);
-    ctx.beginPath(); ctx.moveTo(0,-26); ctx.lineTo(10,0); ctx.lineTo(8,20); ctx.lineTo(0,26); ctx.lineTo(-8,20); ctx.lineTo(-10,0); ctx.closePath(); ctx.fill();
-    ctx.restore();
-
-    // 目盛り＆数字
-    for (let i = 0; i < 360; i += 10) {
-        const ac = (i * Math.PI / 180) - (Math.PI / 2);
-        const isMaj = i % 30 === 0;
-        const len = isMaj ? 12 : 6;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(ac) * (R - 3 - len), cy + Math.sin(ac) * (R - 3 - len));
-        ctx.lineTo(cx + Math.cos(ac) * (R - 3),       cy + Math.sin(ac) * (R - 3));
-        ctx.lineWidth = isMaj ? 1.8 : 0.8; ctx.strokeStyle = '#111'; ctx.stroke();
-        if (isMaj && i !== 0) {
-            ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = '#222';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(i, cx + Math.cos(ac)*(R - 19), cy + Math.sin(ac)*(R - 19));
-        }
-    }
-
-    // タイトル
-    ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = '#222';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('WIND DIR', cx, cy + 28);
-    ctx.font = '8px sans-serif'; ctx.fillStyle = '#555';
-    ctx.fillText('DEG (REL)', cx, cy + 38);
-
-    // 相対風向の計算と描画
-    const headingDeg = P.heading * (180 / Math.PI);
-    let relativeWindDir = ((P.windDir - headingDeg) % 360 + 360) % 360;
-    drawNeedleCompass(ctx, relativeWindDir, true);
-
-    // 7. CLOCK
-    if (cvs.clock) updateClock(cvs.clock.getContext('2d'), simTime, curM, mst);
+    ctx.moveTo(x + Math.cos(rad) * innerR, y + Math.sin(rad) * innerR);
+    ctx.lineTo(x + Math.cos(rad) * outerR, y + Math.sin(rad) * outerR);
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 }
