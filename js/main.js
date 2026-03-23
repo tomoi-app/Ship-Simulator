@@ -251,14 +251,14 @@ function applyWeatherScene(m) {
   
   // 晴天時（str/rain/ngt以外）の海デフォルト
   if (!['str','rain','ngt'].includes(m.wx)) {
-    // ★動画のようなリアルで重厚な色合いに変更
-    wu.uDeepColor.value.setHex(0x06141d);     // 深海の重いダークネイビー
-    wu.uShallowColor.value.setHex(0x13384a);  // 浅瀬の少しくすんだ青緑
-    wu.uSkyZenith.value.setHex(0x32628c);     // 少し落ち着いた空の青
-    wu.uSkyHorizon.value.setHex(0xa9cce3);    // 霞んだ地平線
-    wu.uSunColor.value.setHex(0xfff2d6);      // 少し暖かみのある太陽光
+    // ★参考動画のような、非常にリアルで重厚な港湾の色合いに変更
+    wu.uDeepColor.value.setHex(0x040e15);     // さらに深い、ほとんど黒に近いネイビー
+    wu.uShallowColor.value.setHex(0x0e2b38);  // 浅瀬も暗く、くすんだ青緑
+    wu.uSkyZenith.value.setHex(0x4a7fa8);     // 少し明るく、落ち着いた空の青
+    wu.uSkyHorizon.value.setHex(0xbcd7e6);    // 地平線は少し霞む
+    wu.uSunColor.value.setHex(0xffe9d1);      // 明るさは抑えつつ、暖かみのある太陽光
     wu.uFogColor.value.setHex(0x9cbcd2);      // フォグを地平線に馴染ませる
-    wu.uFogDensity.value = 0.00012;           // 空気感を出すためフォグを少し濃くする
+    wu.uFogDensity.value = 0.00018;           // ★遠近感を出すためフォグをさらに濃くする
     wu.uSunDir.value.copy(sun.position).normalize();
   }
 
@@ -276,8 +276,9 @@ function applyWeatherScene(m) {
   wu.uFogDensity.value = fogD;
 
   // 波の高さと白波の設定
-  wu.uWH.value   = 0.15 * m.waves;        // ★0.22から0.15に下げ、港湾の落ち着いたうねりに
-  wu.uWS.value   = 0.45 + m.waves * 0.18; // 波速
+  // ★港湾内であることを考慮し、波を非常に静かにする
+  wu.uWH.value   = 0.06 * m.waves;        // ★0.15から0.06に大幅に下げ、鏡のような静かな水面に
+  wu.uWS.value   = 0.40 + m.waves * 0.15; // 波速も落ち着かせる
   wu.uWind.value = m.waves;
 }
 

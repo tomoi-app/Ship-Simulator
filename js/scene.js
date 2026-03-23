@@ -347,38 +347,41 @@ export function buildOcean(THREE, scene) {
       float n3x = (vnoise(uv3+vec2(0.05,0.))-vnoise(uv3-vec2(0.05,0.)))*0.5;
       float n3z = (vnoise(uv3+vec2(0.,0.05))-vnoise(uv3-vec2(0.,0.05)))*0.5;
       
-      // 法線の強さを微調整してギラつきを増す
-      vec3 N = normalize(vNormal + vec3(n1x*0.3 + n2x*0.2 + n3x*0.15, 0., n1z*0.3 + n2z*0.2 + n3z*0.15));
+      // ★法線（Normal）を弱化。波の表面を滑らかにし、ギラつきを抑える
+      vec3 N = normalize(vNormal + vec3(n1x*0.15 + n2x*0.1 + n3x*0.05, 0., n1z*0.15 + n2z*0.1 + n3z*0.05));
 
       vec3 V = normalize(vViewPos);
       vec3 L = normalize(uSunDir);
 
-      // ★1. リアルなフレネル反射 (Schlick近似: 水の基本反射率0.02)
+      // ★リアルなフレネル反射 (Schlick近似: 水の基本反射率0.02)
+      // 遠く（NdotVが小さい）ほど空の反射が強くなるが、全体的な強さは抑える
       float NdotV  = max(dot(N, V), 0.001);
       float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
       
       vec3 R    = reflect(-V, N);
       vec3 refl = skyCol(normalize(R));
 
-      // ★2. 太陽の乱反射 (マルチレイヤースペキュラ)
-      // 単一の強い光ではなく、広いハイライトと鋭いハイライトを合成して「ギラギラ感」を出す
+      // ★2. 太陽の乱反射 (大幅に弱める)
+      // 参考動画のように、海面は深く、マットに見えるようにする。広い反射（Broad/Scatter）は削除。
       vec3 H     = normalize(L + V);
       float NdotH = max(dot(N, H), 0.0);
-      float specSharp = pow(NdotH, 1200.0) * 2.0;  // 中心部の極めて強い光
-      float specBroad = pow(NdotH, 150.0) * 0.8;   // 周辺に散乱する光
-      float specScatter = pow(NdotH, 30.0) * 0.15; // 波頭全体に広がる光
+      // 鋭い反射（specSharp）も弱め、太陽の形がわずかに見える程度に。
+      float specSharp = pow(NdotH, 1500.0) * 0.8; 
+      float specBroad = pow(NdotH, 300.0) * 0.1;  // 非常に弱く
+      float specScatter = pow(NdotH, 80.0) * 0.02; // ほぼ見えない
       float spec = specSharp + specBroad + specScatter;
 
       // 深度による海の色
-      float depthFactor = clamp(vDepth / 1200.0, 0.0, 1.0);
+      // 遠くほど深いネイビーになるように調整
+      float depthFactor = clamp(vDepth / 1600.0, 0.0, 1.0);
       vec3 waterCol = mix(uShallowColor, uDeepColor, depthFactor);
       
-      // 光の当たり具合（ディフューズ）
-      float diff = max(dot(N, L), 0.0) * 0.4 + 0.6;
+      // 光の当たり具合（ディフューズ）。影を少し深くする。
+      float diff = max(dot(N, L), 0.0) * 0.35 + 0.65;
       waterCol *= diff;
 
       // ★3. 色の合成
-      vec3 c = mix(waterCol, refl, fresnel);
+      vec3 c = mix(waterCol, refl, fresnel * 0.8); // フレネルの空の反射をさらに弱める
       c += uSunColor * spec;
 
       // ★ 船を中心としたローカル座標の計算
