@@ -136,113 +136,212 @@ export function makeGrassTexture() {
 // ============================================================
 export function buildScene(THREE) {
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x8fb5cc, 0.00012);
+  scene.fog = new THREE.FogExp2(0xb8d0e0, 0.00009);
 
-  // ---- 空 ----
+  // ---- 空（グラデーション対応シェーダースカイ） ----
+  const skyVert = \`
+    varying vec3 vWorldPos;
+    void main(){
+      vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+    }\`;
+  const skyFrag = \`
+    uniform vec3 uSkyTop;
+    uniform vec3 uSkyHorizon;
+    uniform vec3 uSunDir;
+    uniform float uSunSize;
+    varying vec3 vWorldPos;
+    void main(){
+      vec3 dir = normalize(vWorldPos);
+      float t = clamp(dir.y * 1.8 + 0.1, 0.0, 1.0);
+      vec3 col = mix(uSkyHorizon, uSkyTop, t);
+      // 太陽
+      float sunDot = max(0.0, dot(dir, normalize(uSunDir)));
+      float sun = pow(sunDot, uSunSize);
+      float corona = pow(sunDot, 8.0) * 0.4;
+      col += vec3(1.0, 0.95, 0.8) * sun + vec3(1.0, 0.9, 0.7) * corona;
+      // 地平線ハロ（明るい帯）
+      float halo = pow(max(0.0, 1.0 - abs(dir.y) * 4.0), 3.0) * 0.25;
+      col += vec3(0.9, 0.95, 1.0) * halo;
+      gl_FragColor = vec4(col, 1.0);
+    }\`;
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(9500, 32, 16),
-    new THREE.MeshBasicMaterial({ color: 0x5a8fb0, side: THREE.BackSide })
+    new THREE.SphereGeometry(9500, 64, 32),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        uSkyTop:     { value: new THREE.Color(0x4488cc) },
+        uSkyHorizon: { value: new THREE.Color(0xc0d8ee) },
+        uSunDir:     { value: new THREE.Vector3(0.5, 0.35, 0.8).normalize() },
+        uSunSize:    { value: 1200.0 },
+      },
+      vertexShader: skyVert,
+      fragmentShader: skyFrag,
+      side: THREE.BackSide,
+      depthWrite: false,
+    })
   );
   scene.add(sky);
 
+  // ---- 雲（Planeにプロシージャルテクスチャ） ----
+  const mkCloud = (seed, y, size, opacity) => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+    const cx = cv.getContext('2d');
+    cx.clearRect(0, 0, 512, 512);
+    const rng = (n) => { let x = Math.sin(n * seed) * 43758.5; return x - Math.floor(x); };
+    for (let i = 0; i < 60; i++) {
+      const px = rng(i * 3) * 512, py = rng(i * 3 + 1) * 256 + 128;
+      const r = 20 + rng(i * 3 + 2) * 90;
+      const g = cx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, \`rgba(255,255,255,\${0.3 + rng(i) * 0.35})\`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2);
+      cx.fillStyle = g; cx.fill();
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 1.5);
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(20000, 10000),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = y;
+    scene.add(mesh);
+    return mesh;
+  };
+  mkCloud(1.3, 900,  20000, 0.55);
+  mkCloud(2.7, 1400, 20000, 0.35);
+
   // ---- ライト ----
-  const sun  = new THREE.DirectionalLight(0xfff4e0, 1.2); sun.position.set(500, 300, 800); scene.add(sun);
-  const amb  = new THREE.AmbientLight(0x6688aa, 0.6); scene.add(amb);
+  const sun  = new THREE.DirectionalLight(0xfff8e8, 1.6);
+  sun.position.set(500, 350, 800);
+  scene.add(sun);
+  const amb  = new THREE.AmbientLight(0x88aabb, 0.7); scene.add(amb);
   const moon = new THREE.DirectionalLight(0x3355aa, 0); moon.position.set(-300, 200, -600); scene.add(moon);
+  // 海面に映る空の色（補助光）
+  const skyFill = new THREE.HemisphereLight(0x88ccee, 0x1a4466, 0.4); scene.add(skyFill);
 
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (フォトリアル版) ----
+// ---- 海シェーダー (フォトリアル強化版) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:    { value: 0 },
-    uWH:   { value: 0.6 },
-    uWS:   { value: 0.8 },
+    uWH:   { value: 0.55 },
+    uWS:   { value: 0.75 },
     uWD:   { value: new THREE.Vector2(1, 0.3) },
     uCur:  { value: new THREE.Vector2(0.1, 0) },
     uWind: { value: 1.0 },
     uOffset: { value: new THREE.Vector2(0, 0) },
-    // 【追加】環境連動用のUniforms
-    uLightDir:     { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
-    uBaseColor:    { value: new THREE.Color(0x051e38) },
-    uShallowColor: { value: new THREE.Color(0x0f4770) },
-    uLightColor:   { value: new THREE.Color(0xffffff) },
-    uFogColor:     { value: new THREE.Color(0x8fb5cc) },
-    uFogDensity:   { value: 0.00012 }
+    uLightDir:     { value: new THREE.Vector3(0.5, 0.35, 0.8).normalize() },
+    uSunColor:     { value: new THREE.Color(0xfff8e8) },
+    uSkyColor:     { value: new THREE.Color(0x5599cc) },
+    uBaseColor:    { value: new THREE.Color(0x1a5070) },
+    uFogColor:     { value: new THREE.Color(0xb8d0e0) },
+    uFogDensity:   { value: 0.00009 },
   };
 
   const vert = `
-    uniform float uT,uWH,uWS,uWind; uniform vec2 uWD,uCur,uOffset;
-    varying vec3 vN; varying float vWY,vFoam;
-    varying vec3 vViewPosition; // 【追加】カメラベクトル計算用
-    
-    float W(vec2 p,vec2 d,float f,float s,float a){
-      return a*sin(dot(p/1000.+uCur*uT*.05,normalize(d))*f-uT*s);
+    uniform float uT,uWH,uWS,uWind;
+    uniform vec2 uWD,uCur,uOffset;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying float vFoam;
+    varying vec2 vUV;
+
+    float wave(vec2 p, vec2 d, float freq, float spd, float amp){
+      return amp * sin(dot(normalize(d), p / 800.0) * freq - uT * spd);
     }
     void main(){
-      vec3 pos=position; vec2 wp=pos.xz + uOffset * 25.0;
-      float h=W(wp,uWD,6.,uWS,uWH)+W(wp,vec2(uWD.y,-uWD.x),9.,uWS*1.3,uWH*.5)
-             +W(wp,vec2(-.7,.9),15.,uWS*1.7,uWH*.25)+W(wp,vec2(.5,-.8),22.,uWS*2.1,uWH*.14)
-             +W(wp,uWD*1.3,35.,uWS*3.,uWH*.06);
-      pos.y=h; vWY=h;
-      float e=4.;
-      float hR=W(wp+vec2(e,0.),uWD,6.,uWS,uWH),hF=W(wp+vec2(0.,e),uWD,6.,uWS,uWH);
-      vN=normalize(vec3(h-hR,e,h-hF));
-      vFoam=smoothstep(.22,.85,h)*uWind;
-      
-      // 【追加】カメラからの視点ベクトルを取得
-      vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-      vViewPosition = -mvPosition.xyz; 
-      gl_Position = projectionMatrix * mvPosition;
+      vec3 pos = position;
+      vec2 wp = pos.xz + uOffset * 20.0;
+      // 複数方向の波を合成（細かい波も追加）
+      float h = wave(wp, uWD,           6.0,  uWS,       uWH)
+              + wave(wp, vec2(uWD.y,-uWD.x), 9.0,  uWS*1.3,  uWH*0.5)
+              + wave(wp, vec2(-0.7, 0.9),    15.0, uWS*1.7,  uWH*0.22)
+              + wave(wp, vec2(0.5, -0.8),    24.0, uWS*2.2,  uWH*0.12)
+              + wave(wp, uWD*1.5,            40.0, uWS*3.2,  uWH*0.055)
+              + wave(wp, vec2(0.3, 0.7),     65.0, uWS*4.5,  uWH*0.025)
+              + wave(wp, vec2(-0.5, 0.3),    90.0, uWS*5.0,  uWH*0.012);
+      pos.y = h;
+      float e = 3.0;
+      float hR = wave(wp+vec2(e,0.), uWD, 6., uWS, uWH);
+      float hF = wave(wp+vec2(0.,e), uWD, 6., uWS, uWH);
+      vNormal = normalize(vec3(h - hR, e, h - hF));
+      vFoam = smoothstep(0.18, 0.8, h) * uWind;
+      vUV = wp * 0.001;
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      vViewPos = -mvPos.xyz;
+      gl_Position = projectionMatrix * mvPos;
     }`;
 
   const frag = `
     uniform float uT;
     uniform vec3 uLightDir;
+    uniform vec3 uSunColor;
+    uniform vec3 uSkyColor;
     uniform vec3 uBaseColor;
-    uniform vec3 uShallowColor;
-    uniform vec3 uLightColor;
     uniform vec3 uFogColor;
     uniform float uFogDensity;
-    
-    varying vec3 vN; varying float vWY,vFoam;
-    varying vec3 vViewPosition;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying float vFoam;
+    varying vec2 vUV;
+
+    // 簡易ノイズ（白波のテクスチャ感）
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p); vec2 f = fract(p);
+      f = f*f*(3.0-2.0*f);
+      return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+                 mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+    }
 
     void main(){
-      vec3 foam = vec3(.78,.9,.96), spray = vec3(.92,.96,.99);
-      
-      // 法線と視点ベクトル
-      vec3 normal = normalize(vN);
-      vec3 viewDir = normalize(vViewPosition);
-      vec3 lightDir = normalize(uLightDir);
-      
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      vec3 L = normalize(uLightDir);
+
       // 拡散反射
-      float df = max(dot(normal, lightDir), 0.0);
-      
-      // 【追加】鏡面反射 (Blinn-Phong) - 太陽や月の強烈なきらめき
-      vec3 halfVector = normalize(lightDir + viewDir);
-      float sp = max(0.0, dot(normal, halfVector));
-      sp = pow(sp, 150.0); // 鋭いハイライト
-      
-      // フレネル反射 (かすめる角度で反射率が上がる)
-      float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.0); 
-      
-      // 海の色の合成
-      vec3 c = mix(uBaseColor, uShallowColor, df * 0.6 + 0.2);
-      c += sp * 0.8 * uLightColor; // 太陽・月の反射を加算
-      c = mix(c, spray, fres * 0.25); // 水平線付近の反射
-      c = mix(c, foam, vFoam * 0.42); // 白波
-      
-      // 【追加】フォグの適用（海面と空の境界をシームレスに溶かす）
-      float depth = length(vViewPosition);
-      float fogFactor = exp2(-uFogDensity * uFogDensity * depth * depth * 1.442695);
-      fogFactor = clamp(fogFactor, 0.0, 1.0);
-      
-      gl_FragColor = vec4(mix(uFogColor, c, fogFactor), 1.0);
+      float diff = max(dot(N, L), 0.0) * 0.6 + 0.4;
+
+      // 鏡面反射（太陽の光路）
+      vec3 H = normalize(L + V);
+      float spec = pow(max(dot(N, H), 0.0), 280.0);
+      float spec2 = pow(max(dot(N, H), 0.0), 40.0) * 0.12; // 広がる光路
+
+      // フレネル（水平線方向で反射強く）
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.5);
+
+      // 海の色：深部 → 浅部 → 空の反射
+      vec3 deepColor  = uBaseColor;
+      vec3 shallowCol = uBaseColor * 1.6 + vec3(0.05, 0.12, 0.15);
+      vec3 skyRefl    = uSkyColor;
+      vec3 c = mix(deepColor, shallowCol, diff * 0.5);
+      c = mix(c, skyRefl, fresnel * 0.55);   // 空の反射
+      c += uSunColor * spec * 1.8;           // 太陽の光路（強いハイライト）
+      c += uSunColor * spec2;                // 広がる光路
+
+      // 白波（ノイズで粒感を加える）
+      float foamNoise = noise(vUV * 120.0 + uT * 0.3) * 0.5 + 0.5;
+      float foam = vFoam * foamNoise;
+      c = mix(c, vec3(0.88, 0.94, 0.97), foam * 0.55);
+
+      // 遠距離の白波（水平線付近の細かい波）
+      float distFoam = noise(vUV * 60.0 - uT * 0.15) * 0.08;
+      c += vec3(distFoam);
+
+      // フォグ
+      float dist = length(vViewPos);
+      float fog = exp2(-uFogDensity * uFogDensity * dist * dist * 1.442695);
+      fog = clamp(fog, 0.0, 1.0);
+      c = mix(uFogColor, c, fog);
+
+      gl_FragColor = vec4(c, 1.0);
     }`;
 
-  const geo = new THREE.PlaneGeometry(18000, 18000, 200, 200);
+  const geo = new THREE.PlaneGeometry(18000, 18000, 256, 256);
   geo.rotateX(-Math.PI / 2);
   const ocean = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: wu, vertexShader: vert, fragmentShader: frag }));
   scene.add(ocean);
