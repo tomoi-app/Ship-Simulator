@@ -361,7 +361,9 @@ function updateClock(ctxG, simTime, curM, mst) {
 
 function drawNewCanvasHUD(P, simTime) {
     if (!ctx) return; const dt=0.016;
-    V.telegraph=smoothValue(V.telegraph,P.engineOrder,smoothRate*2,dt); V.windDir=smoothAngle(V.windDir,P.windDir,angleSmoothRate,dt); V.windSpeed=smoothValue(V.windSpeed,P.windSpeed,smoothRate,dt); V.shipSpeed=smoothValue(V.shipSpeed,P.speed,smoothRate,dt); V.rudderAngle=smoothValue(V.rudderAngle,-P.rudder,smoothRate,dt); V.yawRate=smoothValue(V.yawRate,-P.yawRate,angleSmoothRate,dt); V.rpm=smoothValue(V.rpm,P.rpm,smoothRate,dt);
+    const hdgDeg = (P.heading * 180 / Math.PI);
+    let relWind = ((P.windDir - hdgDeg) % 360 + 360) % 360;
+    V.telegraph=smoothValue(V.telegraph,P.engineOrder,smoothRate*2,dt); V.windDir=smoothAngle(V.windDir,relWind,angleSmoothRate,dt); V.windSpeed=smoothValue(V.windSpeed,P.windSpeed,smoothRate,dt); V.shipSpeed=smoothValue(V.shipSpeed,P.speed,smoothRate,dt); V.rudderAngle=smoothValue(V.rudderAngle,P.rudder,smoothRate,dt); V.yawRate=smoothValue(V.yawRate,P.yawRate*(180/Math.PI)*60,angleSmoothRate,dt); V.rpm=smoothValue(V.rpm,P.rpm,smoothRate,dt);
     ctx.clearRect(0,0,canvas.width,gaugeBarHeight); ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,canvas.width,gaugeBarHeight);
     const gw=canvas.width/8, yc=gaugeBarHeight/2, fS="14px 'BIZ UDMincho', serif", fB="bold 16px 'BIZ UDMincho', serif", fL="bold 20px 'BIZ UDMincho', serif";
     ctx.fillStyle='white'; ctx.strokeStyle='white'; ctx.textAlign='center'; ctx.textBaseline='middle';
