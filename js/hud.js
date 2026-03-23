@@ -258,7 +258,7 @@ export function updateDashboard(P, simTime = 0, curM = null, mst = null) {
     if (cvs.windDir) {
         let ctxG = cvs.windDir.getContext('2d');
         ctxG.clearRect(0,0,160,160);
-        drawNeedleCompass(ctxG, ((P.windDir - P.heading * 180 / Math.PI) % 360 + 360) % 360, true);
+        drawNeedleCompass(ctxG, 80, 80, 63, ((P.windDir - P.heading * 180 / Math.PI) % 360 + 360) % 360, true);
     }
     if (cvs.clock) updateClock(cvs.clock.getContext('2d'), simTime, curM, mst);
     drawNewCanvasHUD(P, simTime);
@@ -337,12 +337,38 @@ function drawNeedleGauge(ctxG, val, minVal, maxVal, isRudder=false) {
     ctxG.restore(); ctxG.beginPath(); ctxG.arc(cx,cy,6,0,Math.PI*2); ctxG.fillStyle='#333'; ctxG.fill();
     ctxG.beginPath(); ctxG.arc(cx,cy,3,0,Math.PI*2); ctxG.fillStyle='#ddd'; ctxG.fill();
 }
-function drawNeedleCompass(ctxG, valDeg, isWind=false) {
-    const cx=80, cy=80, R=70, angle=(valDeg*Math.PI/180)-(Math.PI/2);
-    ctxG.save(); ctxG.translate(cx,cy); ctxG.rotate(angle+Math.PI/2);
-    ctxG.beginPath(); ctxG.moveTo(0,-(R-8)); ctxG.lineTo(-3,5); ctxG.lineTo(3,5); ctxG.closePath(); ctxG.fillStyle=isWind?'#1a237e':'#111'; ctxG.fill();
-    ctxG.beginPath(); ctxG.moveTo(0,20); ctxG.lineTo(-3,5); ctxG.lineTo(3,5); ctxG.closePath(); ctxG.fillStyle=isWind?'#7986cb':'#888'; ctxG.fill();
-    ctxG.restore(); ctxG.beginPath(); ctxG.arc(cx,cy,6,0,Math.PI*2); ctxG.fillStyle='#333'; ctxG.fill();
+// --- 風向計専用の針（ひし形） ---
+function drawNeedleCompass(ctx, x, y, length, valDeg, isWind) {
+    const angle = degToRad(valDeg - 90);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2);
+
+    // 先端側（濃い青）
+    ctx.beginPath();
+    ctx.moveTo(0, -length + 8);
+    ctx.lineTo(-4, 5);
+    ctx.lineTo( 4, 5);
+    ctx.closePath();
+    ctx.fillStyle = isWind ? '#1a237e' : '#111';
+    ctx.fill();
+
+    // 反対側（薄い青）
+    ctx.beginPath();
+    ctx.moveTo(0, length * 0.3);
+    ctx.lineTo(-4, 5);
+    ctx.lineTo( 4, 5);
+    ctx.closePath();
+    ctx.fillStyle = isWind ? '#7986cb' : '#888';
+    ctx.fill();
+
+    ctx.restore();
+
+    // 中心軸
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#333'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ddd'; ctx.fill();
 }
 function updateClock(ctxG, simTime, curM, mst) {
     if (!ctxG) return; const cx=80, cy=80, r=70; ctxG.clearRect(0,0,160,160);
@@ -367,17 +393,67 @@ function drawNewCanvasHUD(P, simTime) {
     ctx.clearRect(0,0,canvas.width,gaugeBarHeight); ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,canvas.width,gaugeBarHeight);
     const gw=canvas.width/8, yc=gaugeBarHeight/2, fS="14px 'BIZ UDMincho', serif", fB="bold 16px 'BIZ UDMincho', serif", fL="bold 20px 'BIZ UDMincho', serif";
     ctx.fillStyle='white'; ctx.strokeStyle='white'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    drawHDT(ctx, gw*0.5, yc, 50, V.telegraph, fS); drawHDW(ctx, gw*1.5, yc, 50, V.windDir, V.windSpeed, fB, fS); drawHDS(ctx, gw*2.5, yc, 50, V.windSpeed, 'WIND SPD', 'Knots', 60, fB, fS, fL); drawHDS(ctx, gw*3.5, yc, 50, V.shipSpeed, 'SHIP SPD', 'Knots', 30, fB, fS, fL); drawHDR(ctx, gw*4.5, yc, 50, V.rudderAngle, fB, fS); drawHDO(ctx, gw*5.5, yc, 50, V.yawRate, fB, fS); drawHDP(ctx, gw*6.5, yc, 50, V.rpm, P.engineOverload, fB, fS, fL); drawHDC(ctx, gw*7.5, yc, 50, simTime, fB, fS);
-    overloadTimer += dt;
-}
-
-function drawHBC(ctx, x, y, r, t) { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.strokeStyle='#444'; ctx.lineWidth=1; ctx.stroke(); ctx.font="14px 'BIZ UDMincho', serif"; ctx.fillStyle='#aaa'; ctx.fillText(t,x,y-r*1.2); ctx.fillStyle='white'; }
+    drawHDT(ctx, gw*0.5, yc, 50, V.telegraph, fS); drawWindGauge(ctx, gw*1.5, yc, 50, V.windDir, V.windSpeed, fB, fS); drawHDS(ctx, gw*2.5, yc, 50, V.windSpeed, 'WIND SPD', 'Knots', 60, fB, fS, fL); drawHDS(ctx, gw*3.5, yc, 50, V.shipSpeed, 'SHIP SPD', function drawBaseCircle(ctx, x, y, r, t) { ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.strokeStyle='#444'; ctx.lineWidth=1; ctx.stroke(); ctx.font="14px 'BIZ UDMincho', serif"; ctx.fillStyle='#aaa'; ctx.fillText(t,x,y-r*1.2); ctx.fillStyle='white'; }
 function drawHND(ctx, x, y, l, a, c, w) { const rad=degToRad(a-90); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+Math.cos(rad)*l, y+Math.sin(rad)*l); ctx.strokeStyle=c; ctx.lineWidth=w; ctx.stroke(); }
 function drawHTK(ctx, x, y, r, a, l) { const rad=degToRad(a-90); ctx.beginPath(); ctx.moveTo(x+Math.cos(rad)*(r-l), y+Math.sin(rad)*(r-l)); ctx.lineTo(x+Math.cos(rad)*r, y+Math.sin(rad)*r); ctx.strokeStyle='white'; ctx.lineWidth=1; ctx.stroke(); }
-function drawHDT(ctx, x, y, r, v, f) { drawHBC(ctx,x,y,r,'TELEGRAPH'); const s=['FULL','HALF','SLOW','DEAD','STOP','DEAD','SLOW','HALF','FULL'], a=[-150,-120,-90,-60,0,60,90,120,150]; ctx.font=f; s.forEach((k,i)=>{ const rad=degToRad(a[i]-90); ctx.fillText(k,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); }); drawHND(ctx,x,y,r*0.9,map(v,-4,4,-150,150),'red',4); }
-function drawHDW(ctx, x, y, r, d, s, fB, fS) { drawHBC(ctx,x,y,r,'WIND DIR'); ctx.font=fS; [['N',0],['E',90],['S',180],['W',270]].forEach(([l,g])=>{ const rad=degToRad(g-90); ctx.fillText(l,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); }); drawHND(ctx,x,y,r*0.9,d,'skyblue',3); ctx.font=fB; ctx.fillText(s.toFixed(1),x,y+r*0.2); }
-function drawHDS(ctx, x, y, r, s, t, u, m, fB, fS, fL) { drawHBC(ctx,x,y,r,t); for(let i=0;i<=m;i+=(m/6)){ const ang=map(i,0,m,-140,140); drawHTK(ctx,x,y,r,ang,i%(m/3)===0?10:5); if(i%(m/3)===0){ ctx.font=fS; ctx.fillText(i.toFixed(0),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(s,0,m,-140,140),t.includes('WIND')?'skyblue':'white',3); ctx.font=fL; ctx.fillText(s.toFixed(1),x,y+r*0.2); }
-function drawHDR(ctx, x, y, r, a, fB, fS) { drawHBC(ctx,x,y,r,'RUDDER'); for(let i=-35;i<=35;i+=5){ const ang=map(i,-35,35,-140,140); drawHTK(ctx,x,y,r,ang,i%10===0?10:5); if(i%10===0 && i!==0){ ctx.font=fS; ctx.fillText(Math.abs(i),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } ctx.font=fB; ctx.fillStyle='red'; ctx.fillText('P',x-r*0.8,y); ctx.fillStyle='green'; ctx.fillText('S',x+r*0.8,y); ctx.fillStyle='white'; drawHND(ctx,x,y,r*0.9,map(a,-35,35,-140,140),'white',3); ctx.font=fB; ctx.fillText(Math.abs(a).toFixed(1)+'°',x,y+r*0.2); }
-function drawHDO(ctx, x, y, r, yR, fB, fS) { drawHBC(ctx,x,y,r,'R.O.T.'); for(let i=-60;i<=60;i+=10){ const ang=map(i,-60,60,-140,140); drawHTK(ctx,x,y,r,ang,i%20===0?10:5); if(i%20===0 && i!==0){ ctx.font=fS; ctx.fillText(Math.abs(i),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(yR,-60,60,-140,140),'white',3); ctx.font=fB; ctx.fillText(Math.abs(yR).toFixed(1),x,y+r*0.2); }
-function drawHDP(ctx, x, y, r, rpm, isO, fB, fS, fL) { drawHBC(ctx,x,y,r,'RPM'); for(let i=0;i<=100;i+=10){ const ang=map(i,0,100,-140,140); drawHTK(ctx,x,y,r,ang,10); if(i%20===0){ ctx.font=fS; ctx.fillText(i,x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(rpm,0,100,-140,140),isO?'orange':'white',3); ctx.font=fL; ctx.fillText(Math.abs(rpm).toFixed(0),x,y+r*0.2); if(isO && overloadTimer%1<0.5){ ctx.font=fS; ctx.fillStyle='red'; ctx.fillText('OVERLOAD',x,y-r*0.6); } }
-function drawHDC(ctx, x, y, r, sT, fB, fS) { drawHBC(ctx,x,y,r,'CLOCK'); ctx.font=fS; for(let i=1;i<=12;i++){ const rad=degToRad(i*30-90); ctx.fillText(i,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); } const ts=sT%(12*3600), h=ts/3600, m=(ts%3600)/60, s=ts%60; drawHND(ctx,x,y,r*0.5,(h*30)+(m*0.5),'white',4); drawHND(ctx,x,y,r*0.8,(m*6)+(s*0.1),'white',3); drawHND(ctx,x,y,r*0.9,s*6,'red',1); }
+function drawHDT(ctx, x, y, r, v, f) { drawBaseCircle(ctx,x,y,r,'TELEGRAPH'); const s=['FULL','HALF','SLOW','DEAD','STOP','DEAD','SLOW','HALF','FULL'], a=[-150,-120,-90,-60,0,60,90,120,150]; ctx.font=f; s.forEach((k,i)=>{ const rad=degToRad(a[i]-90); ctx.fillText(k,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); }); drawHND(ctx,x,y,r*0.9,map(v,-4,4,-150,150),'red',4); }
+
+// 2. WIND GAUGE (WIND DIR)
+function drawWindGauge(ctx, x, y, r, dir, speed, fontBold, fontSmall) {
+    drawBaseCircle(ctx, x, y, r, ''); // タイトルは下に手動で描画します
+
+    // 船体シルエット（中央）
+    ctx.save();
+    ctx.fillStyle = 'rgba(60,80,100,0.18)';
+    ctx.translate(x, y);
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 0.35);
+    ctx.lineTo(r * 0.15, 0);
+    ctx.lineTo(r * 0.12, r * 0.28);
+    ctx.lineTo(0, r * 0.35);
+    ctx.lineTo(-r * 0.12, r * 0.28);
+    ctx.lineTo(-r * 0.15, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // 目盛り＆数字 (0〜360度)
+    for (let i = 0; i < 360; i += 10) {
+        const ac = degToRad(i - 90);
+        const isMaj = i % 30 === 0;
+        const len = isMaj ? 12 : 6;
+        
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(ac) * (r - 3 - len), y + Math.sin(ac) * (r - 3 - len));
+        ctx.lineTo(x + Math.cos(ac) * (r - 3),       y + Math.sin(ac) * (r - 3));
+        ctx.lineWidth = isMaj ? 1.8 : 0.8;
+        ctx.strokeStyle = '#111';
+        ctx.stroke();
+
+        if (isMaj && i !== 0) {
+            ctx.font = 'bold 9px sans-serif';
+            ctx.fillStyle = '#222';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(i, x + Math.cos(ac) * (r - 19), y + Math.sin(ac) * (r - 19));
+        }
+    }
+
+    // タイトル
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillStyle = '#222';
+    ctx.fillText('WIND DIR', x, y + r * 0.4);
+    ctx.font = '8px sans-serif';
+    ctx.fillStyle = '#555';
+    ctx.fillText('DEG (REL)', x, y + r * 0.55);
+
+    // 風向の針（ひし形デザイン）
+    drawNeedleCompass(ctx, x, y, r * 0.9, dir, true);
+}
+
+function drawHDS(ctx, x, y, r, s, t, u, m, fB, fS, fL) { drawBaseCircle(ctx,x,y,r,t); for(let i=0;i<=m;i+=(m/6)){ const ang=map(i,0,m,-140,140); drawHTK(ctx,x,y,r,ang,i%(m/3)===0?10:5); if(i%(m/3)===0){ ctx.font=fS; ctx.fillText(i.toFixed(0),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(s,0,m,-140,140),t.includes('WIND')?'skyblue':'white',3); ctx.font=fL; ctx.fillText(s.toFixed(1),x,y+r*0.2); }
+function drawHDR(ctx, x, y, r, a, fB, fS) { drawBaseCircle(ctx,x,y,r,'RUDDER'); for(let i=-35;i<=35;i+=5){ const ang=map(i,-35,35,-140,140); drawHTK(ctx,x,y,r,ang,i%10===0?10:5); if(i%10===0 && i!==0){ ctx.font=fS; ctx.fillText(Math.abs(i),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } ctx.font=fB; ctx.fillStyle='red'; ctx.fillText('P',x-r*0.8,y); ctx.fillStyle='green'; ctx.fillText('S',x+r*0.8,y); ctx.fillStyle='white'; drawHND(ctx,x,y,r*0.9,map(a,-35,35,-140,140),'white',3); ctx.font=fB; ctx.fillText(Math.abs(a).toFixed(1)+'°',x,y+r*0.2); }
+function drawHDO(ctx, x, y, r, yR, fB, fS) { drawBaseCircle(ctx,x,y,r,'R.O.T.'); for(let i=-60;i<=60;i+=10){ const ang=map(i,-60,60,-140,140); drawHTK(ctx,x,y,r,ang,i%20===0?10:5); if(i%20===0 && i!==0){ ctx.font=fS; ctx.fillText(Math.abs(i),x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(yR,-60,60,-140,140),'white',3); ctx.font=fB; ctx.fillText(Math.abs(yR).toFixed(1),x,y+r*0.2); }
+function drawHDP(ctx, x, y, r, rpm, isO, fB, fS, fL) { drawBaseCircle(ctx,x,y,r,'RPM'); for(let i=0;i<=100;i+=10){ const ang=map(i,0,100,-140,140); drawHTK(ctx,x,y,r,ang,10); if(i%20===0){ ctx.font=fS; ctx.fillText(i,x+Math.cos(degToRad(ang-90))*r*0.7,y+Math.sin(degToRad(ang-90))*r*0.7); } } drawHND(ctx,x,y,r*0.9,map(rpm,0,100,-140,140),isO?'orange':'white',3); ctx.font=fL; ctx.fillText(Math.abs(rpm).toFixed(0),x,y+r*0.2); if(isO && overloadTimer%1<0.5){ ctx.font=fS; ctx.fillStyle='red'; ctx.fillText('OVERLOAD',x,y-r*0.6); } }
+function drawHDC(ctx, x, y, r, sT, fB, fS) { drawBaseCircle(ctx,x,y,r,'CLOCK'); ctx.font=fS; for(let i=1;i<=12;i++){ const rad=degToRad(i*30-90); ctx.fillText(i,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); } const ts=sT%(12*3600), h=ts/3600, m=(ts%3600)/60, s=ts%60; drawHND(ctx,x,y,r*0.5,(h*30)+(m*0.5),'white',4); drawHND(ctx,x,y,r*0.8,(m*6)+(s*0.1),'white',3); drawHND(ctx,x,y,r*0.9,s*6,'red',1); }
+ad(i*30-90); ctx.fillText(i,x+Math.cos(rad)*r*0.75,y+Math.sin(rad)*r*0.75); } const ts=sT%(12*3600), h=ts/3600, m=(ts%3600)/60, s=ts%60; drawHND(ctx,x,y,r*0.5,(h*30)+(m*0.5),'white',4); drawHND(ctx,x,y,r*0.8,(m*6)+(s*0.1),'white',3); drawHND(ctx,x,y,r*0.9,s*6,'red',1); }
