@@ -31,7 +31,7 @@ const { scene, sky, sun, amb, moon } = buildScene(THREE);
 const { ocean, wu }                   = buildOcean(THREE, scene);
 const { shipGroup, prop }             = buildShip(THREE, scene);
 const { buoys }                       = buildWorld(THREE, scene);
-const { AIships, fishBoats, tugs }    = buildAI(THREE, scene);
+const { AIships, fishBoats, tugs, wakeUniforms } = buildAI(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 // ★ここの数値を変更するだけで、ゲーム中ずっと反映されるように整理しました！
@@ -558,6 +558,8 @@ function loop(t) {
   wu.uT.value = simTime * 0.001;
   wu.uShipSpeed.value = Math.max(0, P.speed) / 16.0; // 0〜1 に正規化
   wu.uShipPos.value.set(P.posX, P.posZ);
+  wu.uShipHeading.value = P.heading; // ★自船の向きを渡す
+  if (wakeUniforms) wakeUniforms.uT.value = simTime * 0.001; // ★他船の航跡アニメーション
   upd3D(simTime);
 
   // HUD

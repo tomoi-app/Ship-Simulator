@@ -235,22 +235,23 @@ export function buildScene(THREE) {
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (完全リライト版) ----
+// ---- 海シェーダー (波の速度バグ修正 ＆ 船首波・航跡の追加) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:          { value: 0 },
-    uWH:         { value: 0.28 },   // 波高を抑える
-    uWS:         { value: 0.55 },   // 波速を遅く
+    uWH:         { value: 0.28 },
+    uWS:         { value: 0.55 },
     uWind:       { value: 1.0 },
-    uShipSpeed:  { value: 0.0 },    // 船速（航跡用）
-    uShipPos:    { value: new THREE.Vector2(0, 0) },  // 船位置（航跡用）
+    uShipSpeed:  { value: 0.0 },
+    uShipPos:    { value: new THREE.Vector2(0, 0) },
+    uShipHeading:{ value: 0.0 }, // ★追加: 船の向き（Heading）
     uOffset:     { value: new THREE.Vector2(0, 0) },
     uSunDir:     { value: new THREE.Vector3(0.6, 0.42, 0.68).normalize() },
     uSunColor:   { value: new THREE.Color(0xfff6e0) },
     uSkyZenith:  { value: new THREE.Color(0x1a5fa8) },
     uSkyHorizon: { value: new THREE.Color(0xc4dff0) },
-    uDeepColor:  { value: new THREE.Color(0x0a2d48) },  // 深い青
-    uShallowColor:{ value: new THREE.Color(0x1a6080) }, // 浅い青緑
+    uDeepColor:  { value: new THREE.Color(0x0a2d48) },
+    uShallowColor:{ value: new THREE.Color(0x1a6080) },
     uFogColor:   { value: new THREE.Color(0xaac8dc) },
     uFogDensity: { value: 0.000075 },
   };
@@ -263,10 +264,8 @@ export function buildOcean(THREE, scene) {
     varying vec3 vViewPos;
     varying float vFoam;
     varying float vDepth;
-    varying float vWake;
     varying vec2 vUV;
 
-    // Gerstner波（振幅・急峻さを抑えてリアルに）
     vec3 gerstner(vec2 p, vec2 d, float wl, float steep, float spd){
       float k = 6.2832 / wl;
       float c = sqrt(9.8 / k) * spd;
@@ -277,63 +276,50 @@ export function buildOcean(THREE, scene) {
 
     void main(){
       vec3 pos = position;
-      vec2 wp  = pos.xz + uOffset * 15.0;
+      
+      // ★波が速すぎるバグの修正: * 15.0 を削除し、ワールド座標と完全に1:1で同期
+      vec2 wp  = pos.xz + uOffset;
 
-      // 波の合成（振幅を控えめに、波長を長く → 穏やかな海）
       vec3 g = vec3(0.0);
       g += gerstner(wp, vec2(1.0, 0.3),    120.0, uWH * 0.40, uWS);
       g += gerstner(wp, vec2(-0.5, 0.9),    75.0, uWH * 0.28, uWS * 1.1);
       g += gerstner(wp, vec2(0.8, -0.6),    45.0, uWH * 0.18, uWS * 1.25);
       g += gerstner(wp, vec2(-0.3, -0.8),   28.0, uWH * 0.10, uWS * 1.5);
       g += gerstner(wp, vec2(0.6, 0.5),     16.0, uWH * 0.055,uWS * 1.8);
-      // 細かいリップル（振幅極小）
+      
       float rip = sin(dot(wp, vec2(0.9, 0.4)) * 0.28 - uT * 1.8) * uWH * 0.012
                 + sin(dot(wp, vec2(-0.4, 0.7)) * 0.38 - uT * 2.2) * uWH * 0.008;
       pos += g;
       pos.y += rip;
 
-      // 法線（中心差分）
       float e = 2.0;
-      vec3 gR = gerstner(wp+vec2(e,0.), vec2(1.0,0.3),   120., uWH*0.40, uWS)
-              + gerstner(wp+vec2(e,0.), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
-      vec3 gL = gerstner(wp-vec2(e,0.), vec2(1.0,0.3),   120., uWH*0.40, uWS)
-              + gerstner(wp-vec2(e,0.), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
-      vec3 gF = gerstner(wp+vec2(0.,e), vec2(1.0,0.3),   120., uWH*0.40, uWS)
-              + gerstner(wp+vec2(0.,e), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
-      vec3 gB = gerstner(wp-vec2(0.,e), vec2(1.0,0.3),   120., uWH*0.40, uWS)
-              + gerstner(wp-vec2(0.,e), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
+      vec3 gR = gerstner(wp+vec2(e,0.), vec2(1.0,0.3),   120., uWH*0.40, uWS) + gerstner(wp+vec2(e,0.), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
+      vec3 gL = gerstner(wp-vec2(e,0.), vec2(1.0,0.3),   120., uWH*0.40, uWS) + gerstner(wp-vec2(e,0.), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
+      vec3 gF = gerstner(wp+vec2(0.,e), vec2(1.0,0.3),   120., uWH*0.40, uWS) + gerstner(wp+vec2(0.,e), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
+      vec3 gB = gerstner(wp-vec2(0.,e), vec2(1.0,0.3),   120., uWH*0.40, uWS) + gerstner(wp-vec2(0.,e), vec2(-0.5,0.9),    75., uWH*0.28, uWS*1.1);
       vec3 dx = vec3(2.*e, gR.y-gL.y, 0.);
       vec3 dz = vec3(0., gF.y-gB.y, 2.*e);
       vNormal = normalize(cross(dz, dx));
 
-      // 白波（波頂のみ）
       vFoam = smoothstep(0.08, 0.55, pos.y / (uWH + 0.001)) * uWind;
 
-      // 深度（カメラ距離）
       vec4 mvPos   = modelViewMatrix * vec4(pos, 1.0);
       vDepth       = -mvPos.z;
       vViewPos     = -mvPos.xyz;
       vWorldPos    = (modelMatrix * vec4(pos, 1.0)).xyz;
-
-      // 航跡（船位置からの距離で計算）
-      vec2 toShip  = vWorldPos.xz - uShipPos;
-      float shipDist = length(toShip);
-      // V字航跡：船の後方にV字型に広がる
-      float wakeAngle = abs(dot(normalize(toShip), vec2(0.0, 1.0)));
-      float wakeDist  = smoothstep(300.0, 0.0, shipDist) * uShipSpeed;
-      vWake = wakeDist * smoothstep(0.55, 0.85, wakeAngle) * step(0.0, toShip.y);
 
       vUV = wp * 0.0006;
       gl_Position = projectionMatrix * mvPos;
     }`;
 
   const frag = `
-    uniform float uT, uFogDensity, uShipSpeed;
+    uniform float uT, uFogDensity, uShipSpeed, uShipHeading;
+    uniform vec2 uShipPos;
     uniform vec3 uSunDir, uSunColor;
     uniform vec3 uSkyZenith, uSkyHorizon;
     uniform vec3 uDeepColor, uShallowColor, uFogColor;
     varying vec3 vNormal, vWorldPos, vViewPos;
-    varying float vFoam, vDepth, vWake;
+    varying float vFoam, vDepth;
     varying vec2 vUV;
 
     float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
@@ -341,81 +327,89 @@ export function buildOcean(THREE, scene) {
       vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
       return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
     }
-    // 2オクターブfBm（法線マップ用）
     float fbm(vec2 p){
       return vnoise(p)*0.6 + vnoise(p*2.1+vec2(1.7,9.2))*0.3 + vnoise(p*4.3+vec2(8.3,2.8))*0.1;
     }
-
-    // 空色サンプリング（シェーダースカイと連動）
     vec3 skyCol(vec3 dir){
       float t = clamp(dir.y * 1.5 + 0.1, 0.0, 1.0);
       return mix(uSkyHorizon, uSkyZenith, t);
     }
 
     void main(){
-      // ---- 法線マップの重ね合わせ ----
-      // ノイズから動的法線を生成してGerstner法線に加算
       vec2 uv1 = vUV * 8.0  + vec2( uT * 0.012,  uT * 0.008);
       vec2 uv2 = vUV * 18.0 + vec2(-uT * 0.018,  uT * 0.014);
       vec2 uv3 = vUV * 45.0 + vec2( uT * 0.025, -uT * 0.020);
-      // 各スケールの法線擾乱
       float n1x = fbm(uv1 + vec2(0.1,0.)) - fbm(uv1 - vec2(0.1,0.));
       float n1z = fbm(uv1 + vec2(0.,0.1)) - fbm(uv1 - vec2(0.,0.1));
       float n2x = fbm(uv2 + vec2(0.1,0.)) - fbm(uv2 - vec2(0.1,0.));
       float n2z = fbm(uv2 + vec2(0.,0.1)) - fbm(uv2 - vec2(0.,0.1));
       float n3x = (vnoise(uv3+vec2(0.05,0.))-vnoise(uv3-vec2(0.05,0.)))*0.5;
       float n3z = (vnoise(uv3+vec2(0.,0.05))-vnoise(uv3-vec2(0.,0.05)))*0.5;
-      // Gerstner法線 + ノイズ法線を合成
-      vec3 N = normalize(vNormal
-               + vec3(n1x*0.25 + n2x*0.18 + n3x*0.10, 0., n1z*0.25 + n2z*0.18 + n3z*0.10));
+      vec3 N = normalize(vNormal + vec3(n1x*0.25 + n2x*0.18 + n3x*0.10, 0., n1z*0.25 + n2z*0.18 + n3z*0.10));
 
       vec3 V = normalize(vViewPos);
       vec3 L = normalize(uSunDir);
 
-      // ---- フレネル ----
       float NdotV  = max(dot(N, V), 0.001);
-      float fresnel = pow(1.0 - NdotV, 3.8);
-      fresnel = mix(0.04, 1.0, fresnel);
-
-      // ---- 空の反射（フレネルで混合） ----
+      float fresnel = mix(0.04, 1.0, pow(1.0 - NdotV, 3.8));
       vec3 R    = reflect(-V, N);
       vec3 refl = skyCol(normalize(R));
 
-      // ---- 太陽の鏡面反射 ----
       vec3 H     = normalize(L + V);
       float NdotH = max(dot(N, H), 0.0);
       float spec  = pow(NdotH, 500.0) * 2.5;
       float glow  = pow(NdotH, 28.0)  * 0.22;
 
-      // ---- 深度による色変化 ----
-      // 近い→浅い青緑、遠い→深い青
       float depthFactor = clamp(vDepth / 1200.0, 0.0, 1.0);
       vec3 waterCol = mix(uShallowColor, uDeepColor, depthFactor);
-      // 拡散光
       float diff = max(dot(N, L), 0.0) * 0.45 + 0.55;
       waterCol *= diff;
 
-      // ---- 合成 ----
       vec3 c = mix(waterCol, refl, fresnel);
       c += uSunColor * spec;
       c += uSunColor * vec3(1.0, 0.85, 0.55) * glow;
 
-      // ---- 白波 ----
+      // ★ 船を中心としたローカル座標の計算
+      vec2 toShip = vWorldPos.xz - uShipPos;
+      float sh = sin(uShipHeading);
+      float ch = cos(uShipHeading);
+      float localZ = dot(toShip, vec2(-sh, ch)); // 船の前後 (前がプラス)
+      float localX = dot(toShip, vec2(ch, sh));  // 船の左右 (右がプラス)
+
+      // ★ 1. 船首の白波 (Bow Wave)
+      // 船首位置(ローカルZ=160付近)から後方へV字に広がる
+      float bowZ = localZ - 150.0;
+      float bowX = abs(localX) - 15.0 - max(0.0, -bowZ * 0.6); 
+      float bowMask = smoothstep(20.0, 0.0, bowX) * smoothstep(60.0, 0.0, abs(bowZ));
+      float bowWave = bowMask * uShipSpeed * 1.5;
+
+      // ★ 2. 船尾の航跡 (Wake)
+      // 船尾位置(ローカルZ=-170付近)から後方へ大きくV字に広がる
+      float wakeZ = -localZ - 170.0; 
+      float wakeX = abs(localX) - 20.0 - max(0.0, wakeZ * 0.25);
+      float wakeMask = smoothstep(600.0, 0.0, wakeZ) * smoothstep(50.0, 0.0, abs(wakeX));
+      // スクリューの直後の強い泡（プロペラウォッシュ）
+      float propWash = smoothstep(15.0, 0.0, abs(localX)) * smoothstep(250.0, 0.0, wakeZ);
+      float wake = max(wakeMask, propWash * 1.5) * step(0.0, wakeZ) * uShipSpeed;
+
+      // 自然の波の泡
       float fn = fbm(vUV * 95.0 + uT * 0.22);
-      float foam = vFoam * fn;
-      c = mix(c, vec3(0.92, 0.96, 0.99), foam * 0.7);
-      // 遠景のさざ波白味
+      float naturalFoam = vFoam * fn * 0.7;
+
+      // 遠景の白波
       float distWhite = (1.0 - clamp(vDepth / 800.0, 0.0, 1.0)) * vnoise(vUV * 35.0 - uT * 0.08) * 0.05;
       c += vec3(distWhite);
 
-      // ---- 航跡（V字白波） ----
-      float wakeNoise = vnoise(vUV * 200.0 + uT * 0.5);
-      float wake = vWake * (wakeNoise * 0.5 + 0.5);
-      c = mix(c, vec3(0.95, 0.97, 1.0), wake * 0.8);
+      // 泡のアニメーションと合成
+      float wakeNoise = fbm(vUV * 200.0 - uT * 0.5);
+      wake *= (wakeNoise * 0.6 + 0.4);
+      bowWave *= (fbm(vUV * 250.0 - uT * 0.8) * 0.5 + 0.5);
 
-      // ---- フォグ ----
-      float dist = length(vViewPos);
-      float fog  = clamp(exp2(-uFogDensity*uFogDensity*dist*dist*1.4427), 0.0, 1.0);
+      float totalFoam = clamp(naturalFoam + wake * 0.8 + bowWave, 0.0, 1.0);
+      c = mix(c, vec3(0.92, 0.96, 0.99), totalFoam);
+
+      float distFog = length(vViewPos);
+      float fog  = clamp(exp2(-uFogDensity*uFogDensity*distFog*distFog*1.4427), 0.0, 1.0);
       c = mix(uFogColor, c, fog);
 
       gl_FragColor = vec4(c, 1.0);
@@ -712,10 +706,79 @@ export function buildWorld(THREE, scene) {
   return { buoys };
 }
 
-// ---- AI他船 ----
+// ---- AI他船 (航跡メッシュ追加版) ----
 export function buildAI(THREE, scene) {
   const AIships = [], fishBoats = [];
   const metalTex = makeMetalTexture('#334455');
+
+  // [追加] 航跡用の共有ユニフォーム（main.jsで時間を更新するため）
+  const wakeUniforms = {
+    uT: { value: 0 }
+  };
+
+  // [追加] 航跡シェーダーマテリアル
+  const wakeMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uT: wakeUniforms.uT,
+      uSpeed: { value: 1.0 } // 船の基本速度に合わせて調整
+    },
+    vertexShader: `
+      varying vec2 vUV;
+      void main() {
+        vUV = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uT;
+      uniform float uSpeed;
+      varying vec2 vUV;
+
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float vnoise(vec2 p){
+        vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+      }
+      float fbm(vec2 p){
+        return vnoise(p)*0.5 + vnoise(p*2.0)*0.25 + vnoise(p*4.0)*0.125;
+      }
+
+      void main() {
+        // vUV.y: 1.0(船尾側/前), 0.0(はるか後方)
+        float front = vUV.y;
+        float back = 1.0 - vUV.y;
+
+        // 中央からの距離 (0.0=中央, 1.0=端)
+        float distFromCenter = abs(vUV.x - 0.5) * 2.0;
+
+        // 後方に行くほど広がるV字の幅
+        float wakeWidth = back * 0.7 + 0.1;
+        float mask = smoothstep(wakeWidth, wakeWidth - 0.3, distFromCenter);
+
+        // スクリュー直後の泡 (プロペラウォッシュ)
+        float wash = smoothstep(0.2, 0.0, distFromCenter) * smoothstep(1.0, 0.6, back);
+
+        // 動的ノイズ (後方へ流れる)
+        vec2 nuv = vUV * vec2(4.0, 12.0);
+        nuv.y += uT * uSpeed * 0.8;
+        float n = fbm(nuv);
+        float n2 = fbm(nuv * 2.0 - vec2(0.0, uT * uSpeed * 1.5));
+
+        // 合成してフェードアウト
+        float wave = (mask * n + wash * n2) * front;
+        wave *= smoothstep(0.0, 0.1, front); // 後端の滑らかな消失
+
+        // 境界線を馴染ませる
+        float edgeFade = smoothstep(1.0, 0.5, distFromCenter / wakeWidth);
+        float alpha = wave * edgeFade * 0.8;
+
+        gl_FragColor = vec4(0.92, 0.96, 0.99, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false, // 海面とのチラつき(Zファイティング)防止
+    side: THREE.DoubleSide
+  });
 
   const mkAI = (x, z, h, spd, c, sz = 1) => {
     const g = new THREE.Group();
@@ -726,6 +789,18 @@ export function buildAI(THREE, scene) {
     sm.position.set(0, 8 * sz, -10 * sz); g.add(sm);
     const gl = new THREE.PointLight(0x00ff00, 0.5, 100 * sz); gl.position.set( 4 * sz, 5 * sz, 22 * sz); g.add(gl);
     const rl = new THREE.PointLight(0xff0000, 0.5, 100 * sz); rl.position.set(-4 * sz, 5 * sz, 22 * sz); g.add(rl);
+    
+    // [追加] 航跡メッシュの追加
+    const wakeLen = 80 * sz;
+    const wakeGeo = new THREE.PlaneGeometry(30 * sz, wakeLen);
+    wakeGeo.rotateX(-Math.PI / 2);
+    const wakeMesh = new THREE.Mesh(wakeGeo, wakeMat.clone());
+    // マテリアルをクローンして個別の速度を適用
+    wakeMesh.material.uniforms.uSpeed.value = spd * 0.5;
+    // 船尾から後方に配置 (zはプラスが後方)
+    wakeMesh.position.set(0, 0.2, 25 * sz + wakeLen / 2 - 5 * sz);
+    g.add(wakeMesh);
+
     g.position.set(x, 0, z); g.rotation.y = -h; scene.add(g);
     return { mesh: g, heading: h, speed: spd, avoidTimer: 0, sz };
   };
@@ -739,6 +814,16 @@ export function buildAI(THREE, scene) {
     br.position.set(0, 20, -110); g.add(br);
     const fn = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 5, 15, 12), new THREE.MeshStandardMaterial({ color: 0xcc2222 }));
     fn.position.set(0, 36, -120); g.add(fn);
+
+    // [追加] 航跡メッシュの追加 (大型用)
+    const wakeLen = 300;
+    const wakeGeo = new THREE.PlaneGeometry(80, wakeLen);
+    wakeGeo.rotateX(-Math.PI / 2);
+    const wakeMesh = new THREE.Mesh(wakeGeo, wakeMat.clone());
+    wakeMesh.material.uniforms.uSpeed.value = 4 * 0.5;
+    wakeMesh.position.set(0, 0.3, 140 + wakeLen / 2 - 10);
+    g.add(wakeMesh);
+
     g.position.set(x, 0, z); g.rotation.y = -h; scene.add(g);
     return { mesh: g, heading: h, speed: 4, avoidTimer: 0, sz: 5, isTanker: true };
   };
@@ -760,35 +845,46 @@ export function buildAI(THREE, scene) {
     const g = new THREE.Group();
     const bm = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 10), new THREE.MeshStandardMaterial({ color: 0x4488aa, roughness: 0.8 }));
     bm.position.y = 1; g.add(bm);
+
+    // [追加] 航跡メッシュの追加 (漁船用)
+    const spd = 3 + Math.random() * 4;
+    const wakeLen = 25;
+    const wakeGeo = new THREE.PlaneGeometry(8, wakeLen);
+    wakeGeo.rotateX(-Math.PI / 2);
+    const wakeMesh = new THREE.Mesh(wakeGeo, wakeMat.clone());
+    wakeMesh.material.uniforms.uSpeed.value = spd * 0.5;
+    wakeMesh.position.set(0, 0.1, 5 + wakeLen / 2 - 2);
+    g.add(wakeMesh);
+
     const a = Math.random() * Math.PI * 2;
     g.position.set(Math.cos(a) * 800 + Math.random() * 300 - 150, 0, Math.sin(a) * 800 + Math.random() * 300 - 150);
     scene.add(g);
-    fishBoats.push({ mesh: g, heading: a, speed: 3 + Math.random() * 4, drift: Math.random() * 0.003 - 0.0015 });
+    fishBoats.push({ mesh: g, heading: a, speed: spd, drift: Math.random() * 0.003 - 0.0015 });
   }
 
   // タグボート
   const tugs = [];
   const mkTug = (x, z, ox, oz) => {
     const g = new THREE.Group();
-    // 幅12m, 高さ8m, 全長35m に拡大
     const bm = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 35), new THREE.MeshStandardMaterial({ color: 0xff5500, roughness: 0.6 }));
     bm.position.y = 4; g.add(bm);
     const cb = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), new THREE.MeshStandardMaterial({ color: 0xddddcc }));
     cb.position.set(0, 12, 4); g.add(cb);
     const fn = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 10, 8), new THREE.MeshStandardMaterial({ color: 0xff5500 }));
     fn.position.set(0, 18, 0); g.add(fn);
+
     g.position.set(x, 0, z); scene.add(g);
     return { mesh: g, active: false, ox, oz };
   };
   tugs.push(mkTug(-2100 + 100, 3200 - 200,  65, -90));
   tugs.push(mkTug(-2100 - 100, 3200 - 180, -65, -70));
 
-  // --- 全ての物質を「透けない」ようにする ---
   scene.traverse((object) => {
     if (object.isMesh && object.material) {
-      object.material.side = THREE.DoubleSide; // ★ 全ての物体を両面描画に
+      object.material.side = THREE.DoubleSide;
     }
   });
 
-  return { AIships, fishBoats, tugs };
+  // [修正] wakeUniforms を main.js に渡す
+  return { AIships, fishBoats, tugs, wakeUniforms };
 }
