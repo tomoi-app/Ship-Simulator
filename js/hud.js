@@ -4,6 +4,18 @@ import * as tools from './tools.js';
 //  hud.js — HUD・UI 描画管理 (統合版 v5.1)
 // ============================================================
 
+// --- HUD用のグローバル変数 ---
+let canvas, ctx;
+const gaugeBarHeight = 120;
+let overloadTimer = 0;
+let V = { telegraph: 0, windDir: 0, windSpeed: 0, shipSpeed: 0, rudderAngle: 0, yawRate: 0, rpm: 0 };
+const smoothRate = 4.0;
+const angleSmoothRate = 2.0;
+
+// --- 補助関数 ---
+const degToRad = (deg) => deg * Math.PI / 180;
+const map = (value, in_min, in_max, out_min, out_max) => (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+
 // --- 外部へのエクスポート関数群 (認識率向上のため上部に集約) ---
 
 export function animScore(target) {
