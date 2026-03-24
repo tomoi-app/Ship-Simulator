@@ -201,6 +201,9 @@ window.addEventListener('touchend', () => { isDragging = false; });
 // ============================================================
 //  天候 → Three.js 反映
 // ============================================================
+// ============================================================
+//  天候 → Three.js 反映
+// ============================================================
 function applyWeatherScene(m) {
   // 基本光源リセット
   sun.intensity  = 1.6; moon.intensity = 0; amb.intensity = 0.7;
@@ -216,71 +219,47 @@ function applyWeatherScene(m) {
   let fogD = 0.000075;
 
   if (m.wx === 'str') {
-    if(sky.material.uniforms){
-      sky.material.uniforms.uZenith.value.set(0x111e2a);
-      sky.material.uniforms.uMidsky.value.set(0x1e3040);
-      sky.material.uniforms.uHorizon.value.set(0x3a4a5a);
-      sky.material.uniforms.uSunIntensity.value = 0.0;
-    } else { sky.material.color.set(0x223344); }
-    sun.color.set(0x7788aa); sun.intensity = 0.38;
-    fogC = 0x2a3344; fogD = 0.00028;
-    // 嵐の海
-    wu.uDeepColor.value.setHex(0x0a1520);
-    wu.uShallowColor.value.setHex(0x122030);
-    wu.uSkyZenith.value.setHex(0x1a2a3a);
-    wu.uSkyHorizon.value.setHex(0x3a4a5a);
-    wu.uSunColor.value.setHex(0x556677);
-    wu.uFogColor.value.setHex(0x2a3344);
-    wu.uFogDensity.value = 0.00025;
-    wu.uSunDir.value.copy(sun.position).normalize();
+    // 嵐 (省略)
+    if(sky.material.uniforms){ sky.material.uniforms.uSunIntensity.value = 0.0; }
+    wu.uDeepColor.value.setHex(0x0a1520); wu.uShallowColor.value.setHex(0x122030);
+    wu.uSkyZenith.value.setHex(0x1a2a3a); wu.uSkyHorizon.value.setHex(0x3a4a5a);
+    wu.uSunColor.value.setHex(0x556677); wu.uFogColor.value.setHex(0x2a3344);
+    wu.uFogDensity.value = 0.00025; wu.uSunDir.value.copy(sun.position).normalize();
   }
   else if (m.wx === 'rain') {
-    if(sky.material.uniforms){
-      sky.material.uniforms.uZenith.value.set(0x222e3a);
-      sky.material.uniforms.uMidsky.value.set(0x344455);
-      sky.material.uniforms.uHorizon.value.set(0x4a5a6a);
-      sky.material.uniforms.uSunIntensity.value = 0.0;
-    } else { sky.material.color.set(0x3a4a5a); }
-    sun.intensity = 0.55;
-    fogC = 0x3a4a5a; fogD = 0.0004;
-    wu.uDeepColor.value.setHex(0x111e28);
-    wu.uSkyZenith.value.setHex(0x222e3a);
-    wu.uSkyHorizon.value.setHex(0x4a5a6a);
-    wu.uSunColor.value.setHex(0x7788aa);
-    wu.uFogColor.value.setHex(0x3a4a5a);
-    wu.uFogDensity.value = 0.0004;
-    wu.uSunDir.value.copy(sun.position).normalize();
+    // 雨 (省略)
+    if(sky.material.uniforms){ sky.material.uniforms.uSunIntensity.value = 0.0; }
+    wu.uDeepColor.value.setHex(0x111e28); wu.uShallowColor.value.setHex(0x222e3a);
+    wu.uSkyZenith.value.setHex(0x222e3a); wu.uSkyHorizon.value.setHex(0x4a5a6a);
+    wu.uSunColor.value.setHex(0x7788aa); wu.uFogColor.value.setHex(0x3a4a5a);
+    wu.uFogDensity.value = 0.0004; wu.uSunDir.value.copy(sun.position).normalize();
   }
-  
-  // 晴天時（str/rain/ngt以外）の海デフォルト
-  if (!['str','rain','ngt'].includes(m.wx)) {
-    // ★参考動画のような、非常にリアルで重厚な港湾の色合いに変更
-    wu.uDeepColor.value.setHex(0x040e15);     // さらに深い、ほとんど黒に近いネイビー
-    wu.uShallowColor.value.setHex(0x0e2b38);  // 浅瀬も暗く、くすんだ青緑
-    wu.uSkyZenith.value.setHex(0x4a7fa8);     // 少し明るく、落ち着いた空の青
-    wu.uSkyHorizon.value.setHex(0xbcd7e6);    // 地平線は少し霞む
-    wu.uSunColor.value.setHex(0xffe9d1);      // 明るさは抑えつつ、暖かみのある太陽光
-    wu.uFogColor.value.setHex(0x9cbcd2);      // フォグを地平線に馴染ませる
-    wu.uFogDensity.value = 0.00018;           // ★遠近感を出すためフォグをさらに濃くする
+  else {
+    // ★晴天時の海：究極に重厚でダークなネイビー
+    wu.uDeepColor.value.setHex(0x020810);     // ほぼ黒の深海
+    wu.uShallowColor.value.setHex(0x061824);  // 暗い青緑
+    wu.uSkyZenith.value.setHex(0x32628c);     
+    wu.uSkyHorizon.value.setHex(0x9cbcd2);    
+    wu.uSunColor.value.setHex(0xffe2b5);      
+    wu.uFogColor.value.setHex(0x89adc4);      
+    wu.uFogDensity.value = 0.00015;           // 遠景を霞ませる
     wu.uSunDir.value.copy(sun.position).normalize();
   }
 
-  // 霧の上書き（濃霧ミッションなど）
+  // 霧の上書き
   if (m.fog > 0.4) {
     fogD = 0.0009 + m.fog * 0.0022; fogC = 0xaabbc8;
   } else if (m.fog > 0) {
     fogD = 0.00016 + m.fog * 0.001; fogC = 0x8fb5cc;
   }
 
-  // シーン全体と海シェーダーの両方にフォグを適用
   scene.fog = new THREE.FogExp2(fogC, fogD);
   wu.uFogColor.value.setHex(fogC);
   wu.uFogDensity.value = fogD;
 
-  // 波の高さと白波の設定
-  // ★港湾内であることを考慮し、波を非常に静かにする
-  wu.uWH.value   = 0.06 * m.waves;        // ★0.06に大幅に下げ、鏡のような静かな水面に
-  wu.uWS.value   = 0.40 + m.waves * 0.15; // 波速も落ち着かせる
+  // ★波の高さ：港湾らしい緩やかでどっしりとしたうねり
+  wu.uWH.value   = 0.08 * m.waves;        
+  wu.uWS.value   = 0.35 + m.waves * 0.15; 
   wu.uWind.value = m.waves;
 }
 
