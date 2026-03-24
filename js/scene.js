@@ -235,7 +235,7 @@ export function buildScene(THREE) {
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (白飛び排除・無限の奥行き・マット質感版) ----
+// ---- 海シェーダー (至高のリアルウォーター版) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:          { value: 0 },
@@ -256,13 +256,12 @@ export function buildOcean(THREE, scene) {
     uFogDensity: { value: 0.000075 },
   };
 
+  // ④ 波のジオメトリ (Vertex displacement)
+  // Gerstner波で頂点をうねらせる（船が浮きすぎないよう波高はmain.jsで制御済み）
   const vert = `
-    uniform float uT, uWH, uWS, uWind, uShipSpeed;
-    uniform vec2 uOffset, uShipPos;
-    varying vec3 vNormal;
-    varying vec3 vWorldPos;
-    varying vec3 vViewPos;
-    varying float vFoam;
+    uniform float uT, uWH, uWS, uWind;
+    uniform vec2 uOffset;
+    varying vec3 vNormal, vWorldPos, vViewPos;
     varying float vDepth;
     varying vec2 vUV;
 
@@ -282,27 +281,21 @@ export function buildOcean(THREE, scene) {
       g += gerstner(wp, vec2(1.0, 0.3),    350.0, uWH * 0.60, uWS * 0.8);
       g += gerstner(wp, vec2(-0.5, 0.9),   200.0, uWH * 0.35, uWS * 0.95);
       g += gerstner(wp, vec2(0.8, -0.6),   110.0, uWH * 0.20, uWS * 1.1);
-      g += gerstner(wp, vec2(-0.3, -0.8),   65.0, uWH * 0.10, uWS * 1.3);
       pos += g;
 
+      // 頂点法線の近似計算
       float e = 2.0;
-      vec3 gR = gerstner(wp+vec2(e,0.), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8) + gerstner(wp+vec2(e,0.), vec2(-0.5,0.9), 200., uWH*0.35, uWS*0.95);
-      vec3 gL = gerstner(wp-vec2(e,0.), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8) + gerstner(wp-vec2(e,0.), vec2(-0.5,0.9), 200., uWH*0.35, uWS*0.95);
-      vec3 gF = gerstner(wp+vec2(0.,e), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8) + gerstner(wp+vec2(0.,e), vec2(-0.5,0.9), 200., uWH*0.35, uWS*0.95);
-      vec3 gB = gerstner(wp-vec2(0.,e), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8) + gerstner(wp-vec2(0.,e), vec2(-0.5,0.9), 200., uWH*0.35, uWS*0.95);
-      vec3 dx = vec3(2.*e, gR.y-gL.y, 0.);
-      vec3 dz = vec3(0., gF.y-gB.y, 2.*e);
-      vNormal = normalize(cross(dz, dx));
+      vec3 gR = gerstner(wp+vec2(e,0.), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8);
+      vec3 gL = gerstner(wp-vec2(e,0.), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8);
+      vec3 gF = gerstner(wp+vec2(0.,e), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8);
+      vec3 gB = gerstner(wp-vec2(0.,e), vec2(1.0,0.3), 350., uWH*0.6, uWS*0.8);
+      vNormal = normalize(cross(vec3(0., gF.y-gB.y, 2.*e), vec3(2.*e, gR.y-gL.y, 0.)));
 
-      // ★白すぎる原因1: 白波(Foam)の発生条件を厳しくし、本当に高い波の頂点だけで発生させる
-      vFoam = smoothstep(0.4, 0.9, pos.y / (uWH + 0.001)) * uWind;
-
-      vec4 mvPos   = modelViewMatrix * vec4(pos, 1.0);
-      vDepth       = -mvPos.z;
-      vViewPos     = -mvPos.xyz;
-      vWorldPos    = (modelMatrix * vec4(pos, 1.0)).xyz;
-
-      vUV = wp;
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      vDepth     = -mvPos.z;
+      vViewPos   = -mvPos.xyz;
+      vWorldPos  = (modelMatrix * vec4(pos, 1.0)).xyz;
+      vUV        = wp;
       gl_Position = projectionMatrix * mvPos;
     }`;
 
@@ -312,7 +305,7 @@ export function buildOcean(THREE, scene) {
     uniform vec3 uSunDir, uSunColor, uSkyZenith, uSkyHorizon;
     uniform vec3 uDeepColor, uShallowColor, uFogColor;
     varying vec3 vNormal, vWorldPos, vViewPos;
-    varying float vFoam, vDepth;
+    varying float vDepth;
     varying vec2 vUV;
 
     float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
@@ -320,51 +313,56 @@ export function buildOcean(THREE, scene) {
       vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
       return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
     }
-    float fbm(vec2 p){ return vnoise(p)*0.6 + vnoise(p*2.1)*0.3 + vnoise(p*4.3)*0.1; }
+    float fbm(vec2 p){ return vnoise(p)*0.5 + vnoise(p*2.0)*0.25 + vnoise(p*4.0)*0.125; }
 
-    vec3 skyCol(vec3 dir){
-      return mix(uSkyHorizon, uSkyZenith, clamp(dir.y * 1.5 + 0.1, 0.0, 1.0));
-    }
+    vec3 skyCol(vec3 dir){ return mix(uSkyHorizon, uSkyZenith, clamp(dir.y * 1.5 + 0.1, 0.0, 1.0)); }
 
     void main(){
       float dist = length(vViewPos);
+      float detailFade = smoothstep(4000.0, 200.0, dist); // 遠景のモアレ防止
 
-      // ★奥行きの強調: スムーズステップで手前(300m)から奥(3500m)へ向けて波の模様を完全に消す
-      float detailFade = smoothstep(3500.0, 300.0, dist);
+      // ① 法線マップ2枚ブレンド (Normal map blending)
+      // ゆっくりな大きな波(uv1) と 高速な細かい波(uv2) をスクロールさせて合成
+      vec2 uv1 = vWorldPos.xz * 0.015 + uT * vec2(0.15, 0.10);
+      vec2 uv2 = vWorldPos.xz * 0.035 - uT * vec2(0.20, 0.25);
+      
+      float n1x = fbm(uv1 + vec2(0.1, 0.0)) - fbm(uv1 - vec2(0.1, 0.0));
+      float n1z = fbm(uv1 + vec2(0.0, 0.1)) - fbm(uv1 - vec2(0.0, 0.1));
+      float n2x = fbm(uv2 + vec2(0.05, 0.0)) - fbm(uv2 - vec2(0.05, 0.0));
+      float n2z = fbm(uv2 + vec2(0.0, 0.05)) - fbm(uv2 - vec2(0.0, 0.05));
 
-      // ★白すぎる原因2: さざ波(Ripples)の凹凸が強すぎたので極限まで弱く・滑らかにする
-      vec2 rp = vWorldPos.xz * 0.015; 
-      float time = uT * 0.8;
-      vec2 ripples = vec2(0.0);
-      ripples += vec2(sin(rp.x + time), cos(rp.y + time)) * 0.02; // 大幅に減少
-      ripples += vec2(sin(rp.y * 2.2 - time), cos(rp.x * 2.0 + time)) * 0.01;
-      ripples *= detailFade;
-
-      vec3 N = normalize(vNormal + vec3(ripples.x, 0.0, ripples.y));
+      vec3 waveNormal = vec3(n1x * 0.6 + n2x * 0.4, 0.0, n1z * 0.6 + n2z * 0.4) * detailFade;
+      vec3 N = normalize(vNormal + waveNormal);
       vec3 V = normalize(vViewPos);
       vec3 L = normalize(uSunDir);
 
+      // ② フレネル反射 (Fresnel: 1 - N.V)^5
       float NdotV = max(dot(N, V), 0.001);
-      float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0) * detailFade;
-      
+      float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
+      fresnel *= detailFade * 0.7 + 0.3; // 遠くでの不自然な白飛びを抑制
+
+      // ③ 環境反射 (Skybox Reflection)
       vec3 R = reflect(-V, N);
-      vec3 refl = skyCol(normalize(R));
+      vec3 reflection = skyCol(normalize(R));
 
-      // ★白すぎる原因3: 太陽のギラギラ(Specular)を大幅にカット
+      // ④ 色と深度 (Depth Color & Absorption)
+      float depthFactor = clamp(dist / 3000.0, 0.0, 1.0);
+      vec3 baseColor = mix(uShallowColor, uDeepColor, depthFactor);
+      // 光の吸収（波の陰影）
+      baseColor *= max(dot(N, L), 0.0) * 0.4 + 0.6;
+
+      // ⑤ スペキュラ強化 (Specular)
       vec3 H = normalize(L + V);
-      float spec = pow(max(dot(N, H), 0.0), 1000.0) * 0.3 * detailFade;
+      float NdotH = max(dot(N, H), 0.0);
+      // 太陽の鋭いハイライト。波の頂点（roughness）で散らす
+      float roughness = fbm(vWorldPos.xz * 0.05) * 0.5 + 0.5;
+      float specular = pow(NdotH, 1000.0 * roughness) * 1.5 * detailFade;
 
-      float depthFactor = clamp(dist / 4000.0, 0.0, 1.0);
-      vec3 waterCol = mix(uShallowColor, uDeepColor, depthFactor);
-      
-      // 黒すぎる原因解消: 波の影の部分が真っ黒にならないように明るさを底上げ
-      waterCol *= max(dot(N, L), 0.0) * 0.15 + 0.85; 
+      // --- 色の最終合成 (フレネルで水色と反射をブレンドし、光を足す) ---
+      vec3 color = mix(baseColor, reflection, fresnel);
+      color += uSunColor * specular;
 
-      // 色の合成
-      vec3 c = mix(waterCol, refl, fresnel * 0.35);
-      c += uSunColor * spec;
-
-      // --- 船の航跡 (Bow Wave & Wake) ---
+      // ⑤ フォーム追加 (Foam / 白波)
       vec2 toShip = vWorldPos.xz - uShipPos;
       float sh = sin(uShipHeading), ch = cos(uShipHeading);
       float localZ = dot(toShip, vec2(-sh, ch));
@@ -380,18 +378,21 @@ export function buildOcean(THREE, scene) {
       float propWash = smoothstep(15.0, 0.0, abs(localX)) * smoothstep(250.0, 0.0, wakeZ);
       float wake = max(wakeMask, propWash * 1.5) * step(0.0, wakeZ) * uShipSpeed;
 
-      // ★白すぎる原因4: 海全体の自然な泡をほぼ見えないレベルまで削減
-      float fn = fbm(vUV * 0.05 + uT * 0.1);
-      float naturalFoam = vFoam * fn * 0.2; // 0.7から0.2へ激減
+      // 波の傾き（法線のxy長さ）から自然な白波を生成
+      float slope = length(waveNormal.xz);
+      float naturalFoam = smoothstep(0.4, 0.8, slope) * fbm(vUV * 0.2 + uT * 0.5) * 0.3;
+
+      wake *= (fbm(vUV * 0.05 - vec2(0.0, uT * 1.5)) * 0.6 + 0.4);
+      bowWave *= (fbm(vUV * 0.08 - vec2(0.0, uT * 2.0)) * 0.5 + 0.5);
+
+      float totalFoam = clamp(naturalFoam + wake * 0.8 + bowWave, 0.0, 1.0);
+      color = mix(color, vec3(0.88, 0.94, 0.98), totalFoam); // 白波は青白く
+
+      // ⑥ 遠景の処理 (Distance Fog)
+      float fog = clamp(exp2(-uFogDensity * uFogDensity * dist * dist * 1.4427), 0.0, 1.0);
       
-      wake *= (fbm(vUV * 0.12 - uT * 0.5) * 0.6 + 0.4);
-      bowWave *= (fbm(vUV * 0.15 - uT * 0.8) * 0.5 + 0.5);
-
-      c = mix(c, vec3(0.92, 0.96, 0.99), clamp(naturalFoam + wake * 0.8 + bowWave, 0.0, 1.0));
-
-      // フォグによる地平線へのブレンド
-      float fog = clamp(exp2(-uFogDensity*uFogDensity*dist*dist*1.4427), 0.0, 1.0);
-      gl_FragColor = vec4(mix(uFogColor, c, fog), 1.0);
+      // ⑦ 微妙なトーン（最終出力）
+      gl_FragColor = vec4(mix(uFogColor, color, fog), 1.0);
     }`;
 
   const geo = new THREE.PlaneGeometry(24000, 24000, 512, 512);
