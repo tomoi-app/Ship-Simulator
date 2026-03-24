@@ -201,9 +201,6 @@ window.addEventListener('touchend', () => { isDragging = false; });
 // ============================================================
 //  天候 → Three.js 反映
 // ============================================================
-// ============================================================
-//  天候 → Three.js 反映
-// ============================================================
 function applyWeatherScene(m) {
   // 基本光源リセット
   sun.intensity  = 1.6; moon.intensity = 0; amb.intensity = 0.7;
@@ -235,18 +232,16 @@ function applyWeatherScene(m) {
     wu.uFogDensity.value = 0.0004; wu.uSunDir.value.copy(sun.position).normalize();
   }
   else {
-    // ★ 遠景（Depth深）: 深いネイビー
     wu.uDeepColor.value.setHex(0x061829);     
-    // ★ 近景（Depth浅・吸収）: ほんの少し緑（ティール）を混ぜた濃い青
     wu.uShallowColor.value.setHex(0x133842);  
-    
     wu.uSkyZenith.value.setHex(0x3a6a8f);     
     wu.uSkyHorizon.value.setHex(0xa6c3d9);    
     wu.uSunColor.value.setHex(0xfff2da);      
-    
-    // ④ フォグ: 地平線の色と完全に一致させて境界を溶かす
     wu.uFogColor.value.setHex(0xa6c3d9);      
-    wu.uFogDensity.value = 0.00022;           
+    
+    // ⑤ フォグを「ほんの少し」だけ足す (0.00022 -> 0.00028)
+    wu.uFogDensity.value = 0.00028;           
+    
     wu.uSunDir.value.copy(sun.position).normalize();
   }
 
