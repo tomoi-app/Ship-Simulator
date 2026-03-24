@@ -235,7 +235,7 @@ export function buildScene(THREE) {
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (真・3D高解像度 ＆ 液体波紋 ＆ 遠近感フェード版) ----
+// ---- 海シェーダー (白飛び排除・無限の奥行き・マット質感版) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:          { value: 0 },
@@ -278,13 +278,11 @@ export function buildOcean(THREE, scene) {
       vec3 pos = position;
       vec2 wp  = pos.xz + uOffset;
 
-      // ★巨大船のスケールに合わせた、本物の3Dのうねり（波長を長く設定）
       vec3 g = vec3(0.0);
       g += gerstner(wp, vec2(1.0, 0.3),    350.0, uWH * 0.60, uWS * 0.8);
       g += gerstner(wp, vec2(-0.5, 0.9),   200.0, uWH * 0.35, uWS * 0.95);
       g += gerstner(wp, vec2(0.8, -0.6),   110.0, uWH * 0.20, uWS * 1.1);
       g += gerstner(wp, vec2(-0.3, -0.8),   65.0, uWH * 0.10, uWS * 1.3);
-      
       pos += g;
 
       float e = 2.0;
@@ -296,7 +294,8 @@ export function buildOcean(THREE, scene) {
       vec3 dz = vec3(0., gF.y-gB.y, 2.*e);
       vNormal = normalize(cross(dz, dx));
 
-      vFoam = smoothstep(0.1, 0.6, pos.y / (uWH + 0.001)) * uWind;
+      // ★白すぎる原因1: 白波(Foam)の発生条件を厳しくし、本当に高い波の頂点だけで発生させる
+      vFoam = smoothstep(0.4, 0.9, pos.y / (uWH + 0.001)) * uWind;
 
       vec4 mvPos   = modelViewMatrix * vec4(pos, 1.0);
       vDepth       = -mvPos.z;
@@ -316,7 +315,6 @@ export function buildOcean(THREE, scene) {
     varying float vFoam, vDepth;
     varying vec2 vUV;
 
-    // 白波用のノイズ
     float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
     float vnoise(vec2 p){
       vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -331,48 +329,46 @@ export function buildOcean(THREE, scene) {
     void main(){
       float dist = length(vViewPos);
 
-      // ★1. 遠景のアンチエイリアス (モアレ防止)
-      // カメラから遠ざかるほど、細かな波紋を打ち消して「ツルツルの鏡面」にする
-      float detailFade = clamp(1.0 - (dist / 6000.0), 0.0, 1.0);
+      // ★奥行きの強調: スムーズステップで手前(300m)から奥(3500m)へ向けて波の模様を完全に消す
+      float detailFade = smoothstep(3500.0, 300.0, dist);
 
-      // ★2. 本物の「液体」の波紋計算 (サイン波の交差)
-      vec2 rp = vWorldPos.xz * 0.04; 
-      float time = uT * 1.5;
+      // ★白すぎる原因2: さざ波(Ripples)の凹凸が強すぎたので極限まで弱く・滑らかにする
+      vec2 rp = vWorldPos.xz * 0.015; 
+      float time = uT * 0.8;
       vec2 ripples = vec2(0.0);
-      ripples += vec2(sin(rp.x * 0.8 + time), cos(rp.y * 0.8 + time)) * 0.12;
-      ripples += vec2(sin(rp.y * 2.2 - time * 1.3), cos(rp.x * 2.0 + time * 1.1)) * 0.06;
-      ripples += vec2(sin(rp.x * 5.1 + time * 1.8), cos(rp.y * 4.8 - time * 1.5)) * 0.03;
-      ripples *= detailFade; // 遠くでは波紋を消す
+      ripples += vec2(sin(rp.x + time), cos(rp.y + time)) * 0.02; // 大幅に減少
+      ripples += vec2(sin(rp.y * 2.2 - time), cos(rp.x * 2.0 + time)) * 0.01;
+      ripples *= detailFade;
 
       vec3 N = normalize(vNormal + vec3(ripples.x, 0.0, ripples.y));
       vec3 V = normalize(vViewPos);
       vec3 L = normalize(uSunDir);
 
-      // ★3. 光学的に正しい反射 (フレネル)
       float NdotV = max(dot(N, V), 0.001);
       float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0) * detailFade;
       
       vec3 R = reflect(-V, N);
       vec3 refl = skyCol(normalize(R));
 
-      // 太陽の鋭い反射 (ギラつきを抑え、一点に鋭く光らせる)
+      // ★白すぎる原因3: 太陽のギラギラ(Specular)を大幅にカット
       vec3 H = normalize(L + V);
-      float spec = pow(max(dot(N, H), 0.0), 1000.0) * 1.2 * detailFade;
+      float spec = pow(max(dot(N, H), 0.0), 1000.0) * 0.3 * detailFade;
 
-      // 海の深さによる色の変化
       float depthFactor = clamp(dist / 4000.0, 0.0, 1.0);
       vec3 waterCol = mix(uShallowColor, uDeepColor, depthFactor);
-      waterCol *= max(dot(N, L), 0.0) * 0.4 + 0.6; // ディフューズ
+      
+      // 黒すぎる原因解消: 波の影の部分が真っ黒にならないように明るさを底上げ
+      waterCol *= max(dot(N, L), 0.0) * 0.15 + 0.85; 
 
-      // ★空の反射率を下げて「重さ」を出す
+      // 色の合成
       vec3 c = mix(waterCol, refl, fresnel * 0.35);
       c += uSunColor * spec;
 
       // --- 船の航跡 (Bow Wave & Wake) ---
       vec2 toShip = vWorldPos.xz - uShipPos;
       float sh = sin(uShipHeading), ch = cos(uShipHeading);
-      float localZ = dot(toShip, vec2(-sh, ch)); // 前後
-      float localX = dot(toShip, vec2(ch, sh));  // 左右
+      float localZ = dot(toShip, vec2(-sh, ch));
+      float localX = dot(toShip, vec2(ch, sh));
 
       float bowZ = localZ - 150.0;
       float bowX = abs(localX) - 15.0 - max(0.0, -bowZ * 0.6); 
@@ -384,21 +380,21 @@ export function buildOcean(THREE, scene) {
       float propWash = smoothstep(15.0, 0.0, abs(localX)) * smoothstep(250.0, 0.0, wakeZ);
       float wake = max(wakeMask, propWash * 1.5) * step(0.0, wakeZ) * uShipSpeed;
 
-      // 泡の合成
-      float fn = fbm(vUV * 0.06 + uT * 0.22);
-      float naturalFoam = vFoam * fn * 0.7;
+      // ★白すぎる原因4: 海全体の自然な泡をほぼ見えないレベルまで削減
+      float fn = fbm(vUV * 0.05 + uT * 0.1);
+      float naturalFoam = vFoam * fn * 0.2; // 0.7から0.2へ激減
+      
       wake *= (fbm(vUV * 0.12 - uT * 0.5) * 0.6 + 0.4);
       bowWave *= (fbm(vUV * 0.15 - uT * 0.8) * 0.5 + 0.5);
 
       c = mix(c, vec3(0.92, 0.96, 0.99), clamp(naturalFoam + wake * 0.8 + bowWave, 0.0, 1.0));
 
-      // フォグ
+      // フォグによる地平線へのブレンド
       float fog = clamp(exp2(-uFogDensity*uFogDensity*dist*dist*1.4427), 0.0, 1.0);
       gl_FragColor = vec4(mix(uFogColor, c, fog), 1.0);
     }`;
 
-  // ★解像度を大幅に引き上げ、巨大な3D海面メッシュを生成 (512x512 = 26万頂点)
-  const geo = new THREE.PlaneGeometry(12000, 12000, 512, 512);
+  const geo = new THREE.PlaneGeometry(24000, 24000, 512, 512);
   geo.rotateX(-Math.PI / 2);
   const ocean = new THREE.Mesh(geo, new THREE.ShaderMaterial({
     uniforms: wu, vertexShader: vert, fragmentShader: frag,

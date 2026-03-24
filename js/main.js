@@ -201,9 +201,6 @@ window.addEventListener('touchend', () => { isDragging = false; });
 // ============================================================
 //  天候 → Three.js 反映
 // ============================================================
-// ============================================================
-//  天候 → Three.js 反映
-// ============================================================
 function applyWeatherScene(m) {
   // 基本光源リセット
   sun.intensity  = 1.6; moon.intensity = 0; amb.intensity = 0.7;
@@ -235,14 +232,15 @@ function applyWeatherScene(m) {
     wu.uFogDensity.value = 0.0004; wu.uSunDir.value.copy(sun.position).normalize();
   }
   else {
-    // ★晴天時の海：究極に重厚でダークなネイビー
-    wu.uDeepColor.value.setHex(0x020810);     // ほぼ黒の深海
-    wu.uShallowColor.value.setHex(0x061824);  // 暗い青緑
-    wu.uSkyZenith.value.setHex(0x32628c);     
-    wu.uSkyHorizon.value.setHex(0x9cbcd2);    
-    wu.uSunColor.value.setHex(0xffe2b5);      
-    wu.uFogColor.value.setHex(0x89adc4);      
-    wu.uFogDensity.value = 0.00015;           // 遠景を霞ませる
+    // ★晴天時：黒を脱却し、深みのあるシミュレーターブルーへ
+    wu.uDeepColor.value.setHex(0x0c2238);     // 深いネイビーブルー
+    wu.uShallowColor.value.setHex(0x194563);  // 落ち着いた青緑
+    wu.uSkyZenith.value.setHex(0x3a6a8f);     
+    wu.uSkyHorizon.value.setHex(0xa6c3d9);    
+    wu.uSunColor.value.setHex(0xffe8c4);      
+    // ★地平線(Horizon)と霧(Fog)の色を完全に一致させ、境界線を消して無限の奥行きを出す
+    wu.uFogColor.value.setHex(0xa6c3d9);      
+    wu.uFogDensity.value = 0.00025;           // 霧を少し濃くして遠近感を強調
     wu.uSunDir.value.copy(sun.position).normalize();
   }
 
@@ -257,7 +255,7 @@ function applyWeatherScene(m) {
   wu.uFogColor.value.setHex(fogC);
   wu.uFogDensity.value = fogD;
 
-  // ★波の高さ：港湾らしい緩やかでどっしりとしたうねり
+  // 波の高さ
   wu.uWH.value   = 0.08 * m.waves;        
   wu.uWS.value   = 0.35 + m.waves * 0.15; 
   wu.uWind.value = m.waves;
