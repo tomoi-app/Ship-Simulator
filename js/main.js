@@ -25,7 +25,8 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping      = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.01, 50000);
+// ★視野角を70に上げ、描写距離を拡大
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 10, 80000);
 
 const { scene, sky, sun, amb, moon } = buildScene(THREE);
 const { ocean, wu }                   = buildOcean(THREE, scene);
@@ -33,13 +34,12 @@ const { shipGroup, prop }             = buildShip(THREE, scene);
 const { buoys }                       = buildWorld(THREE, scene);
 const { AIships, fishBoats, tugs, wakeUniforms } = buildAI(THREE, scene);
 
-// --- ブリッジ視点（ファーストパーソン）設定 ---
-// ★ここの数値を変更するだけで、ゲーム中ずっと反映されるように整理しました！
-shipGroup.add(camera);
-const bridgeXPos   = -13;     // 左右★（プラスで左に移動）
-const bridgeHeight = 10;   // ★高さ（プラスで上に移動）
-const bridgeZPos   = 9.7;  // ★前後位置（プラスで前に移動）
+// ★カメラを高く、遠くに離して船全体を捉え、スケール感を出す視点に変更
+const bridgeXPos   = 0;       // 中心★
+const bridgeHeight = 160;     // 高さ★（大幅に上げる）
+const bridgeZPos   = 750;     // 後方への距離★（大幅に離す）
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
+shipGroup.add(camera);
 
 // --- 物理演算対象の変更（shipGroup 全体を指定） ---
 P.shipMesh = shipGroup;
@@ -212,6 +212,9 @@ function applyWeatherScene(m) {
   } else { sky.material.color.set(0x5a8fb0); }
   sun.color.set(0xfff8e8);
 
+  let fogC = 0xaac8dc; 
+  let fogD = 0.000075;
+
   if (m.wx === 'str') {
     if(sky.material.uniforms){
       sky.material.uniforms.uZenith.value.set(0x111e2a);
@@ -265,7 +268,6 @@ function applyWeatherScene(m) {
   // 霧の上書き（濃霧ミッションなど）
   if (m.fog > 0.4) {
     fogD = 0.0009 + m.fog * 0.0022; fogC = 0xaabbc8;
-    wu.uLightColor.value.setHex(0xaaaaaa);
   } else if (m.fog > 0) {
     fogD = 0.00016 + m.fog * 0.001; fogC = 0x8fb5cc;
   }
@@ -277,7 +279,7 @@ function applyWeatherScene(m) {
 
   // 波の高さと白波の設定
   // ★港湾内であることを考慮し、波を非常に静かにする
-  wu.uWH.value   = 0.06 * m.waves;        // ★0.15から0.06に大幅に下げ、鏡のような静かな水面に
+  wu.uWH.value   = 0.06 * m.waves;        // ★0.06に大幅に下げ、鏡のような静かな水面に
   wu.uWS.value   = 0.40 + m.waves * 0.15; // 波速も落ち着かせる
   wu.uWind.value = m.waves;
 }

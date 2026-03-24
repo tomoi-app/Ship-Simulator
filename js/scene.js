@@ -235,7 +235,7 @@ export function buildScene(THREE) {
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (波の速度バグ修正 ＆ 船首波・航跡の追加) ----
+// ---- 海シェーダー (船首波・航跡 ＋ 遠近感・マット化の完全版) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:          { value: 0 },
@@ -244,7 +244,7 @@ export function buildOcean(THREE, scene) {
     uWind:       { value: 1.0 },
     uShipSpeed:  { value: 0.0 },
     uShipPos:    { value: new THREE.Vector2(0, 0) },
-    uShipHeading:{ value: 0.0 }, // ★追加: 船の向き（Heading）
+    uShipHeading:{ value: 0.0 },
     uOffset:     { value: new THREE.Vector2(0, 0) },
     uSunDir:     { value: new THREE.Vector3(0.6, 0.42, 0.68).normalize() },
     uSunColor:   { value: new THREE.Color(0xfff6e0) },
@@ -276,8 +276,6 @@ export function buildOcean(THREE, scene) {
 
     void main(){
       vec3 pos = position;
-      
-      // ★波が速すぎるバグの修正: * 15.0 を削除し、ワールド座標と完全に1:1で同期
       vec2 wp  = pos.xz + uOffset;
 
       vec3 g = vec3(0.0);
@@ -336,10 +334,18 @@ export function buildOcean(THREE, scene) {
     }
 
     void main(){
-      // ノイズによる細かな波の生成 (変更なし)
-      vec2 uv1 = vUV * 8.0  + vec2( uT * 0.012,  uT * 0.008);
-      vec2 uv2 = vUV * 18.0 + vec2(-uT * 0.018,  uT * 0.014);
-      vec2 uv3 = vUV * 45.0 + vec2( uT * 0.025, -uT * 0.020);
+      // ★1. 距離の計算（遠近感を出すための最重要ポイント）
+      float dist = length(vViewPos);
+      
+      // ★2. 遠くの波模様を滑らかに消すためのフェード係数
+      // 手前200mから徐々に消え始め、3000m先で完全にツルツルになる
+      float detailFade = clamp(1.0 - (dist - 200.0) / 2800.0, 0.0, 1.0);
+
+      // 波の細かさ（スケール）を少し細かく調整
+      vec2 uv1 = vUV * 12.0  + vec2( uT * 0.012,  uT * 0.008);
+      vec2 uv2 = vUV * 25.0  + vec2(-uT * 0.018,  uT * 0.014);
+      vec2 uv3 = vUV * 55.0  + vec2( uT * 0.025, -uT * 0.020);
+      
       float n1x = fbm(uv1 + vec2(0.1,0.)) - fbm(uv1 - vec2(0.1,0.));
       float n1z = fbm(uv1 + vec2(0.,0.1)) - fbm(uv1 - vec2(0.,0.1));
       float n2x = fbm(uv2 + vec2(0.1,0.)) - fbm(uv2 - vec2(0.1,0.));
@@ -347,63 +353,51 @@ export function buildOcean(THREE, scene) {
       float n3x = (vnoise(uv3+vec2(0.05,0.))-vnoise(uv3-vec2(0.05,0.)))*0.5;
       float n3z = (vnoise(uv3+vec2(0.,0.05))-vnoise(uv3-vec2(0.,0.05)))*0.5;
       
-      // ★法線（Normal）を弱化。波の表面を滑らかにし、ギラつきを抑える
-      vec3 N = normalize(vNormal + vec3(n1x*0.15 + n2x*0.1 + n3x*0.05, 0., n1z*0.15 + n2z*0.1 + n3z*0.05));
+      // ★3. 距離フェード(detailFade)を掛けて、遠くの波を滑らかにする
+      vec3 waveNoise = vec3(n1x*0.12 + n2x*0.08 + n3x*0.04, 0., n1z*0.12 + n2z*0.08 + n3z*0.04) * detailFade;
+      vec3 N = normalize(vNormal + waveNoise);
 
       vec3 V = normalize(vViewPos);
       vec3 L = normalize(uSunDir);
 
-      // ★リアルなフレネル反射 (Schlick近似: 水の基本反射率0.02)
-      // 遠く（NdotVが小さい）ほど空の反射が強くなるが、全体的な強さは抑える
       float NdotV  = max(dot(N, V), 0.001);
-      float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0);
+      // ★4. 空の反射（フレネル）も遠景ほど弱めて白飛びを防ぐ
+      float fresnel = 0.02 + 0.98 * pow(1.0 - NdotV, 5.0) * detailFade;
       
       vec3 R    = reflect(-V, N);
       vec3 refl = skyCol(normalize(R));
 
-      // ★2. 太陽の乱反射 (大幅に弱める)
-      // 参考動画のように、海面は深く、マットに見えるようにする。広い反射（Broad/Scatter）は削除。
       vec3 H     = normalize(L + V);
       float NdotH = max(dot(N, H), 0.0);
-      // 鋭い反射（specSharp）も弱め、太陽の形がわずかに見える程度に。
-      float specSharp = pow(NdotH, 1500.0) * 0.8; 
-      float specBroad = pow(NdotH, 300.0) * 0.1;  // 非常に弱く
-      float specScatter = pow(NdotH, 80.0) * 0.02; // ほぼ見えない
-      float spec = specSharp + specBroad + specScatter;
+      float spec = pow(NdotH, 2000.0) * 0.5 * detailFade;
 
-      // 深度による海の色
-      // 遠くほど深いネイビーになるように調整
-      float depthFactor = clamp(vDepth / 1600.0, 0.0, 1.0);
+      float depthFactor = clamp(vDepth / 2000.0, 0.0, 1.0);
       vec3 waterCol = mix(uShallowColor, uDeepColor, depthFactor);
       
-      // 光の当たり具合（ディフューズ）。影を少し深くする。
-      float diff = max(dot(N, L), 0.0) * 0.35 + 0.65;
+      float diff = max(dot(N, L), 0.0) * 0.3 + 0.7;
       waterCol *= diff;
 
-      // ★3. 色の合成
-      vec3 c = mix(waterCol, refl, fresnel * 0.8); // フレネルの空の反射をさらに弱める
+      // ★5. 最終的な合成（空の反射を15%まで落とし、マットな質感にする）
+      vec3 c = mix(waterCol, refl, fresnel * 0.15);
       c += uSunColor * spec;
 
-      // ★ 船を中心としたローカル座標の計算
+      // --- 船を中心としたローカル座標の計算 ---
       vec2 toShip = vWorldPos.xz - uShipPos;
       float sh = sin(uShipHeading);
       float ch = cos(uShipHeading);
-      float localZ = dot(toShip, vec2(-sh, ch)); // 船の前後 (前がプラス)
-      float localX = dot(toShip, vec2(ch, sh));  // 船の左右 (右がプラス)
+      float localZ = dot(toShip, vec2(-sh, ch)); // 船の前後
+      float localX = dot(toShip, vec2(ch, sh));  // 船の左右
 
-      // ★ 1. 船首の白波 (Bow Wave)
-      // 船首位置(ローカルZ=160付近)から後方へV字に広がる
+      // 1. 船首の白波 (Bow Wave)
       float bowZ = localZ - 150.0;
       float bowX = abs(localX) - 15.0 - max(0.0, -bowZ * 0.6); 
       float bowMask = smoothstep(20.0, 0.0, bowX) * smoothstep(60.0, 0.0, abs(bowZ));
       float bowWave = bowMask * uShipSpeed * 1.5;
 
-      // ★ 2. 船尾の航跡 (Wake)
-      // 船尾位置(ローカルZ=-170付近)から後方へ大きくV字に広がる
+      // 2. 船尾の航跡 (Wake)
       float wakeZ = -localZ - 170.0; 
       float wakeX = abs(localX) - 20.0 - max(0.0, wakeZ * 0.25);
       float wakeMask = smoothstep(600.0, 0.0, wakeZ) * smoothstep(50.0, 0.0, abs(wakeX));
-      // スクリューの直後の強い泡（プロペラウォッシュ）
       float propWash = smoothstep(15.0, 0.0, abs(localX)) * smoothstep(250.0, 0.0, wakeZ);
       float wake = max(wakeMask, propWash * 1.5) * step(0.0, wakeZ) * uShipSpeed;
 
