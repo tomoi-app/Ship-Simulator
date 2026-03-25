@@ -45,7 +45,7 @@ export const P = {
 // ============================================================
 const RHO  = 1025;             
 const DP   = 14.45;            
-const AR   = 370;              
+const AR   = 115;              // ★修正: 舵面積を370から115へ（実物スケールに縮小）
 const t_P  = 0.197;            
 const w_P  = 0.192;            
 const x_P  = -0.48;            
@@ -68,7 +68,7 @@ const Y_vvr  =  0.379;
 const Y_vrr  = -0.391;
 const Y_rrr  =  0.008;
 const N_v    = -0.137;         
-const N_r    = -0.049;         
+const N_r    = -0.090;         // ★修正: 旋回に対する水の抵抗を強める (旧: -0.049)
 const N_vvv  =  0.061;
 const N_vvr  = -0.030;
 const N_vrr  = -0.320;
