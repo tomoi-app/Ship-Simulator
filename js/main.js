@@ -490,11 +490,6 @@ window.showModeSel = function() {
 };
 
 function buildSel() {
-  const stats = getStats();
-  document.getElementById('sc0').textContent = stats.cleared;
-  document.getElementById('sc1').textContent = stats.totalStar;
-  document.getElementById('sc2').textContent = stats.bestScore ?? '--';
-  document.getElementById('sc3').textContent = stats.avgScore  ?? '--';
 
   const grid = document.getElementById('mission-grid');
   if (!grid) return;
