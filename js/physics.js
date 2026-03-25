@@ -1,13 +1,6 @@
 'use strict';
 // ============================================================
-//  physics.js — MMGスタンダード法 完全実装版
-//
-//  変更点（旧版からの差分）:
-//  [1] surge方程式を積分に変更 (rpm直接代入→du/dt積分)
-//  [2] 流体微係数をKCS公開値に置換 (Yasukawa & Yoshimura 2015)
-//  [3] 手動スケール係数(0.20, 0.18等)を全廃
-//  [4] 浅水効果（h/T比による係数補正）を追加
-//  [5] それ以外の構造・インターフェースは旧版と完全互換
+//  physics.js — MMGスタンダード法 完全実装版 (Full 3-DOF Physics)
 // ============================================================
 
 export const P = {
@@ -29,17 +22,15 @@ export const P = {
   // 環境
   windDir: 315, windSpeed: 8,   // 風向（deg）、風速（kt）
   currDir: 0,   currSpeed: 0.5, // 潮流方向（deg）、流速（kt）
-  waterDepth: 200,              // [NEW] 水深（m）。浅水効果に使用
+  waterDepth: 200,              // 水深（m）。浅水効果に使用
 
   // 船舶定数（KCS: 230m級コンテナ船、スケール1.5倍で350m相当に設定）
-  // KCS原寸: Lpp=230m, B=32.2m, d=10.8m, 排水量=52030t
-  // ゲーム内スケール係数 λ=1.522 で350m相当に拡大
   maxFwd: 16.0,
   maxRev: 4.5,
   Lpp: 350,
   B:    49,
   d:    16.4,
-  mass: 1.84e8,   // 排水量×1.025×λ³ ≈ 184000t (KCSスケール)
+  mass: 1.84e8,   // 排水量×1.025×λ³ ≈ 184000t
   u: 0,           // Surge速度 [m/s]
   v: 0,           // Sway速度 [m/s]
   r: 0,           // Yaw rate [rad/s]
@@ -51,56 +42,53 @@ export const P = {
 // ============================================================
 //  KCS公開流体微係数
 //  出典: Yasukawa & Yoshimura (2015) J.Mar.Sci.Tech. 20:37-52
-//       Table 2 (KCS, full load condition)
-//  ※ 無次元表記: 速度スケール U、長さスケール Lpp で無次元化済み
 // ============================================================
-const RHO  = 1025;             // 海水密度 [kg/m³]
-const DP   = 14.45;            // プロペラ直径 [m] (KCSスケール)
-const AR   = 370;              // 舵面積 [m²]
-const t_P  = 0.197;            // 推力減少率
-const w_P  = 0.192;            // 伴流率
-const x_P  = -0.48;            // プロペラ位置 (無次元, 船尾側)
-const a_H  = 0.312;            // 舵力補正係数
-const x_H  = -0.464;           // 舵力作用点 (無次元)
-const gamma_R = 0.395;         // 整流係数
-const l_R  = -0.710;           // 舵作用点 (無次元)
-const epsilon = 1.09;          // プロペラ・舵速度比
-const kappa   = 0.50;          // プロペラ後流係数
+const RHO  = 1025;             
+const DP   = 14.45;            
+const AR   = 370;              
+const t_P  = 0.197;            
+const w_P  = 0.192;            
+const x_P  = -0.48;            
+const a_H  = 0.312;            
+const x_H  = -0.464;           
+const gamma_R = 0.395;         
+const l_R  = -0.710;           
+const epsilon = 1.09;          
+const kappa   = 0.50;          
 
 // Hull 流体微係数 (無次元)
 const X_vv   = -0.040;
 const X_vr   =  0.002;
 const X_rr   =  0.011;
 const X_vvvv =  0.771;
-const Y_v    = -0.315;         // 旧: -0.20
-const Y_r    =  0.083;         // 旧:  0.05
+const Y_v    = -0.315;         
+const Y_r    =  0.083;         
 const Y_vvv  = -1.607;
 const Y_vvr  =  0.379;
 const Y_vrr  = -0.391;
 const Y_rrr  =  0.008;
-const N_v    = -0.137;         // 旧: -0.10
-const N_r    = -0.049;         // 旧: -0.04
+const N_v    = -0.137;         
+const N_r    = -0.049;         
 const N_vvv  =  0.061;
 const N_vvr  = -0.030;
 const N_vrr  = -0.320;
 const N_rrr  = -0.0105;
 
-// 付加質量 (KCS, 無次元→有次元)
-// m'x = 0.022, m'y = 0.223, J'zz = 0.011  (Yasukawa 2015 Table 1)
+// 付加質量
 const mx  = P.mass * 0.022;
 const my  = P.mass * 0.223;
 const Jzz = P.mass * (P.Lpp ** 2) * 0.011;
-// 船体慣性モーメント (推定値)
+// 船体慣性モーメント
 const Izz = P.mass * (P.Lpp ** 2) / 12;
 
 // ============================================================
-//  エンジンテレグラフ定義（旧版と互換）
+//  エンジンテレグラフ定義
 // ============================================================
 export const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','STOP','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
 export const ENG_RATIOS = [-1.0, -0.55, -0.30, 0, 0.22, 0.55, 1.0];
 
 // ============================================================
-//  キー入力（旧版と完全互換）
+//  キー入力
 // ============================================================
 export const keys = {};
 
@@ -117,35 +105,24 @@ export function initInput() {
 
 export const camOffset = { pitch: 0, yaw: 0 };
 
-// ============================================================
-//  浅水補正係数の計算
-//  h/T比（水深÷喫水）に応じて Hull 流体力係数をスケール
-//  出典: Shin et al. (2023) J.Mar.Sci.Tech., KCS shallow water test
-//
-//  h/T >= 4.0: 深水とみなし補正なし (係数=1.0)
-//  h/T =  2.0: 旋回抵抗 +50%、横力 +30%
-//  h/T =  1.5: 旋回抵抗 +100%、横力 +60%
-//  h/T =  1.2: 旋回抵抗 +200%、横力 +120%
-// ============================================================
+// 浅水補正係数
 function shallowWaterFactor(waterDepth, draft) {
   const hT = waterDepth / draft;
-  if (hT >= 4.0) return { Yf: 1.0, Nf: 1.0 };   // 深水
+  if (hT >= 4.0) return { Yf: 1.0, Nf: 1.0 };
   if (hT >= 2.0) {
-    const t = (4.0 - hT) / 2.0;                  // 0〜1
+    const t = (4.0 - hT) / 2.0;
     return { Yf: 1.0 + 0.30 * t, Nf: 1.0 + 0.50 * t };
   }
   if (hT >= 1.5) {
-    const t = (2.0 - hT) / 0.5;                  // 0〜1
+    const t = (2.0 - hT) / 0.5;
     return { Yf: 1.30 + 0.30 * t, Nf: 1.50 + 0.50 * t };
   }
-  // h/T < 1.5 (着底寸前)
   const t = Math.max(0, (1.5 - hT) / 0.3);
   return { Yf: 1.60 + 0.60 * t, Nf: 2.00 + 1.00 * t };
 }
 
 // ============================================================
 //  メイン物理更新 — MMGスタンダード法
-//  インターフェースは旧版と完全互換
 // ============================================================
 export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTime = Date.now(), timeScale = 1) {
   if (gameOverActive) return;
@@ -154,16 +131,11 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const L   = P.Lpp;
   const d   = P.d;
 
-  // ----------------------------------------------------------
-  // STEP 1. 操舵 — ClassNK 鋼船規則 D編 準拠 (2.32°/s)
-  // ----------------------------------------------------------
+  // STEP 1. 操舵 (2.32°/s)
   const maxRudderSpeed = 2.32 * sDt;
   P.rudder += Math.min(Math.max(P.targetRudder - P.rudder, -maxRudderSpeed), maxRudderSpeed);
 
-  // ----------------------------------------------------------
   // STEP 2. エンジン RPM 追従
-  //   前進中に急後進 → 過負荷で応答遅延 (Crash Astern保護)
-  // ----------------------------------------------------------
   const rpmMap = {
     '4': 110, '3': 70, '2': 35, '1': 20, '0': 0,
     '-1': -15, '-2': -25, '-3': -50, '-4': -80,
@@ -181,134 +153,89 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
     P.rpm += Math.sign(P.targetRpm - P.rpm) * Math.min(Math.abs(P.targetRpm - P.rpm), maxRpmDt);
   }
 
-  // 状態変数（局所変数に展開）
   const u = P.u || 0;
   const v = P.v || 0;
   const r = P.r || 0;
-  const U = Math.sqrt(u * u + v * v) || 1e-6;  // 合成速度
+  const U = Math.sqrt(u * u + v * v) || 1e-6;
 
-  // 無次元化スケール
-  const Udim   = U;
-  const beta   = (U > 0.01) ? Math.atan2(-v, u) : 0; // 漂流角
-
-  // ----------------------------------------------------------
-  // STEP 3. 船体流体力 (Hull) — 3次近似多項式
-  //   Yasukawa & Yoshimura (2015) Eq.(2)-(4)
-  //   無次元→有次元変換: × (0.5 * RHO * L * d * U²) 等
-  // ----------------------------------------------------------
+  // STEP 3. 船体流体力 (Hull)
   const sw = shallowWaterFactor(P.waterDepth, d);
+  const vn = (U > 0.01) ? v / U : 0;
+  const rn = (U > 0.01) ? r * L / U : 0;
 
-  const vn = (U > 0.01) ? v / U : 0;  // 無次元横流れ
-  const rn = (U > 0.01) ? r * L / U : 0;  // 無次元旋回率
-
-  // 無次元流体力
   const X_H_nd = X_vv * vn * vn + X_vr * vn * rn + X_rr * rn * rn + X_vvvv * vn ** 4;
-  const Y_H_nd = sw.Yf * (
-    Y_v * vn + Y_r * rn +
-    Y_vvv * vn ** 3 + Y_vvr * vn ** 2 * rn + Y_vrr * vn * rn ** 2 + Y_rrr * rn ** 3
-  );
-  const N_H_nd = sw.Nf * (
-    N_v * vn + N_r * rn +
-    N_vvv * vn ** 3 + N_vvr * vn ** 2 * rn + N_vrr * vn * rn ** 2 + N_rrr * rn ** 3
-  );
+  const Y_H_nd = sw.Yf * (Y_v * vn + Y_r * rn + Y_vvv * vn ** 3 + Y_vvr * vn ** 2 * rn + Y_vrr * vn * rn ** 2 + Y_rrr * rn ** 3);
+  const N_H_nd = sw.Nf * (N_v * vn + N_r * rn + N_vvv * vn ** 3 + N_vvr * vn ** 2 * rn + N_vrr * vn * rn ** 2 + N_rrr * rn ** 3);
 
-  // 直進抵抗 (速度²に比例)
-  // KCS設計速度24kt(12.35m/s)でFULL AHEAD推力と釣り合う係数: C≈0.096
   const R0 = 0.5 * RHO * L * d * 0.096 * u * Math.abs(u);
-
-  // 有次元化
   const Xh = 0.5 * RHO * L * d * U * U * X_H_nd - R0;
   const Yh = 0.5 * RHO * L * d * U * U * Y_H_nd;
   const Nh = 0.5 * RHO * L * L * d * U * U * N_H_nd;
 
-  // ----------------------------------------------------------
   // STEP 4. プロペラ推力
-  //   進速比 J → 推力係数 KT の線形近似
-  //   KT(J) ≈ KT0 - KT1*J  (KCS: KT0=0.527, KT1=0.455)
-  // ----------------------------------------------------------
-  const n_rps = P.rpm / 60;  // [rps]
-  const Va    = u * (1 - w_P);  // プロペラ前方流入速度
+  const n_rps = P.rpm / 60;
+  const Va    = u * (1 - w_P);
   const J_val = (Math.abs(n_rps) > 0.01) ? Va / (n_rps * DP) : 0;
 
-  let KT;
+  let KT, thrust;
   if (n_rps >= 0) {
     KT = Math.max(0, 0.527 - 0.455 * J_val);
-    var thrust = RHO * n_rps * Math.abs(n_rps) * DP ** 4 * KT;
+    thrust = RHO * n_rps * Math.abs(n_rps) * DP ** 4 * KT;
   } else {
-    KT = Math.max(0, 0.527 + 0.455 * J_val);  // 後進: J<0
-    var thrust = RHO * n_rps * Math.abs(n_rps) * DP ** 4 * KT * 0.7;
+    KT = Math.max(0, 0.527 + 0.455 * J_val);
+    thrust = RHO * n_rps * Math.abs(n_rps) * DP ** 4 * KT * 0.7;
   }
   const Xp = (1 - t_P) * thrust;
 
-  // ----------------------------------------------------------
   // STEP 5. 舵力
-  //   プロペラ後流中の舵 → 流入速度増加を考慮
-  //   Yasukawa & Yoshimura (2015) Eq.(9)-(16)
-  // ----------------------------------------------------------
   const rudRad = P.rudder * Math.PI / 180;
-
-  // 舵への流入速度 (プロペラ後流効果込み)
-  const u_R = epsilon * Va * Math.sqrt(
-    1 + kappa * (Math.sqrt(1 + 8 * KT / (Math.PI * J_val * J_val + 1e-6)) - 1) ** 2
-  ) || (Math.abs(Va) + 0.5);
-
-  // 有効流入角
+  const u_R = epsilon * Va * Math.sqrt(1 + kappa * (Math.sqrt(1 + 8 * KT / (Math.PI * J_val * J_val + 1e-6)) - 1) ** 2) || (Math.abs(Va) + 0.5);
   const v_R   = gamma_R * (v + l_R * L * r);
   const alpha_R = rudRad - Math.atan2(v_R, u_R);
 
-  // 舵揚力
-  const Fn = 0.5 * RHO * AR * 6.13 * u_R * u_R * Math.sin(alpha_R) /
-             (2.25 + 1.0);  // 揚力傾斜係数 f_α = 6.13Λ/(Λ+2.25), Λ=AR/d²≈2
-
+  const Fn = 0.5 * RHO * AR * 6.13 * u_R * u_R * Math.sin(alpha_R) / (2.25 + 1.0);
   const Xr = -Fn * Math.sin(rudRad);
   const Yr =  -(1 + a_H) * Fn * Math.cos(rudRad);
   const Nr =  -(x_P + a_H * x_H) * L * Fn * Math.cos(rudRad);
 
   // ----------------------------------------------------------
-  // STEP 6. 運動方程式の積分 — MMG標準 3-DOF
-  //   (m + mx)*du/dt = Xh + Xp + Xr + (m + my)*v*r
-  //   (m + my)*dv/dt = Yh + Yr - (m + mx)*u*r
-  //   (Izz + Jzz)*dr/dt = Nh + Nr
+  // STEP 6. 運動方程式の積分 — MMG標準 3-DOF 完全結合モデル
   // ----------------------------------------------------------
-  // ----------------------------------------------------------
-  // surge (前後速度) — 元のロジックを維持
-  //   rpm × 0.20 kt を目標速度とし、0.55 kt/s で線形追従
-  //   旋回中の速度低下も再現（旋回角速度に比例して減速）
-  // ----------------------------------------------------------
-  const targetSpeedKts = P.rpm * 0.20;
-  const targetSpeedMs  = targetSpeedKts * 0.514444;
-  const maxAccelMs     = (0.55 * 0.514444) * sDt;
-  const turnDrag       = Math.abs(P.r) * 8.0; // 旋回時の速度低下
-  const effectiveTarget = targetSpeedMs * Math.max(0, 1 - turnDrag);
-  if (Math.abs(effectiveTarget - P.u) < maxAccelMs) P.u = effectiveTarget;
-  else P.u += Math.sign(effectiveTarget - P.u) * maxAccelMs;
+  const X_total = Xh + Xp + Xr;
+  const Y_total = Yh + Yr;
+  const N_total = Nh + Nr;
 
-  // sway — MMGのYh+Yrで計算（横流れのリアルさを維持）
-  const dv = (Yh + Yr - (P.mass + mx) * u * r) / (P.mass + my);
-  P.v = v + dv * sDt;
+  // 非線形連立微分方程式 (m+mx, m+my の付加質量、および遠心力項を含む)
+  const du = (X_total + (P.mass + my) * v * r) / (P.mass + mx);
+  const dv = (Y_total - (P.mass + mx) * u * r) / (P.mass + my);
+  const dr = N_total / (Izz + Jzz);
 
-  // yaw — 現象論モデル（MMGのrn発散問題を回避）
-  // 目標ROT: 35度舵・8kt超で20度/min。浅水・後進補正あり
-  const MAX_ROT_RAD_S = (20 / 60) * (Math.PI / 180);
-  const speedFactor   = Math.min(1, Math.abs(P.u) / (8 * 0.514));
-  const rudderFactor  = P.rudder / 35;
-  const sternFactor   = P.u >= 0 ? 1.0 : -0.4;
-  const shallowFactor = 1 / sw.Nf;
-  const targetR = rudderFactor * speedFactor * MAX_ROT_RAD_S * sternFactor * shallowFactor;
-  const TAU_R = 15.0; // 旋回応答時定数（秒）
-  P.r += (targetR - P.r) * Math.min(1, sDt / TAU_R);
+  P.u += du * sDt;
+  P.v += dv * sDt;
+  P.r += dr * sDt;
+
+  // [低速時・微速域の安定化]
+  // U=0 近辺での流体力消失に伴う永遠の慣性ドリフトを防ぐ自然な減衰
+  if (U < 1.0) {
+      const damp = (1.0 - U) * 0.05 * sDt;
+      P.u -= P.u * damp;
+      P.v -= P.v * damp;
+      P.r -= P.r * damp;
+  }
+
+  // 万が一の物理演算爆発を防ぐセーフティ（最大旋回角速度: 90度/min）
+  const MAX_PHYSICAL_R = (90 / 60) * (Math.PI / 180);
+  P.r = Math.max(-MAX_PHYSICAL_R, Math.min(MAX_PHYSICAL_R, P.r));
 
   // ----------------------------------------------------------
-  // STEP 7. 風・潮流の外力（旧版と同構造）
+  // STEP 7. 風・潮流の外力
   // ----------------------------------------------------------
   const wr = P.windDir * Math.PI / 180;
   const cr = P.currDir * Math.PI / 180;
 
-  // 風圧力（受風面積×風速²比例）
   const windX = -Math.sin(wr) * P.windSpeed * 0.000022;
   const windZ =  Math.cos(wr) * P.windSpeed * 0.000022;
 
-  // 潮流（速度ベクトルとして直接加算）
   const currX = -Math.sin(cr) * P.currSpeed * 0.514 * sDt;
   const currZ =  Math.cos(cr) * P.currSpeed * 0.514 * sDt;
 
@@ -319,7 +246,6 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   P.driftX *= driftDecay;
   P.driftZ *= driftDecay;
 
-  // 嵐による不規則外乱
   if (waveAmp > 2) {
     const stormF = (waveAmp - 2) * 0.5;
     P.heading += (Math.random() - 0.5) * 0.003 * stormF * timeScale;
@@ -328,7 +254,7 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   }
 
   // ----------------------------------------------------------
-  // STEP 8. 波浪による動揺（旧版と同構造）
+  // STEP 8. 波浪による動揺
   // ----------------------------------------------------------
   const wRoll  = Math.sin(currentTime * 0.001)   * 0.013 * waveAmp
                + Math.sin(currentTime * 0.00137) * 0.008 * waveAmp;
@@ -340,17 +266,17 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   P.pitchAngle += (wPitch - P.pitchAngle) * pitchDecay;
 
   // ----------------------------------------------------------
-  // STEP 9. 絶対座標への変換（旧版と同構造）
+  // STEP 9. 絶対座標への変換
   // ----------------------------------------------------------
   const cosH = Math.cos(P.heading);
   const sinH = Math.sin(P.heading);
 
   P.posX += (-P.u * sinH + P.v * cosH) * sDt + P.driftX * sDt + currX;
   P.posZ += ( P.u * cosH + P.v * sinH) * sDt + P.driftZ * sDt + currZ;
-  P.heading += P.r * sDt;  // Three.jsのrotation.y=-P.headingと符号を合わせる
+  P.heading += P.r * sDt;
 
   // ----------------------------------------------------------
-  // STEP 10. HUD互換パラメータの更新（旧版と完全互換）
+  // STEP 10. HUD互換パラメータの更新
   // ----------------------------------------------------------
   P.speed = Math.sqrt(P.u * P.u + P.v * P.v) / 0.514;
   if (P.u < 0) P.speed = -P.speed;
@@ -358,7 +284,7 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
 }
 
 // ============================================================
-//  スコア計算（旧版と完全互換）
+//  スコア計算
 // ============================================================
 export function calcScore(dist, spd, angle, elapsedSec, collision, mission) {
   if (collision) {
