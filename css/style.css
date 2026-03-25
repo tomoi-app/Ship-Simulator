@@ -5,11 +5,11 @@
    グローバル設定 (Corporate & High-end Game Style)
 ============================================================ */
 :root {
-  --navy-base: rgba(4, 14, 25, 0.65);       /* 海運大手の深いネイビー（半透明） */
-  --navy-dark: rgba(2, 8, 15, 0.85);        /* さらに深いネイビー */
-  --accent-cyan: #00d4ff;                   /* ハイテク感のあるシアン */
+  --navy-base: rgba(4, 14, 25, 0.65);       
+  --navy-dark: rgba(2, 8, 15, 0.85);        
+  --accent-cyan: #00d4ff;                   
   --text-main: #ffffff;
-  --text-sub: #a6c3d9;                      /* 海と馴染むブルーグレー */
+  --text-sub: #a6c3d9;                      
   --glass-border: 1px solid rgba(255, 255, 255, 0.15);
   --glass-blur: blur(16px);
 }
@@ -24,108 +24,53 @@ body, html {
 }
 
 canvas { display: block; width: 100%; height: 100%; }
-.h { display: none !important; } /* 表示切り替え用（必須） */
+.h { display: none !important; }
 
 /* ============================================================
-   1. ゲーム画面 UI (★絶対にデザイン・配置を変更しない部分★)
+   1. ゲーム画面 UI 
 ============================================================ */
+#gauges-container { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100; }
+.gauge-unit canvas { width: 130px; height: 130px; }
 
-/* --- アナログ計器 (画面上部中央) --- */
-#gauges-container {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
-  z-index: 100;
-}
-.gauge-unit canvas {
-  width: 130px; 
-  height: 130px;
-}
-
-/* --- テレグラフパネル (画面左上) --- ★修正: 全体的にコンパクトに縮小 */
 #telegraph-panel {
-  position: absolute;
-  top: 10px;    /* 少し角に詰める 15px -> 10px */
-  left: 10px;   /* 少し角に詰める 15px -> 10px */
-  background-color: #222;
-  border-radius: 6px;  /* 角丸も少し小さく 8px -> 6px */
-  padding: 6px 10px;  /* 余白を減らす 8x12 -> 6x10 */
-  display: flex;
-  flex-direction: column;
-  gap: 2px;    /* 指令間の隙間を詰める 3px -> 2px */
-  z-index: 100;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.6); /* 影も少し小さく */
+  position: absolute; top: 10px; left: 10px;
+  background-color: #222; border-radius: 6px; padding: 6px 10px;
+  display: flex; flex-direction: column; gap: 2px; z-index: 100;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.6);
 }
-#telegraph-panel div {
-  font-family: sans-serif;
-  font-size: 10px;  /* フォントを小さく 11px -> 10px */
-  font-weight: bold;
-  text-align: center;
-  color: #444; /* 消灯時 */
-  padding: 2px 0;  /* 上下余白を詰める 3px -> 2px */
-}
-#telegraph-panel div.on {
-  text-shadow: 0 0 4px rgba(255,255,255,0.5); /* 光も小さく */
-}
-#tg-fwd-full.on, #tg-fwd-half.on, #tg-fwd-slow.on, #tg-fwd-dead.on {
-  color: #28a745;
-}
-#tg-stop {
-  margin: 2px 0;  /* マージンを減らす 3px -> 2px */
-  border-radius: 2px; /* 角丸 3px -> 2px */
-}
-#tg-stop.on {
-  color: #fff;
-  background-color: #777;
-}
-#tg-rev-dead.on, #tg-rev-slow.on, #tg-rev-half.on, #tg-rev-full.on {
-  color: #dc3545;
-}
+#telegraph-panel div { font-family: sans-serif; font-size: 10px; font-weight: bold; text-align: center; color: #444; padding: 2px 0; }
+#telegraph-panel div.on { text-shadow: 0 0 4px rgba(255,255,255,0.5); }
+#tg-fwd-full.on, #tg-fwd-half.on, #tg-fwd-slow.on, #tg-fwd-dead.on { color: #28a745; }
+#tg-stop { margin: 2px 0; border-radius: 2px; }
+#tg-stop.on { color: #fff; background-color: #777; }
+#tg-rev-dead.on, #tg-rev-slow.on, #tg-rev-half.on, #tg-rev-full.on { color: #dc3545; }
 
-/* --- 倍速ボタン (画面右上) --- */
 #time-scale-btn {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background-color: #455a64;
-  color: #fff;
-  font-family: sans-serif;
-  font-size: 14px;
-  border: 1px solid #222;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  z-index: 100;
+  position: absolute; top: 15px; right: 15px;
+  background-color: #455a64; color: #fff; font-family: sans-serif;
+  font-size: 14px; border: 1px solid #222; padding: 6px 12px;
+  border-radius: 4px; cursor: pointer; z-index: 100;
 }
 
-/* --- コンパス、雨、その他インゲーム要素 --- */
-#comp-c {
-  display: none !important; /* ★修正: 不要なので画面上から完全に消す */
-  position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(0,0,0,0.4); border-radius: 50%; z-index: 90;}
+#comp-c { display: none !important; }
 #night-ov, #wx-ov, #rain-cv { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 #ptst { position: absolute; top: 160px; left: 50%; transform: translateX(-50%); background: rgba(200, 20, 20, 0.85); color: #fff; padding: 10px 20px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; z-index: 200;}
 #ptst.on { opacity: 1; }
 
-/* --- スマホ用タッチUI (PCでは非表示) --- */
 #tcu { position: absolute; bottom: 20px; left: 0; width: 100%; display: flex; justify-content: space-between; padding: 0 20px; box-sizing: border-box; z-index: 100; pointer-events: none; }
 #tcl, #tcr { pointer-events: auto; }
 #joy { width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; position: relative; border: 2px solid rgba(255,255,255,0.3); }
 #jknob { width: 40px; height: 40px; background: rgba(255,255,255,0.5); border-radius: 50%; position: absolute; top: 40px; left: 40px; }
 .teb { display: block; margin: 8px 0; padding: 12px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid #555; border-radius: 4px; font-weight: bold;}
-@media (hover: hover) and (pointer: fine) { #tcu { display: none; } } /* PC環境では隠す */
-
+@media (hover: hover) and (pointer: fine) { #tcu { display: none; } }
 
 /* ============================================================
-   2. メニュー・リザルト画面 (★ここからモダン・グラスモーフィズム★)
+   2. メニュー・リザルト画面 (★ローディングの背景を透明グラスに変更)
 ============================================================ */
-
-/* --- ローディング画面 --- */
 #loading {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  background: radial-gradient(circle at center, #0a1b2a 0%, #000000 100%);
+  background: rgba(0, 5, 10, 0.4);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   display: flex; flex-direction: column; justify-content: center; align-items: center;
   z-index: 9999; transition: opacity 0.8s ease;
 }
@@ -135,52 +80,34 @@ canvas { display: block; width: 100%; height: 100%; }
 .ld-bw { width: 300px; height: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
 #ldb { width: 0%; height: 100%; background: var(--accent-cyan); box-shadow: 0 0 10px var(--accent-cyan); transition: width 0.3s ease; }
 
-/* --- ミッション選択画面 (メニュー) --- */
 #ms-sel {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0, 5, 10, 0.4);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  display: flex; flex-direction: column;
-  padding: 40px 60px; box-sizing: border-box; z-index: 1000;
+  display: flex; flex-direction: column; padding: 40px 60px; box-sizing: border-box; z-index: 1000;
   transition: opacity 0.5s ease;
 }
 #ms-sel.h { opacity: 0; pointer-events: none; }
 
-/* タイトルロゴ領域 */
-.menu-header {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 32px; font-weight: 300; letter-spacing: 8px;
-  color: #fff; margin-bottom: 5px;
-}
-.ms-t { display: none; } /* 古いタイトルは隠す */
+.menu-header { font-family: 'Montserrat', sans-serif; font-size: 32px; font-weight: 300; letter-spacing: 8px; color: #fff; margin-bottom: 5px; }
+.ms-t { display: none; } 
 .ms-s { font-size: 12px; color: var(--accent-cyan); letter-spacing: 4px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 20px; margin-bottom: 20px; }
 
-/* 成績（Stats）バー */
-#ms-stat {
-  display: flex; gap: 40px; margin-bottom: 30px;
-  font-size: 12px; letter-spacing: 2px; color: var(--text-sub);
-}
+#ms-stat { display: flex; gap: 40px; margin-bottom: 30px; font-size: 12px; letter-spacing: 2px; color: var(--text-sub); }
 .ss-v { font-weight: 500; color: #fff; font-size: 18px; margin-right: 10px; color: var(--accent-cyan);}
 
-/* ミッショングリッド */
 .ms-body { overflow-y: auto; padding-right: 10px; }
 .ms-body::-webkit-scrollbar { width: 6px; }
 .ms-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
 .ms-rank { font-size: 14px; font-weight: bold; margin: 30px 0 15px 0; color: #fff; border-left: 3px solid var(--accent-cyan); padding-left: 10px; }
 .ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
 
-/* ミッションカード (.mc) */
 .mc {
-  background: var(--navy-base);
-  border: var(--glass-border);
-  padding: 20px; border-radius: 4px;
-  cursor: pointer; position: relative; overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  background: var(--navy-base); border: var(--glass-border); padding: 20px; border-radius: 4px;
+  cursor: pointer; position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 .mc:hover {
-  background: var(--navy-dark);
-  border: 1px solid var(--accent-cyan);
-  transform: translateY(-5px);
+  background: var(--navy-dark); border: 1px solid var(--accent-cyan); transform: translateY(-5px);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 212, 255, 0.2);
 }
 .mc-n { font-family: 'Montserrat', sans-serif; font-size: 11px; color: var(--accent-cyan); letter-spacing: 2px; margin-bottom: 8px; }
@@ -191,8 +118,6 @@ canvas { display: block; width: 100%; height: 100%; }
 .mc-st { position: absolute; top: 20px; right: 20px; color: #ffcc00; font-size: 14px; letter-spacing: 2px; }
 .mc-sc { position: absolute; bottom: 20px; right: 20px; font-family: 'Montserrat', sans-serif; font-size: 10px; color: var(--accent-cyan); }
 
-
-/* --- リザルト画面 & ゲームオーバー --- */
 #dr, #go {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0, 5, 10, 0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -202,15 +127,11 @@ canvas { display: block; width: 100%; height: 100%; }
 #dr.v, #go.v { opacity: 1; pointer-events: auto; }
 
 #drh, #drb, #gob {
-  background: var(--navy-dark);
-  border: var(--glass-border); border-top: 4px solid var(--accent-cyan);
-  padding: 30px 40px; border-radius: 8px; width: 400px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-  margin-bottom: 15px;
+  background: var(--navy-dark); border: var(--glass-border); border-top: 4px solid var(--accent-cyan);
+  padding: 30px 40px; border-radius: 8px; width: 400px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); margin-bottom: 15px;
 }
 #drh { display: flex; justify-content: space-between; align-items: center; }
 
-/* テキスト系 */
 .drt, .got { font-family: 'Montserrat', sans-serif; font-size: 12px; color: var(--text-sub); letter-spacing: 3px; margin-bottom: 10px; }
 .drm, .gos { font-size: 26px; font-weight: 700; letter-spacing: 4px; margin-bottom: 10px; }
 #drm.col, .gos { color: #ff3333; }
@@ -218,18 +139,15 @@ canvas { display: block; width: 100%; height: 100%; }
 #drsn { font-family: 'Montserrat', sans-serif; font-size: 36px; font-weight: 300; color: var(--accent-cyan); text-align: right; }
 .drsl { font-size: 9px; color: var(--text-sub); text-align: right; }
 
-/* ゲージとレーダー */
 #drrc { display: flex; justify-content: center; margin-bottom: 20px; }
 .drih { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: #ddd; }
 .dribw { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin-bottom: 15px;}
 .drib { height: 100%; width: 0%; transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
 
-/* ボタン */
 #drf, .gobt { display: flex; gap: 20px; width: 480px; }
 .drb, .gbtn {
   flex: 1; padding: 15px 0; background: var(--navy-base); border: var(--glass-border);
-  color: #fff; font-size: 12px; letter-spacing: 2px; cursor: pointer;
-  border-radius: 4px; transition: all 0.3s;
+  color: #fff; font-size: 12px; letter-spacing: 2px; cursor: pointer; border-radius: 4px; transition: all 0.3s;
 }
 .drb:hover, .gbtn:hover { background: rgba(255,255,255,0.1); border-color: #fff; }
 .drb:last-child, .gbtn.p { background: var(--accent-cyan); border-color: var(--accent-cyan); color: #000; font-weight: bold; }

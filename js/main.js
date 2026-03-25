@@ -1,7 +1,6 @@
 'use strict';
 // ============================================================
 //  main.js — エントリーポイント
-//  v5.0: モジュール分割・Proceduralテクスチャ版
 // ============================================================
 
 import * as THREE     from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
@@ -34,14 +33,12 @@ const { buoys }                       = buildWorld(THREE, scene);
 const { AIships, fishBoats, tugs, wakeUniforms } = buildAI(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
-// ★ここの数値を変更するだけで、ゲーム中ずっと反映されるように整理しました！
 shipGroup.add(camera);
-const bridgeXPos   = -13;     // 左右★（プラスで左に移動）
-const bridgeHeight = 10;   // ★高さ（プラスで上に移動）
-const bridgeZPos   = 9.7;  // ★前後位置（プラスで前に移動）
+const bridgeXPos   = -13;     // 左右
+const bridgeHeight = 10;      // 高さ
+const bridgeZPos   = 9.7;     // 前後位置
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
-// --- 物理演算対象の変更（shipGroup 全体を指定） ---
 P.shipMesh = shipGroup;
 
 // 雨
@@ -63,6 +60,26 @@ function drawRain() {
 }
 
 // ============================================================
+//  メニュー画面の背景設定（船・建物を消して軽くする）
+// ============================================================
+function setMenuState(isMenuMode) {
+  scene.children.forEach(c => {
+    if (c.type.includes('Light')) return; 
+    if (c === sky || c === ocean) return; 
+    if (c.geometry && c.geometry.type === 'PlaneGeometry' && c.position.y > 100) return; 
+    
+    // 船や建物など重いものは非表示
+    c.visible = !isMenuMode; 
+  });
+
+  if (isMenuMode) {
+    camera.position.set(0, 40, 0); 
+    camera.rotation.order = 'YXZ';
+    camera.rotation.set(0, Math.PI, 0); // 南を向く
+  }
+}
+
+// ============================================================
 //  ミッション状態
 // ============================================================
 let curM      = null;
@@ -71,10 +88,9 @@ let mst       = { done: false, t0: 0, tugOn: false, pens: [], spdP: 0, colP: 0, 
 let vhfQ      = [];
 let vhfFired  = new Set();
 
-// 倍速管理
-let timeScale = 1;                   // 現在の倍速係数
-const TIME_SCALES = [1, 2, 4, 8];    // 選べる倍速の段階
-let simTime = 0;                     // ゲーム内の経過時間(ms)
+let timeScale = 1;                   
+const TIME_SCALES = [1, 2, 4, 8];    
+let simTime = 0;                     
 
 // ============================================================
 //  キー入力 & タッチ
@@ -117,7 +133,6 @@ function initTouch() {
   area.addEventListener('touchcancel', () => { jActive = false; knob.style.transform = `translate(-50%,-50%)`; P.targetRudder = 0; });
 }
 
-// 倍速ボタンのイベントリスナー
 document.getElementById('time-scale-btn')?.addEventListener('click', (e) => {
     let idx = TIME_SCALES.indexOf(timeScale);
     idx = (idx + 1) % TIME_SCALES.length;
@@ -131,7 +146,7 @@ document.getElementById('time-scale-btn')?.addEventListener('click', (e) => {
 let isDragging = false;
 let previousMouseX = 0;
 let previousMouseY = 0;
-const lookSensitivity = 0.25; // 視点移動の感度
+const lookSensitivity = 0.25; 
 
 window.addEventListener('mousedown', (e) => {
     isDragging = true;
@@ -144,11 +159,9 @@ window.addEventListener('mousemove', (e) => {
     const deltaX = e.clientX - previousMouseX;
     const deltaY = e.clientY - previousMouseY;
 
-    // 視点操作の反転（+=に戻す）
     camOffset.yaw   += deltaX * lookSensitivity; 
     camOffset.pitch += deltaY * lookSensitivity; 
     
-    // 見回せる限界角度（真後ろや真上を見すぎないように）
     camOffset.yaw = Math.max(-130, Math.min(130, camOffset.yaw));
     camOffset.pitch = Math.max(-45, Math.min(45, camOffset.pitch));
 
@@ -157,27 +170,13 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', () => { isDragging = false; });
+window.addEventListener('dblclick', () => { camOffset.yaw = 0; camOffset.pitch = 0; });
 
-// --- ここから追加：PC用ダブルクリックで視点リセット ---
-window.addEventListener('dblclick', () => {
-    camOffset.yaw = 0;
-    camOffset.pitch = 0;
-});
-// --- ここまで追加 ---
-
-// スマホのタッチ操作も同じ向きに修正
-let lastTouchTime = 0; // ダブルタップ判定用の変数を追加
-
+let lastTouchTime = 0; 
 window.addEventListener('touchstart', (e) => {
-    // ダブルタップ判定（300ミリ秒以内に2回タッチされたらリセット）
     const now = Date.now();
-    if (now - lastTouchTime < 300) {
-        camOffset.yaw = 0;
-        camOffset.pitch = 0;
-    }
+    if (now - lastTouchTime < 300) { camOffset.yaw = 0; camOffset.pitch = 0; }
     lastTouchTime = now;
-
-    // 既存のドラッグ開始処理
     isDragging = true;
     previousMouseX = e.touches[0].clientX;
     previousMouseY = e.touches[0].clientY;
@@ -201,11 +200,7 @@ window.addEventListener('touchend', () => { isDragging = false; });
 // ============================================================
 //  天候 → Three.js 反映
 // ============================================================
-// ============================================================
-//  天候 → Three.js 反映
-// ============================================================
 function applyWeatherScene(m) {
-  // 基本光源リセット
   sun.intensity  = 1.6; moon.intensity = 0; amb.intensity = 0.7;
   if(sky.material.uniforms){
     sky.material.uniforms.uZenith.value.set(0x1a5fa8);
@@ -219,38 +214,52 @@ function applyWeatherScene(m) {
   let fogD = 0.000075;
 
   if (m.wx === 'str') {
-    // 嵐 (省略)
-    if(sky.material.uniforms){ sky.material.uniforms.uSunIntensity.value = 0.0; }
-    wu.uDeepColor.value.setHex(0x0a1520); wu.uShallowColor.value.setHex(0x122030);
-    wu.uSkyZenith.value.setHex(0x1a2a3a); wu.uSkyHorizon.value.setHex(0x3a4a5a);
-    wu.uSunColor.value.setHex(0x556677); wu.uFogColor.value.setHex(0x2a3344);
-    wu.uFogDensity.value = 0.00025; wu.uSunDir.value.copy(sun.position).normalize();
+    if(sky.material.uniforms){
+      sky.material.uniforms.uZenith.value.set(0x111e2a);
+      sky.material.uniforms.uMidsky.value.set(0x1e3040);
+      sky.material.uniforms.uHorizon.value.set(0x3a4a5a);
+      sky.material.uniforms.uSunIntensity.value = 0.0;
+    } else { sky.material.color.set(0x223344); }
+    sun.color.set(0x7788aa); sun.intensity = 0.38;
+    fogC = 0x2a3344; fogD = 0.00028;
+    wu.uDeepColor.value.setHex(0x0a1520);
+    wu.uShallowColor.value.setHex(0x122030);
+    wu.uSkyZenith.value.setHex(0x1a2a3a);
+    wu.uSkyHorizon.value.setHex(0x3a4a5a);
+    wu.uSunColor.value.setHex(0x556677);
+    wu.uFogColor.value.setHex(0x2a3344);
+    wu.uFogDensity.value = 0.00025;
+    wu.uSunDir.value.copy(sun.position).normalize();
   }
   else if (m.wx === 'rain') {
-    // 雨 (省略)
-    if(sky.material.uniforms){ sky.material.uniforms.uSunIntensity.value = 0.0; }
-    wu.uDeepColor.value.setHex(0x111e28); wu.uShallowColor.value.setHex(0x222e3a);
-    wu.uSkyZenith.value.setHex(0x222e3a); wu.uSkyHorizon.value.setHex(0x4a5a6a);
-    wu.uSunColor.value.setHex(0x7788aa); wu.uFogColor.value.setHex(0x3a4a5a);
-    wu.uFogDensity.value = 0.0004; wu.uSunDir.value.copy(sun.position).normalize();
+    if(sky.material.uniforms){
+      sky.material.uniforms.uZenith.value.set(0x222e3a);
+      sky.material.uniforms.uMidsky.value.set(0x344455);
+      sky.material.uniforms.uHorizon.value.set(0x4a5a6a);
+      sky.material.uniforms.uSunIntensity.value = 0.0;
+    } else { sky.material.color.set(0x3a4a5a); }
+    sun.intensity = 0.55;
+    fogC = 0x3a4a5a; fogD = 0.0004;
+    wu.uDeepColor.value.setHex(0x111e28);
+    wu.uSkyZenith.value.setHex(0x222e3a);
+    wu.uSkyHorizon.value.setHex(0x4a5a6a);
+    wu.uSunColor.value.setHex(0x7788aa);
+    wu.uFogColor.value.setHex(0x3a4a5a);
+    wu.uFogDensity.value = 0.0004;
+    wu.uSunDir.value.copy(sun.position).normalize();
   }
-  else {
-    // ① 手前をより暗く濃く（光の吸収を表現）
-    wu.uDeepColor.value.setHex(0x020c15);     // 漆黒に近いネイビー
-    wu.uShallowColor.value.setHex(0x0a222b);  // 緑みの混じった暗いティール
-    
+  
+  if (!['str','rain','ngt'].includes(m.wx)) {
+    wu.uDeepColor.value.setHex(0x020c15);     
+    wu.uShallowColor.value.setHex(0x0a222b);  
     wu.uSkyZenith.value.setHex(0x3a6a8f);     
     wu.uSkyHorizon.value.setHex(0xa6c3d9);    
     wu.uSunColor.value.setHex(0xfff2da);      
     wu.uFogColor.value.setHex(0xa6c3d9);      
-    
-    // ④ 遠景の空気感（フォグを少しだけ強める）
     wu.uFogDensity.value = 0.00035;           
-    
     wu.uSunDir.value.copy(sun.position).normalize();
   }
 
-  // 霧の上書き
   if (m.fog > 0.4) {
     fogD = 0.0009 + m.fog * 0.0022; fogC = 0xaabbc8;
   } else if (m.fog > 0) {
@@ -261,9 +270,8 @@ function applyWeatherScene(m) {
   wu.uFogColor.value.setHex(fogC);
   wu.uFogDensity.value = fogD;
 
-  // 波の高さ
-  wu.uWH.value   = 0.08 * m.waves;        
-  wu.uWS.value   = 0.35 + m.waves * 0.15; 
+  wu.uWH.value   = 0.06 * m.waves;        
+  wu.uWS.value   = 0.40 + m.waves * 0.15; 
   wu.uWind.value = m.waves;
 }
 
@@ -279,6 +287,8 @@ window.startM = function(id) {
   document.getElementById('telegraph-panel')?.classList.remove('h');
   document.getElementById('time-scale-btn')?.classList.remove('h');
 
+  setMenuState(false); // ゲーム画面用に船などを表示
+
   // 物理リセット
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
   P.speed = 0; P.rudder = 0; P.yawRate = 0; P.engineOrder = 0;
@@ -287,7 +297,6 @@ window.startM = function(id) {
   P.currSpeed = m.curr; P.currDir  = Math.random() * 360;
   updateTelegraph(P.engineOrder);
 
-  // 【変更】mst.t0 を Date.now() から simTime に変更
   mst      = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
   goActive = false;
   vhfFired = new Set();
@@ -298,6 +307,9 @@ window.startM = function(id) {
 
   applyWeatherScene(m);
   applyWeatherOverlay(m);
+  
+  // メニューフラグを解除し、ゲームの物理演算を有効化
+  isMenu = false;
 };
 
 // ミッション判定
@@ -316,7 +328,6 @@ function chkMission() {
     return;
   }
 
-  // docking
   if (dist < 700 && !mst.tugOn) { mst.tugOn = true; tugs.forEach(t => t.active = true); }
   if (dist < 900) {
     const as  = Math.abs(P.speed);
@@ -328,10 +339,8 @@ function chkMission() {
 }
 
 function _dockRes(dist, spd, angle, col) {
-  // 【変更】Date.now() から simTime を基準にスコアタイムを計算
   const elapsed = Math.round((simTime - mst.t0) / 1000);
   const sd      = calcScore(dist, spd, angle, elapsed, col, curM);
-  // ペナルティ適用
   sd.pens.push(...mst.pens);
   const pen  = (mst.spdP || 0) + (mst.colP || 0);
   if (pen > 0) { sd.total = Math.max(0, sd.total - pen); sd.pens.push(`航行ペナルティ −${pen}pt`); }
@@ -348,7 +357,6 @@ function _dockRes(dist, spd, angle, col) {
   setTimeout(() => { drawResultRadar(sd.items, col); animScore(sd.total); }, 300);
 }
 
-// ゲームオーバー
 function triggerGO(cause) {
   if (goActive || mst.done) return;
   goActive = true; mst.done = true;
@@ -361,7 +369,6 @@ function triggerGO(cause) {
   const go = document.getElementById('go'); if (go) { go.classList.add('v'); setTimeout(() => go.classList.add('dk'), 100); }
 }
 
-// 衝突検知
 let colCd = 0;
 function checkCol() {
   if (colCd > 0) { colCd--; return; }
@@ -392,7 +399,6 @@ function updAI(dt) {
     }
     if (s.avoidTimer > 0) s.avoidTimer--;
     const spd = s.speed * 0.514;
-    // 【修正後】自船と同じ座標系に合わせるため X の符号にマイナスをつける
     s.mesh.position.x += -Math.sin(s.heading) * spd * dt;
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
@@ -403,7 +409,6 @@ function updAI(dt) {
   });
   fishBoats.forEach(f => {
     f.heading += f.drift;
-    // 【修正後】自船と同じ座標系に合わせるため X の符号にマイナスをつける
     f.mesh.position.x += -Math.sin(f.heading) * f.speed * 0.514 * dt;
     f.mesh.position.z += Math.cos(f.heading) * f.speed * 0.514 * dt;
     f.mesh.rotation.y = -f.heading;
@@ -423,7 +428,6 @@ function updTugs(dt) {
   });
 }
 
-// 速力ペナルティ
 let penTmr2 = 0;
 function checkSpdPen() {
   if (!curM || mst.done || penTmr2 > 0) { if (penTmr2 > 0) penTmr2--; return; }
@@ -439,7 +443,7 @@ function checkSpdPen() {
 // ============================================================
 function upd3D(t) {
   ocean.position.x = P.posX; ocean.position.z = P.posZ;
-  wu.uOffset.value.set(P.posX, P.posZ); // 追加: 波のシェーダーに船の位置を渡す
+  wu.uOffset.value.set(P.posX, P.posZ); 
   const wa = curM ? curM.waves : 1;
 
   shipGroup.position.set(P.posX, 0, P.posZ);
@@ -447,20 +451,14 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // --- 上部で設定したブリッジ視点を毎フレーム反映 ---
-  // scene.js で計算されたスケール倍率（P.shipScale）を掛ける
   const s = P.shipScale || 1.0; 
-
-  // ★ファイル先頭の bridgeXPos, bridgeHeight, bridgeZPos を使用するように修正！
   camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
 
-  // カメラの向き
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
   camera.rotation.order = 'YXZ';
   camera.rotation.y = Math.PI + yr;
   camera.rotation.x = pr;
-  // --- ここまで ---
 
   if (curM?.wx === 'ngt') {
     const fl = 0.82 + Math.sin(t * 0.003) * 0.18;
@@ -515,57 +513,70 @@ window.goSel = function() {
   document.getElementById('comp-c')?.classList.add('h');
   document.getElementById('telegraph-panel')?.classList.add('h');
   document.getElementById('time-scale-btn')?.classList.add('h');
+  
   buildSel();
+
+  applyWeatherScene({ wx: 'clr', waves: 0.3 }); 
+  if (rainCtx) rainCtx.clearRect(0, 0, rainCv.width, rainCv.height);
+  const nightOv = document.getElementById('night-ov');
+  if (nightOv) nightOv.style.background = 'transparent';
+  const wxOv = document.getElementById('wx-ov');
+  if (wxOv) wxOv.style.background = 'transparent';
+
+  setMenuState(true);
+  
+  // ★ メニュー画面フラグをオンにする（これで描画だけは回り続ける）
+  isMenu = true; 
 };
 window.retry = function() { if (curM) startM(curM.id); };
 
 // ============================================================
 //  メインループ
 // ============================================================
-let lastT = -1, running = false;
+let lastT = -1;
+let isMenu = true; // ★追加: メニュー画面かどうかの判定フラグ
 
 function loop(t) {
   requestAnimationFrame(loop);
-  if (!running) return;
+  
   if (lastT < 0) { lastT = t; simTime = t; return; }
   
   const dt = Math.min((t - lastT) / 1000, 0.05); 
   lastT = t;
 
-  // 【修正】forループをやめ、スケールされた時間(scaledDt)を一括で計算する
-  const scaledDt = dt * timeScale;
-  simTime += scaledDt * 1000; // ゲーム内仮想時間を進める
+  // ★ メニュー中の処理：物理やAIは動かさず、海の時間(uT)と描画だけを行う
+  if (isMenu) {
+    wu.uT.value = t * 0.001;
+    renderer.render(scene, camera);
+    return; // ここでループを抜けるため、重い処理は実行されない
+  }
 
-  // 【修正】物理演算に timeScale を渡し、他船の演算には scaledDt を渡す
+  // --- 以下はゲーム中のみ実行される処理 ---
+  const scaledDt = dt * timeScale;
+  simTime += scaledDt * 1000; 
+
   updatePhysics(dt, curM ? curM.waves : 1, goActive, simTime, timeScale);
   updAI(scaledDt); 
   updTugs(scaledDt);
 
-  // 3Dとアニメーションの更新
   wu.uT.value = simTime * 0.001;
-  wu.uShipSpeed.value = Math.max(0, P.speed) / 16.0; // 0〜1 に正規化
+  wu.uShipSpeed.value = Math.max(0, P.speed) / 16.0; 
   wu.uShipPos.value.set(P.posX, P.posZ);
-  wu.uShipHeading.value = P.heading; // ★自船の向きを渡す
-  if (wakeUniforms) wakeUniforms.uT.value = simTime * 0.001; // ★他船の航跡アニメーション
+  wu.uShipHeading.value = P.heading; 
+  if (wakeUniforms) wakeUniforms.uT.value = simTime * 0.001; 
   upd3D(simTime);
 
-  // HUD
   updateCompass(P.heading);
   drawRudder(P.rudder);
   
-  // ダッシュボード
   updateDashboard(P, simTime, curM, mst);
 
-  // サウンド
   if (audioReady()) updateEngineSound(P.engineOrder);
 
-  // 雨
   if (curM && (curM.wx === 'str' || curM.wx === 'rain')) drawRain();
 
-  // ツール画面
   if (isToolOpen()) drawTools(P, AIships, fishBoats, buoys, curM);
 
-  // ミッション
   if (curM && !mst.done) { chkMission(); checkCol(); checkSpdPen(); }
 
   renderer.render(scene, camera);
@@ -585,6 +596,13 @@ window.addEventListener('resize', () => {
 // ============================================================
 (function boot() {
   const bar = document.getElementById('ldb'), msg = document.getElementById('ldm');
+  const msSel = document.getElementById('ms-sel');
+  
+  if (msSel) msSel.classList.add('h');
+
+  applyWeatherScene({ wx: 'clr', waves: 0.3 }); 
+  setMenuState(true);
+
   const steps = [
     [450, 'LOADING SHADERS...',    18],
     [700, 'BUILDING TOKYO BAY...', 45],
@@ -597,11 +615,13 @@ window.addEventListener('resize', () => {
     if (i >= steps.length) {
       try {
         document.getElementById('loading')?.classList.add('h');
+        if (msSel) msSel.classList.remove('h'); 
         buildSel();
         initTouch();
         document.addEventListener('click',      () => initAudio(), { once: true });
         document.addEventListener('touchstart', () => initAudio(), { once: true });
-        running = true;
+        
+        isMenu = true; 
         requestAnimationFrame(loop);
       } catch (e) {
         if (msg) msg.textContent = 'ERROR: ' + e.message;
