@@ -473,6 +473,22 @@ function upd3D(t) {
 // ============================================================
 //  ミッション選択UI
 // ============================================================
+window.currentMode = 'free'; // 初期状態
+
+// モード選択ボタンを押したときの処理
+window.showMissions = function(mode) {
+  document.getElementById('mode-sel').classList.add('h');
+  document.getElementById('mission-list-container').classList.remove('h');
+  window.currentMode = mode;
+  buildSel(); // 選んだモードのミッションを描画
+};
+
+// BACKボタンを押したときの処理
+window.showModeSel = function() {
+  document.getElementById('mission-list-container').classList.add('h');
+  document.getElementById('mode-sel').classList.remove('h');
+};
+
 function buildSel() {
   const stats = getStats();
   document.getElementById('sc0').textContent = stats.cleared;
@@ -480,28 +496,36 @@ function buildSel() {
   document.getElementById('sc2').textContent = stats.bestScore ?? '--';
   document.getElementById('sc3').textContent = stats.avgScore  ?? '--';
 
-  ['g3','g2','g1','gc'].forEach(gid => {
-    const el = document.getElementById(gid); if (!el) return;
-    el.innerHTML = '';
-    MISSIONS.filter(m => m.g === gid).forEach(m => {
-      const sv  = SAVE[m.id] || {};
-      const st  = sv.stars || 0, sc = sv.score || 0, pl = sv.plays || 0;
-      const dcol = m.diff === 3 ? '#ff6644' : m.diff === 2 ? '#ffcc00' : '#00ff88';
-      const wi   = { day:'☀', ngt:'🌙', fog:'🌫', str:'⛈', rain:'🌧' }[m.wx] || '☀';
-      const ti   = { dock:'⚓', dep:'⛵', wpt:'📍' }[m.type] || '';
-      const div  = document.createElement('div');
-      div.className = 'mc';
-      div.innerHTML = `
-        <div class="mc-n">M${m.id}${pl ? ` · ${pl}回` : ''}</div>
-        ${st ? `<div class="mc-st">${'★'.repeat(st)+'☆'.repeat(3-st)}</div>` : ''}
-        <div class="mc-ti">${ti} ${m.title}</div>
-        <div class="mc-ar">${m.area}</div>
-        <div class="mc-df" style="color:${dcol}">${'●'.repeat(m.diff)+'○'.repeat(3-m.diff)}</div>
-        <div class="mc-ds">${wi} ${m.story[0]}</div>
-        ${sc ? `<div class="mc-sc">BEST ${sc}pt</div>` : ''}`;
-      div.onclick = () => startM(m.id);
-      el.appendChild(div);
-    });
+  const grid = document.getElementById('mission-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  // 現在選択されているモード(story または free)のミッションだけを抽出
+  const filtered = MISSIONS.filter(m => m.mode === window.currentMode);
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="color:#a6c3d9; padding:20px; font-size:14px; letter-spacing:2px;">現在このモードでプレイ可能なミッションはありません。</div>';
+    return;
+  }
+
+  filtered.forEach(m => {
+    const sv  = SAVE[m.id] || {};
+    const st  = sv.stars || 0, sc = sv.score || 0, pl = sv.plays || 0;
+    const dcol = m.diff === 3 ? '#ff6644' : m.diff === 2 ? '#ffcc00' : '#00ff88';
+    const wi   = { day:'☀', ngt:'🌙', fog:'🌫', str:'⛈', rain:'🌧' }[m.wx] || '☀';
+    const ti   = { dock:'⚓', dep:'⛵', wpt:'📍' }[m.type] || '';
+    const div  = document.createElement('div');
+    div.className = 'mc';
+    div.innerHTML = `
+      <div class="mc-n">${m.id}${pl ? ` · ${pl}回` : ''}</div>
+      ${st ? `<div class="mc-st">${'★'.repeat(st)+'☆'.repeat(3-st)}</div>` : ''}
+      <div class="mc-ti">${ti} ${m.title}</div>
+      <div class="mc-ar">${m.area}</div>
+      <div class="mc-df" style="color:${dcol}">${'●'.repeat(m.diff)+'○'.repeat(3-m.diff)}</div>
+      <div class="mc-ds">${wi} ${m.story[0]}</div>
+      ${sc ? `<div class="mc-sc">BEST ${sc}pt</div>` : ''}`;
+    div.onclick = () => startM(m.id);
+    grid.appendChild(div);
   });
 }
 
@@ -514,6 +538,8 @@ window.goSel = function() {
   document.getElementById('telegraph-panel')?.classList.add('h');
   document.getElementById('time-scale-btn')?.classList.add('h');
   
+  // メニューに戻った時はトップのモード選択画面に戻す
+  showModeSel(); 
   buildSel();
 
   applyWeatherScene({ wx: 'clr', waves: 0.3 }); 
@@ -524,8 +550,6 @@ window.goSel = function() {
   if (wxOv) wxOv.style.background = 'transparent';
 
   setMenuState(true);
-  
-  // ★ メニュー画面フラグをオンにする（これで描画だけは回り続ける）
   isMenu = true; 
 };
 window.retry = function() { if (curM) startM(curM.id); };
