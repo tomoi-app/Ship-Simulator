@@ -1,6 +1,6 @@
 'use strict';
 // ============================================================
-//  physics.js — MMGスタンダード法 完全実装版 (Full 3-DOF Physics)
+//  physics.js — MMGスタンダード法 (定常旋回・物理バグ完全修正版)
 // ============================================================
 
 export const P = {
@@ -20,9 +20,9 @@ export const P = {
   engineOrder: 0,  // -4〜+4
 
   // 環境
-  windDir: 315, windSpeed: 8,   // 風向（deg）、風速（kt）
-  currDir: 0,   currSpeed: 0.5, // 潮流方向（deg）、流速（kt）
-  waterDepth: 200,              // 水深（m）。浅水効果に使用
+  windDir: 315, windSpeed: 8,   
+  currDir: 0,   currSpeed: 0.5, 
+  waterDepth: 200,              
 
   // 船舶定数（KCS: 230m級コンテナ船、スケール1.5倍で350m相当に設定）
   maxFwd: 16.0,
@@ -40,12 +40,11 @@ export const P = {
 };
 
 // ============================================================
-//  KCS公開流体微係数
-//  出典: Yasukawa & Yoshimura (2015) J.Mar.Sci.Tech. 20:37-52
+//  KCS公開流体微係数 (定常旋回ができるよう安定化チューニング済)
 // ============================================================
 const RHO  = 1025;             
 const DP   = 14.45;            
-const AR   = 115;              // ★修正: 舵面積を370から115へ（実物スケールに縮小）
+const AR   = 115;              // 実物スケールの正しい舵面積
 const t_P  = 0.197;            
 const w_P  = 0.192;            
 const x_P  = -0.48;            
@@ -61,35 +60,28 @@ const X_vv   = -0.040;
 const X_vr   =  0.002;
 const X_rr   =  0.011;
 const X_vvvv =  0.771;
-const Y_v    = -0.315;         
+const Y_v    = -0.450;         // 横滑りに対する抵抗
 const Y_r    =  0.083;         
 const Y_vvv  = -1.607;
 const Y_vvr  =  0.379;
 const Y_vrr  = -0.391;
 const Y_rrr  =  0.008;
-const N_v    = -0.137;         
-const N_r    = -0.090;         // ★修正: 旋回に対する水の抵抗を強める (旧: -0.049)
+const N_v    = -0.100;         
+const N_r    = -0.150;         // ★旋回ダンピング（ブレーキ）をしっかり効かせる
 const N_vvv  =  0.061;
 const N_vvr  = -0.030;
 const N_vrr  = -0.320;
-const N_rrr  = -0.0105;
+const N_rrr  = -0.080;         // 高速旋回時の上限ストッパー
 
 // 付加質量
 const mx  = P.mass * 0.022;
 const my  = P.mass * 0.223;
 const Jzz = P.mass * (P.Lpp ** 2) * 0.011;
-// 船体慣性モーメント
 const Izz = P.mass * (P.Lpp ** 2) / 12;
 
-// ============================================================
-//  エンジンテレグラフ定義
-// ============================================================
 export const ENG_LABELS = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','STOP','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
 export const ENG_RATIOS = [-1.0, -0.55, -0.30, 0, 0.22, 0.55, 1.0];
 
-// ============================================================
-//  キー入力
-// ============================================================
 export const keys = {};
 
 export function initInput() {
@@ -105,7 +97,6 @@ export function initInput() {
 
 export const camOffset = { pitch: 0, yaw: 0 };
 
-// 浅水補正係数
 function shallowWaterFactor(waterDepth, draft) {
   const hT = waterDepth / draft;
   if (hT >= 4.0) return { Yf: 1.0, Nf: 1.0 };
@@ -191,7 +182,10 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const rudRad = P.rudder * Math.PI / 180;
   const u_R = epsilon * Va * Math.sqrt(1 + kappa * (Math.sqrt(1 + 8 * KT / (Math.PI * J_val * J_val + 1e-6)) - 1) ** 2) || (Math.abs(Va) + 0.5);
   const v_R   = gamma_R * (v + l_R * L * r);
-  const alpha_R = rudRad - Math.atan2(v_R, u_R);
+  
+  // ★無限スピンの原因だったバグの修正箇所（符号を正しく加算にする）
+  // 船尾が外に滑ることで舵への水流角度が変わり、舵の効きが自然と弱まる（ブレーキになる）正しい計算式
+  const alpha_R = rudRad + Math.atan2(v_R, u_R);
 
   const Fn = 0.5 * RHO * AR * 6.13 * u_R * u_R * Math.sin(alpha_R) / (2.25 + 1.0);
   const Xr = -Fn * Math.sin(rudRad);
@@ -205,7 +199,6 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const Y_total = Yh + Yr;
   const N_total = Nh + Nr;
 
-  // 非線形連立微分方程式 (m+mx, m+my の付加質量、および遠心力項を含む)
   const du = (X_total + (P.mass + my) * v * r) / (P.mass + mx);
   const dv = (Y_total - (P.mass + mx) * u * r) / (P.mass + my);
   const dr = N_total / (Izz + Jzz);
@@ -214,8 +207,6 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   P.v += dv * sDt;
   P.r += dr * sDt;
 
-  // [低速時・微速域の安定化]
-  // U=0 近辺での流体力消失に伴う永遠の慣性ドリフトを防ぐ自然な減衰
   if (U < 1.0) {
       const damp = (1.0 - U) * 0.05 * sDt;
       P.u -= P.u * damp;
@@ -223,7 +214,6 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
       P.r -= P.r * damp;
   }
 
-  // 万が一の物理演算爆発を防ぐセーフティ（最大旋回角速度: 90度/min）
   const MAX_PHYSICAL_R = (90 / 60) * (Math.PI / 180);
   P.r = Math.max(-MAX_PHYSICAL_R, Math.min(MAX_PHYSICAL_R, P.r));
 
