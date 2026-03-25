@@ -41,49 +41,48 @@ canvas { display: block; width: 100%; height: 100%; }
   z-index: 100;
 }
 .gauge-unit canvas {
-  /* JS側で160x160で描画されているものをCSSで画面サイズに調整 */
   width: 130px; 
   height: 130px;
 }
 
-/* --- テレグラフパネル (画面左上) --- */
+/* --- テレグラフパネル (画面左上) --- ★修正: 全体的にコンパクトに縮小 */
 #telegraph-panel {
   position: absolute;
-  top: 15px;
-  left: 15px;
+  top: 10px;    /* 少し角に詰める 15px -> 10px */
+  left: 10px;   /* 少し角に詰める 15px -> 10px */
   background-color: #222;
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 6px;  /* 角丸も少し小さく 8px -> 6px */
+  padding: 6px 10px;  /* 余白を減らす 8x12 -> 6x10 */
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;    /* 指令間の隙間を詰める 3px -> 2px */
   z-index: 100;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.6); /* 影も少し小さく */
 }
 #telegraph-panel div {
   font-family: sans-serif;
-  font-size: 11px;
+  font-size: 10px;  /* フォントを小さく 11px -> 10px */
   font-weight: bold;
   text-align: center;
   color: #444; /* 消灯時 */
-  padding: 3px 0;
+  padding: 2px 0;  /* 上下余白を詰める 3px -> 2px */
 }
 #telegraph-panel div.on {
-  text-shadow: 0 0 5px rgba(255,255,255,0.5);
+  text-shadow: 0 0 4px rgba(255,255,255,0.5); /* 光も小さく */
 }
 #tg-fwd-full.on, #tg-fwd-half.on, #tg-fwd-slow.on, #tg-fwd-dead.on {
-  color: #28a745; /* 前進（緑） */
+  color: #28a745;
 }
 #tg-stop {
-  margin: 3px 0;
-  border-radius: 3px;
+  margin: 2px 0;  /* マージンを減らす 3px -> 2px */
+  border-radius: 2px; /* 角丸 3px -> 2px */
 }
 #tg-stop.on {
   color: #fff;
-  background-color: #777; /* 停止（グレー背景） */
+  background-color: #777;
 }
 #tg-rev-dead.on, #tg-rev-slow.on, #tg-rev-half.on, #tg-rev-full.on {
-  color: #dc3545; /* 後進（赤） */
+  color: #dc3545;
 }
 
 /* --- 倍速ボタン (画面右上) --- */
@@ -103,7 +102,9 @@ canvas { display: block; width: 100%; height: 100%; }
 }
 
 /* --- コンパス、雨、その他インゲーム要素 --- */
-#comp-c { position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(0,0,0,0.4); border-radius: 50%; z-index: 90;}
+#comp-c {
+  display: none !important; /* ★修正: 不要なので画面上から完全に消す */
+  position: absolute; bottom: 20px; right: 20px; width: 100px; height: 100px; background: rgba(0,0,0,0.4); border-radius: 50%; z-index: 90;}
 #night-ov, #wx-ov, #rain-cv { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 #ptst { position: absolute; top: 160px; left: 50%; transform: translateX(-50%); background: rgba(200, 20, 20, 0.85); color: #fff; padding: 10px 20px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; z-index: 200;}
 #ptst.on { opacity: 1; }
