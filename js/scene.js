@@ -865,3 +865,77 @@ export function buildAI(THREE, scene) {
   // [修正] wakeUniforms を main.js に渡す
   return { AIships, fishBoats, tugs, wakeUniforms };
 }
+
+// ---- scene.js の一番下にこれを追加 ----
+
+export async function buildLandmass(THREE, scene) {
+  try {
+    // 1. さきほどダウンロードしたデータを読み込む
+    const res = await fetch('./tokyobay.geojson');
+    const data = await res.json();
+
+    // 2. 陸地のマテリアル（夜や霧にも馴染む暗めのオリーブグリーン）
+    const mat = new THREE.MeshStandardMaterial({ 
+      color: 0x1c2e22, 
+      roughness: 0.9, 
+      side: THREE.DoubleSide // 念のため両面描画
+    });
+
+    // 3. 基準座標（東京湾の中心付近：海ほたる周辺をX=0, Z=0とする）
+    const ORIGIN_LAT = 35.45;
+    const ORIGIN_LON = 139.75;
+
+    // 緯度経度からゲーム内座標（メートル）への変換
+    function latLonToXZ(lat, lon) {
+      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      const z = (lat - ORIGIN_LAT) * 111320; // 北がプラス
+      return new THREE.Vector2(x, z);
+    }
+
+    const landGroup = new THREE.Group();
+
+    // 4. 点を繋いでポリゴンを作る関数
+    function createShape(points) {
+      if (points.length < 3) return;
+      const shape = new THREE.Shape();
+      points.forEach((p, i) => {
+        const pos = latLonToXZ(p[1], p[0]); // p[0] = 経度, p[1] = 緯度
+        if (i === 0) shape.moveTo(pos.x, pos.y);
+        else shape.lineTo(pos.x, pos.y);
+      });
+
+      // ポリゴンを厚みのある立体（陸地）にする
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: 20,        // 20mの厚み
+        bevelEnabled: false
+      });
+      
+      geo.rotateX(-Math.PI / 2); // 3D空間で寝かせる
+      geo.translate(0, -10, 0);  // -10mの海底から+10mの陸地になるように配置
+
+      const mesh = new THREE.Mesh(geo, mat);
+      landGroup.add(mesh);
+    }
+
+    // 5. データの中身をループしてすべての海岸線を処理
+    data.features.forEach(feat => {
+      if (!feat.geometry) return;
+      const type = feat.geometry.type;
+      const coords = feat.geometry.coordinates;
+
+      if (type === 'LineString') {
+        createShape(coords);
+      } else if (type === 'Polygon') {
+        coords.forEach(ring => createShape(ring));
+      } else if (type === 'MultiPolygon') {
+        coords.forEach(poly => poly.forEach(ring => createShape(ring)));
+      }
+    });
+
+    scene.add(landGroup);
+    console.log("陸地の読み込み完了！");
+    return landGroup;
+  } catch (err) {
+    console.error("地図データの読み込みエラー:", err);
+  }
+}

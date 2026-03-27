@@ -7,7 +7,7 @@ import * as THREE     from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128
 import { MISSIONS, SAVE, saveResult, getStats } from './missions.js';
 import { P, ENG_LABELS, ENG_RATIOS, initInput, keys, camOffset, updatePhysics, calcScore } from './physics.js';
 import { initAudio, updateEngineSound, playHorn, playCrash, playVHF, playClear, isReady as audioReady } from './audio.js';
-import { buildScene, buildOcean, buildShip, buildWorld, buildAI, toggleNight } from './scene.js';
+import { buildScene, buildOcean, buildShip, buildWorld, buildAI, toggleNight, buildLandmass } from './scene.js';
 import {
   drawRudder, updateCompass, updateTelegraph,
   showPenaltyToast, flashScreen,
@@ -31,6 +31,7 @@ const { ocean, wu }                   = buildOcean(THREE, scene);
 const { shipGroup, prop }             = buildShip(THREE, scene);
 const { buoys }                       = buildWorld(THREE, scene);
 const { AIships, fishBoats, tugs, wakeUniforms } = buildAI(THREE, scene);
+buildLandmass(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 shipGroup.add(camera);
