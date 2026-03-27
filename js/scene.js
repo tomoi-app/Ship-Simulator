@@ -939,3 +939,77 @@ export async function buildLandmass(THREE, scene) {
     console.error("地図データの読み込みエラー:", err);
   }
 }
+
+// ---- scene.js の一番下にこれを追加 ----
+
+export async function buildCity(THREE, scene) {
+  try {
+    const res = await fetch('./buildings.json');
+    const data = await res.json();
+    const elements = data.elements || [];
+    if (elements.length === 0) return;
+
+    // 1. ベースとなるビルの形（ただの1x1x1の箱）
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    
+    // 2. ビルの質感（遠景に馴染む少し青みがかったダークグレーのガラス風）
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x1a2530,
+      roughness: 0.3,
+      metalness: 0.8
+    });
+
+    // 3. 魔法の「InstancedMesh」（1万個のビルを1個分の負荷で描画する！）
+    const iMesh = new THREE.InstancedMesh(geo, mat, elements.length);
+    const dummy = new THREE.Object3D(); // 計算用のダミーオブジェクト
+
+    const ORIGIN_LAT = 35.45;
+    const ORIGIN_LON = 139.75;
+    function latLonToXZ(lat, lon) {
+      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      const z = (lat - ORIGIN_LAT) * 111320;
+      return new THREE.Vector2(x, z);
+    }
+
+    let count = 0;
+
+    // 4. データをループして配置していく
+    elements.forEach((el) => {
+      // out center で取得したので、centerに座標が入る
+      let lat = el.center ? el.center.lat : el.lat;
+      let lon = el.center ? el.center.lon : el.lon;
+      if (!lat || !lon) return;
+
+      const pos = latLonToXZ(lat, lon);
+
+      // 階数データがあれば採用、なければランダムに5〜20階建てにする
+      let levels = 8; 
+      if (el.tags && el.tags['building:levels']) {
+         levels = parseInt(el.tags['building:levels']) || 8;
+      } else {
+         levels = 5 + Math.random() * 15;
+      }
+      
+      const height = levels * 3.5; // 1階あたり約3.5mとして計算
+      const width = 20 + Math.random() * 20; // 幅はランダム
+      const depth = 20 + Math.random() * 20;
+
+      // ビルを配置（Y座標は高さの半分にする必要があります）
+      dummy.position.set(pos.x, height / 2, pos.z);
+      dummy.scale.set(width, height, depth);
+      dummy.updateMatrix();
+      
+      // InstancedMeshにこのビルの位置と大きさを記憶させる
+      iMesh.setMatrixAt(count, dummy.matrix);
+      count++;
+    });
+
+    iMesh.instanceMatrix.needsUpdate = true;
+    scene.add(iMesh);
+    
+    console.log(`ビル群（${count}棟）の建設完了！`);
+
+  } catch (err) {
+    console.error("ビルデータの読み込みエラー:", err);
+  }
+}
