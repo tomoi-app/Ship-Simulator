@@ -534,151 +534,32 @@ export function toggleNight(scene, night) {
 }
 
 // ---- 陸地・港湾 ----
+// ============================================================
+//  古い陸地・建物を削除し、ブイだけを残した新しい buildWorld
+// ============================================================
 export function buildWorld(THREE, scene) {
-  const concTex  = makeConcreteTexture();
-  const grassTex = makeGrassTexture();
-
-  const land = (x, z, w, d, h, color, tex = null) => {
-    const mat = new THREE.MeshStandardMaterial({ color: tex ? 0xffffff : color, roughness: 1 });
-    if (tex) { mat.map = tex; mat.map.repeat.set(w / 50, d / 50); }
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    m.position.set(x, h / 2 - 1, z); scene.add(m);
-  };
-
-  // 陸地
-  land(-2500, 2000, 1000, 7000, 18, 0x2e4a2e, grassTex);
-  land(-2600, 4500,  700, 5000, 14, 0x264226, grassTex);
-  land(-2800, -500,  600, 3000, 12, 0x2e4a2e, grassTex);
-  land( 2600, 2000,  900, 7000,  9, 0x2e4a2e, grassTex);
-  land( 2700, -300,  700, 4000,  7, 0x264226, grassTex);
-
-  // ビル群（横浜：ランドマークタワー級 296m を混ぜる）
-  for (let i = 0; i < 50; i++) {
-    const isLandmark = (i === 0);
-    const h = isLandmark ? 296 : (50 + Math.random() * 150);
-    const w = isLandmark ? 50 : (20 + Math.random() * 40);
-    land(-2050 + Math.random() * 700 - 350, 3100 + Math.random() * 1200,
-         w, w, h,
-         isLandmark ? 0x8899aa : (i % 3 ? 0x445566 : 0x334455));
-  }
-  // ビル群（東京）
-  for (let i = 0; i < 50; i++) {
-    const isLandmark = (i === 0);
-    const h = isLandmark ? 350 : (80 + Math.random() * 150);
-    const w = isLandmark ? 60 : (30 + Math.random() * 50);
-    land(1650 + Math.random() * 500 - 250, 4300 + Math.random() * 800,
-         w, w, h,
-         i % 4 ? 0x334455 : 0x223344);
-  }
-  // 工場・タンク（川崎）
-  for (let i = 0; i < 15; i++) {
-    const r = 8 + Math.random() * 12, h = 20 + Math.random() * 40;
-    const cyl = new THREE.Mesh(
-      new THREE.CylinderGeometry(r, r, h, 12),
-      new THREE.MeshStandardMaterial({ color: 0x888880, roughness: 0.8 })
-    );
-    cyl.position.set(-900 + Math.random() * 400 - 200, h / 2, 2000 + Math.random() * 600 - 300);
-    scene.add(cyl);
-  }
-
-  // 港湾
-  const buildPort = (px, pz) => {
-    const concMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, map: concTex });
-    concTex.repeat.set(8, 8);
-    const pier  = new THREE.Mesh(new THREE.BoxGeometry(700, 7, 500), concMat);
-    pier.position.set(px - 200, -1, pz + 120); scene.add(pier);
-    const berth = new THREE.Mesh(new THREE.BoxGeometry(9, 12, 300), concMat);
-    berth.position.set(px, 2, pz); scene.add(berth);
-    // ボラード
-    for (let i = -3; i <= 3; i++) {
-      const b = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.7, 0.9, 3, 8),
-        new THREE.MeshStandardMaterial({ color: 0x888880, metalness: 0.5 })
-      );
-      b.position.set(px + i * 44, 4, pz); scene.add(b);
-    }
-    // クレーン（ガントリークレーン巨大化・実寸大）
-    const yMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.6 });
-    const buildGantryCrane = (cx, cz) => {
-      const g = new THREE.Group();
-      // 柱（高さ90m級）
-      const legG = new THREE.BoxGeometry(4, 90, 4);
-      const legL = new THREE.Mesh(legG, yMat); legL.position.set(-15, 45, 0);
-      const legR = new THREE.Mesh(legG, yMat); legR.position.set(15, 45, 0);
-      // アーム（海側に150m突き出す）
-      const beamG = new THREE.BoxGeometry(6, 6, 150);
-      const beam = new THREE.Mesh(beamG, yMat);
-      beam.position.set(0, 85, 40); 
-      g.add(legL, legR, beam);
-      g.position.set(cx, 0, cz);
-      
-      const pl = new THREE.PointLight(0xffeeaa, 1.2, 350);
-      pl.position.set(0, 92, 40); g.add(pl);
-      scene.add(g);
-    };
-
-    [-100, 0, 100].forEach(cx => {
-      buildGantryCrane(px + cx, pz + 90);
-    });
-    // コンテナヤード
-    const CC = [0xcc3333,0x3366cc,0x33aa33,0xccaa00,0x886633,0xcc6600];
-    for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) {
-      const cm = new THREE.Mesh(
-        new THREE.BoxGeometry(12, 4.5, 23),
-        new THREE.MeshStandardMaterial({ color: CC[(r * 6 + c) % CC.length], roughness: 0.7 })
-      );
-      cm.position.set(px - 110 + c * 14, 3 + r * 5, pz + 76 + Math.floor(r / 2) * 28);
-      scene.add(cm);
-    }
-    // 倉庫
-    const wh = new THREE.Mesh(new THREE.BoxGeometry(120, 18, 60), concMat);
-    wh.position.set(px - 120, 9, pz + 160); scene.add(wh);
-  };
-
-  buildPort(-2100, 3200);
-  buildPort( 1800, 4500);
-
-  // 浮標 (日本のIALA B方式: 水源に向かって右が赤、左が緑)
   const buoys = [];
-  // 巨大船が安全に通れるように航路幅を300m（左右150mずつ）に設定
-  const channelWidth = 150; 
-  
-  for (let i = 0; i < 20; i++) { // ブイの数を20個に増やして長い航路を形成
-    const g = new THREE.Group();
-    
-    // 偶数(左舷側)を緑、奇数(右舷側)を赤に設定
-    const isStarboard = i % 2 !== 0; 
-    const color = isStarboard ? 0xff2200 : 0x00ff44; // 赤(右) と 緑(左)
-    
-    // ブイ本体の質感
-    const mat = new THREE.MeshStandardMaterial({ 
-      color: color, 
-      roughness: 0.3, 
-      metalness: 0.6 
-    });
-    
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 4.5, 12), mat);
-    body.position.y = 2.2; 
-    g.add(body);
-    
-    // 頭頂部の形状（緑は円筒形、赤は円錐形が国際基準ですが、ここでは視認性重視で統一感を出します）
-    const top = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.0, 12), mat);
-    top.position.y = 5.5; 
-    g.add(top);
-    
-    // 航路標識の灯火（夜間や悪天候で目立つように強化）
-    const bl = new THREE.PointLight(color, 2.5, 150); 
-    bl.position.y = 7.0; 
-    g.add(bl);
-    
-    // Z軸マイナス方向（北/水源）に向かって配置。X座標を左右に振り分ける
-    const posX = isStarboard ? channelWidth : -channelWidth;
-    const posZ = Math.floor(i / 2) * -800 + 1000; // 800m間隔で配置
-    
-    g.position.set(posX, 0, posZ);
-    scene.add(g); 
-    buoys.push(g);
-  }
+
+  // ★以前ここにあった「巨大な緑の床（PlaneGeometry）」や「ダミーのビル群」の生成コードはすべて削除しました！
+
+  // --- ブイ（航路標識）だけはゲームシステム上必要なので残す ---
+  const buoyGeo = new THREE.CylinderGeometry(1.5, 1.5, 4, 16);
+  const rMat = new THREE.MeshStandardMaterial({ color: 0xff2222, roughness: 0.4 });
+  const gMat = new THREE.MeshStandardMaterial({ color: 0x22ff22, roughness: 0.4 });
+
+  // 仮のブイ配置（必要に応じて座標を変えてください）
+  const positions = [
+    { x: 500, z: -1000, m: rMat },
+    { x: -500, z: -1000, m: gMat },
+    { x: 1000, z: 2000, m: rMat }
+  ];
+
+  positions.forEach(p => {
+    const b = new THREE.Mesh(buoyGeo, p.m);
+    b.position.set(p.x, 0, p.z);
+    scene.add(b);
+    buoys.push(b);
+  });
 
   return { buoys };
 }
