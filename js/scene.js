@@ -756,8 +756,11 @@ export async function buildLandmass(THREE, scene) {
     const res = await fetch('./tokyobay.geojson');
     const data = await res.json();
 
+    // ★修正1：遠くからでも目立つ、明るめの土・草色（カーキグリーン）に変更
     const mat = new THREE.MeshStandardMaterial({ 
-      color: 0x1c2e22, roughness: 0.9, side: THREE.DoubleSide 
+      color: 0x8b9c8a, 
+      roughness: 0.9, 
+      side: THREE.DoubleSide 
     });
 
     const ORIGIN_LAT = 35.45;
@@ -778,8 +781,9 @@ export async function buildLandmass(THREE, scene) {
 
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        vertices.push(pos.x, -5, pos.z);  // 海底
-        vertices.push(pos.x, 8, pos.z);   // ★防波堤の高さを8mにして波に飲まれないように
+        vertices.push(pos.x, -10, pos.z); // 海底を少し深く
+        // ★修正2：高さを8m → 50mの巨大な崖に変更！これなら数キロ先からでも絶対に見える
+        vertices.push(pos.x, 50, pos.z);  
       }
 
       for (let i = 0; i < points.length - 1; i++) {
@@ -795,8 +799,7 @@ export async function buildLandmass(THREE, scene) {
       geo.computeVertexNormals();
 
       const mesh = new THREE.Mesh(geo, mat);
-      // ★超重要：カメラが原点(0,0)から離れても陸地が勝手に消えないようにする！
-      mesh.frustumCulled = false; 
+      mesh.frustumCulled = false; // カメラが離れても消さない
       landGroup.add(mesh);
     }
 
