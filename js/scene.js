@@ -779,8 +779,8 @@ export async function buildLandmass(THREE, scene) {
     const ORIGIN_LON = 139.75;
 
     function latLonToXZ(lat, lon) {
-      // ★最大の修正点：先頭にマイナスを付けて、東を(-X)にする！これで鏡の世界から脱出！
-      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★ 修正：先頭のマイナスを削除！（東 = +X に統一）
+      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
     }
@@ -881,8 +881,8 @@ export async function buildCity(THREE, scene) {
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
-      // ★ ここも先頭にマイナスを追加！これで海に浮いていたビルが本来の陸地に戻る！
-      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★ ここもマイナスを削除！
+      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
     }

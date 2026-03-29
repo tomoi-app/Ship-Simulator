@@ -7,18 +7,17 @@ let toolOpen = false;
 let mapCv = null;
 let mapCtx = null;
 let geoData = null;
-let depthData = []; // ★水深データを保存する配列を追加
+let depthData = []; 
 
 fetch('./tokyobay.geojson?v=' + Date.now())
   .then(res => res.json())
   .then(data => { geoData = data; console.log("ECDIS: 海図データのロード完了"); })
   .catch(err => console.error("ECDISエラー:", err));
 
-// ★水深点データのロード
 fetch('./depths.json?v=' + Date.now())
   .then(res => res.json())
   .then(data => { 
-    if (data.elements) {
+    if(data && data.elements) {
       data.elements.forEach(el => {
         if (el.tags && (el.tags['seamark:elevation'] || el.tags['seamark:depth'])) {
           const { x, z } = latLonToXZ(el.lat, el.lon);
@@ -26,19 +25,34 @@ fetch('./depths.json?v=' + Date.now())
           depthData.push({ x, z, depth: Math.abs(d) });
         }
       });
+      console.log(`ECDIS: 水深データ（${depthData.length}地点）のロード完了`); 
     }
-    console.log(`ECDIS: 水深データ（${depthData.length}地点）のロード完了`); 
   })
-  .catch(err => console.error("水深データエラー:", err));
+  .catch(err => console.log("水深データはスキップします"));
 
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
 
 function latLonToXZ(lat, lon) {
-  // ★ ここにもマイナスを追加
-  const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+  // ★ 修正1：マイナスを削除（東 = +X）
+  const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
   const z = (lat - ORIGIN_LAT) * 111320; 
   return { x, z };
+}
+
+export function getRealDepthAt(posX, posZ) {
+  if (depthData.length === 0) return 999; 
+  let closestDepth = 999;
+  let minDistance = Infinity;
+  for (let i = 0; i < depthData.length; i++) {
+    const pt = depthData[i];
+    const distSq = (pt.x - posX) ** 2 + (pt.z - posZ) ** 2;
+    if (distSq < minDistance) {
+      minDistance = distSq;
+      closestDepth = pt.depth;
+    }
+  }
+  return closestDepth;
 }
 
 function initMap() {
@@ -68,24 +82,6 @@ export function toggleTool() {
   }
 }
 
-// ★船の現在位置から一番近い水深データを探して返す関数
-export function getRealDepthAt(posX, posZ) {
-  if (depthData.length === 0) return 999;
-
-  let closestDepth = 999;
-  let minDistance = Infinity;
-
-  for (let i = 0; i < depthData.length; i++) {
-    const pt = depthData[i];
-    const distSq = (pt.x - posX) ** 2 + (pt.z - posZ) ** 2;
-    if (distSq < minDistance) {
-      minDistance = distSq;
-      closestDepth = pt.depth;
-    }
-  }
-  return closestDepth;
-}
-
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (!toolOpen || !mapCtx) return;
 
@@ -104,26 +100,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = w / 2;
   const cy = h / 2;
 
-  // --- ECDIS上に水深の数値をプロット（実際の海図風） ---
-  if (depthData.length > 0) {
-    mapCtx.fillStyle = '#4488aa'; 
-    mapCtx.font = '10px "Montserrat", sans-serif';
-    mapCtx.textAlign = 'center';
-    
-    depthData.forEach((pt, i) => {
-      if (i % 3 !== 0) return; // 間引いて描画
-      const dx = pt.x - P.posX;
-      const dz = pt.z - P.posZ; 
-      const sx = cx - dx / scale; 
-      const sy = cy - dz / scale; 
-      
-      if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
-      }
-    });
-    mapCtx.textAlign = 'left'; // 元に戻す
-  }
-
   if (geoData) {
     mapCtx.strokeStyle = '#00ffaa';
     mapCtx.lineWidth = 1.5;
@@ -140,8 +116,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const dx = x - P.posX;
           const dz = z - P.posZ; 
           
-          // ★ 大修正：東(-X)に進んだときに、海図上では右(＋)に描画されるように引き算に変更！
-          const sx = cx - dx / scale; 
+          // ★ 修正2：東(+X)に進んだときに、海図上では右(＋)に描画されるように足し算に変更！
+          const sx = cx + dx / scale; 
           const sy = cy - dz / scale; 
 
           if (i === 0) mapCtx.moveTo(sx, sy);
@@ -156,11 +132,30 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
+  // --- ECDIS上に水深の数値をプロット ---
+  if (depthData.length > 0) {
+    mapCtx.fillStyle = '#4488aa'; 
+    mapCtx.font = '10px "Montserrat", sans-serif';
+    mapCtx.textAlign = 'center';
+    
+    depthData.forEach((pt, i) => {
+      if (i % 3 !== 0) return; 
+      const dx = pt.x - P.posX;
+      const dz = pt.z - P.posZ; 
+      const sx = cx + dx / scale; // ★ 修正2
+      const sy = cy - dz / scale; 
+      
+      if (sx > 0 && sx < w && sy > 0 && sy < h) {
+        mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
+      }
+    });
+  }
+
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
-    const sx = cx - dx / scale; // ★ 修正
+    const sx = cx + dx / scale; // ★ 修正2
     const sy = cy - dz / scale; 
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
@@ -171,12 +166,13 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     if (!pos) return;
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
-    const sx = cx - dx / scale; // ★ 修正
+    const sx = cx + dx / scale; // ★ 修正2
     const sy = cy - dz / scale; 
     
     mapCtx.save();
     mapCtx.translate(sx, sy);
-    mapCtx.rotate(-s.heading);
+    // ★ 修正3：AI船の回転方向のマイナスを削除（時計回り＝プラス）
+    mapCtx.rotate(s.heading);
 
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);  
@@ -199,7 +195,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   // 自船の描画
   mapCtx.save();
   mapCtx.translate(cx, cy);
-  mapCtx.rotate(-P.heading); 
+  // ★ 修正4：自船の回転方向のマイナスを削除（右旋回で時計回りに回るように）
+  mapCtx.rotate(P.heading); 
 
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12); 
@@ -225,6 +222,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   mapCtx.fillStyle = '#00d4ff';
   mapCtx.font = '16px "Montserrat", sans-serif';
+  mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
   mapCtx.fillText('ECDIS - TOKYO BAY SYSTEM', 20, 20);
   
@@ -233,17 +231,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
   mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
   
-  let deg = (-P.heading * 180 / Math.PI + 360) % 360;
+  // ★ 修正5：HDG計算のマイナスも削除（右に回ると数字が増える！）
+  let deg = (P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
   mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
   mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);
 
-  // ★船の現在地の水深を表示
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 999 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
-
-  if (!geoData) {
-    mapCtx.fillStyle = '#ff3333';
-    mapCtx.fillText('LOADING CHART DATA...', 20, 140);
-  }
 }
