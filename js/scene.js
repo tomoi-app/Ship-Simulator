@@ -748,7 +748,7 @@ export function buildAI(THREE, scene) {
 }
 
 // ============================================================
-//  ここから下を scene.js の末尾に上書きしてください
+//  scene.js の一番下にある陸地とビルの関数をこれに上書き
 // ============================================================
 
 export async function buildLandmass(THREE, scene) {
@@ -763,7 +763,6 @@ export async function buildLandmass(THREE, scene) {
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
 
-    // ★ 修正後：東を+X、北を-Z(奥)にする正しい計算式
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = -(lat - ORIGIN_LAT) * 111320;
@@ -772,7 +771,6 @@ export async function buildLandmass(THREE, scene) {
 
     const landGroup = new THREE.Group();
 
-    // ★修正2: 海を塗りつぶさないよう、海岸線に沿った「壁」を作る
     function createWall(points) {
       if (points.length < 2) return;
       const vertices = [];
@@ -780,8 +778,8 @@ export async function buildLandmass(THREE, scene) {
 
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        vertices.push(pos.x, -5, pos.z);  // 海底側の頂点
-        vertices.push(pos.x, 2, pos.z);   // ★修正: 防波堤の高さを2mに下げて、奥のビルが見えるようにする
+        vertices.push(pos.x, -5, pos.z);  // 海底
+        vertices.push(pos.x, 8, pos.z);   // ★防波堤の高さを8mにして波に飲まれないように
       }
 
       for (let i = 0; i < points.length - 1; i++) {
@@ -797,6 +795,8 @@ export async function buildLandmass(THREE, scene) {
       geo.computeVertexNormals();
 
       const mesh = new THREE.Mesh(geo, mat);
+      // ★超重要：カメラが原点(0,0)から離れても陸地が勝手に消えないようにする！
+      mesh.frustumCulled = false; 
       landGroup.add(mesh);
     }
 
@@ -820,12 +820,10 @@ export async function buildLandmass(THREE, scene) {
 
 export async function buildCity(THREE, scene) {
   try {
-    // ★修正1：URLの後ろに現在の時刻をつけて、ブラウザのキャッシュ(古いデータの使い回し)を強制的に無効化！
-    const res = await fetch('./buildings.json?v=' + Date.now());
+    const res = await fetch('./buildings.json');
     const data = await res.json();
     const elements = data.elements || [];
     
-    // ★修正2：座標が完全に「正常な数字」であるデータだけを厳選する
     const validData = [];
     elements.forEach(el => {
       let lat = el.center ? el.center.lat : el.lat;
@@ -833,7 +831,6 @@ export async function buildCity(THREE, scene) {
       
       lat = parseFloat(lat);
       lon = parseFloat(lon);
-      // NaN(非数)ではない、正しい数字のときだけ採用
       if (!isNaN(lat) && !isNaN(lon)) {
         validData.push({ el, lat, lon });
       }
@@ -847,11 +844,13 @@ export async function buildCity(THREE, scene) {
     });
 
     const iMesh = new THREE.InstancedMesh(geo, mat, validData.length);
+    // ★超重要：カメラが原点から離れてもビル群が勝手に消えないようにする！
+    iMesh.frustumCulled = false;
+
     const dummy = new THREE.Object3D();
 
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
-    // ★ 修正後：東を+X、北を-Z(奥)にする正しい計算式
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = -(lat - ORIGIN_LAT) * 111320;
@@ -862,11 +861,9 @@ export async function buildCity(THREE, scene) {
     validData.forEach(item => {
       const pos = latLonToXZ(item.lat, item.lon);
       
-      // ★修正3(最大原因)：階数データに「unknown」等の文字が混ざっていた場合にNaNになるのを防ぐ！
-      let levels = 5 + Math.random() * 15; // 基本はランダムな高さにする
+      let levels = 5 + Math.random() * 15;
       if (item.el.tags && item.el.tags['building:levels']) {
         const parsed = parseInt(item.el.tags['building:levels']);
-        // ちゃんと数字に変換できた場合(NaNではない)のみ、その階数を採用する
         if (!isNaN(parsed) && parsed > 0) {
           levels = parsed; 
         }
@@ -876,7 +873,6 @@ export async function buildCity(THREE, scene) {
       const width = 20 + Math.random() * 20;
       const depth = 20 + Math.random() * 20;
 
-      // もしここまでで何か1つでもNaNが混ざっていたら、GPUが壊れる前にスキップして原点バグを防ぐ
       if (isNaN(pos.x) || isNaN(pos.z) || isNaN(height)) return;
 
       dummy.position.set(pos.x, height / 2, pos.z);
