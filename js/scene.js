@@ -823,40 +823,51 @@ export async function buildCity(THREE, scene) {
     const res = await fetch('./buildings.json');
     const data = await res.json();
     const elements = data.elements || [];
-    if (elements.length === 0) return;
+    
+    // ★大修正：座標（centerまたはlat/lon）が存在する正常なデータだけを厳選する
+    // これにより「座標がないエラービル」が (0,0,0) の海上に密集するバグを完全に防ぎます
+    const validBuildings = elements.filter(el => {
+      const lat = el.center ? el.center.lat : el.lat;
+      const lon = el.center ? el.center.lon : el.lon;
+      return lat !== undefined && lon !== undefined;
+    });
+
+    if (validBuildings.length === 0) {
+      console.warn("有効なビルがありません。Overpassで 'out center qt;' を忘れている可能性があります。");
+      return;
+    }
 
     const geo = new THREE.BoxGeometry(1, 1, 1);
-    
-    // ビルの質感を明るめのコンクリート・ガラス風に変更
     const mat = new THREE.MeshStandardMaterial({
       color: 0xa0aab2, roughness: 0.6, metalness: 0.3
     });
 
-    const iMesh = new THREE.InstancedMesh(geo, mat, elements.length);
+    // 必要な数ぴったりでInstancedMeshを作成（余った空のデータが0,0に湧くのを防ぐ）
+    const iMesh = new THREE.InstancedMesh(geo, mat, validBuildings.length);
     const dummy = new THREE.Object3D();
 
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
-    
     function latLonToXZ(lat, lon) {
-      // ★ここもX軸反転を修正
       const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return new THREE.Vector2(x, z);
     }
 
     let count = 0;
-    elements.forEach((el) => {
+    validBuildings.forEach((el) => {
       let lat = el.center ? el.center.lat : el.lat;
       let lon = el.center ? el.center.lon : el.lon;
-      if (!lat || !lon) return;
 
       const pos = latLonToXZ(lat, lon);
+      
+      // ビルの階数から高さを計算
       let levels = el.tags && el.tags['building:levels'] ? parseInt(el.tags['building:levels']) : 5 + Math.random() * 15;
       const height = (levels || 8) * 3.5;
       const width = 20 + Math.random() * 20;
       const depth = 20 + Math.random() * 20;
 
+      // ビルを正しい位置に配置
       dummy.position.set(pos.x, height / 2, pos.z);
       dummy.scale.set(width, height, depth);
       dummy.updateMatrix();
@@ -865,6 +876,7 @@ export async function buildCity(THREE, scene) {
       count++;
     });
 
+    iMesh.count = count; // 描画する上限を正確にセット（超重要）
     iMesh.instanceMatrix.needsUpdate = true;
     scene.add(iMesh);
     console.log(`ビル群（${count}棟）の建設完了！`);
