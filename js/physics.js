@@ -261,8 +261,9 @@ export function updatePhysics(dt, waveAmp = 1, gameOverActive = false, currentTi
   const cosH = Math.cos(P.heading);
   const sinH = Math.sin(P.heading);
 
-  P.posX += (-P.u * sinH + P.v * cosH) * sDt + P.driftX * sDt + currX;
-  P.posZ += ( P.u * cosH + P.v * sinH) * sDt + P.driftZ * sDt + currZ;
+  // ★ 修正：East = +X, North = +Z の右手系に統一
+  P.posX += ( P.u * sinH + P.v * cosH) * sDt + P.driftX * sDt + currX;
+  P.posZ += ( P.u * cosH - P.v * sinH) * sDt + P.driftZ * sDt + currZ;
   P.heading += P.r * sDt;
 
   // ----------------------------------------------------------
