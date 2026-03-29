@@ -820,30 +820,33 @@ export async function buildLandmass(THREE, scene) {
 
 export async function buildCity(THREE, scene) {
   try {
-    const res = await fetch('./buildings.json');
+    // ★修正1：URLの後ろに現在の時刻をつけて、ブラウザのキャッシュ(古いデータの使い回し)を強制的に無効化！
+    const res = await fetch('./buildings.json?v=' + Date.now());
     const data = await res.json();
     const elements = data.elements || [];
     
-    // ★大修正：座標（centerまたはlat/lon）が存在する正常なデータだけを厳選する
-    // これにより「座標がないエラービル」が (0,0,0) の海上に密集するバグを完全に防ぎます
-    const validBuildings = elements.filter(el => {
-      const lat = el.center ? el.center.lat : el.lat;
-      const lon = el.center ? el.center.lon : el.lon;
-      return lat !== undefined && lon !== undefined;
+    // ★修正2：座標が完全に「正常な数字」であるデータだけを厳選する
+    const validData = [];
+    elements.forEach(el => {
+      let lat = el.center ? el.center.lat : el.lat;
+      let lon = el.center ? el.center.lon : el.lon;
+      
+      lat = parseFloat(lat);
+      lon = parseFloat(lon);
+      // NaN(非数)ではない、正しい数字のときだけ採用
+      if (!isNaN(lat) && !isNaN(lon)) {
+        validData.push({ el, lat, lon });
+      }
     });
 
-    if (validBuildings.length === 0) {
-      console.warn("有効なビルがありません。Overpassで 'out center qt;' を忘れている可能性があります。");
-      return;
-    }
+    if (validData.length === 0) return;
 
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshStandardMaterial({
       color: 0xa0aab2, roughness: 0.6, metalness: 0.3
     });
 
-    // 必要な数ぴったりでInstancedMeshを作成（余った空のデータが0,0に湧くのを防ぐ）
-    const iMesh = new THREE.InstancedMesh(geo, mat, validBuildings.length);
+    const iMesh = new THREE.InstancedMesh(geo, mat, validData.length);
     const dummy = new THREE.Object3D();
 
     const ORIGIN_LAT = 35.45;
@@ -855,19 +858,26 @@ export async function buildCity(THREE, scene) {
     }
 
     let count = 0;
-    validBuildings.forEach((el) => {
-      let lat = el.center ? el.center.lat : el.lat;
-      let lon = el.center ? el.center.lon : el.lon;
-
-      const pos = latLonToXZ(lat, lon);
+    validData.forEach(item => {
+      const pos = latLonToXZ(item.lat, item.lon);
       
-      // ビルの階数から高さを計算
-      let levels = el.tags && el.tags['building:levels'] ? parseInt(el.tags['building:levels']) : 5 + Math.random() * 15;
-      const height = (levels || 8) * 3.5;
+      // ★修正3(最大原因)：階数データに「unknown」等の文字が混ざっていた場合にNaNになるのを防ぐ！
+      let levels = 5 + Math.random() * 15; // 基本はランダムな高さにする
+      if (item.el.tags && item.el.tags['building:levels']) {
+        const parsed = parseInt(item.el.tags['building:levels']);
+        // ちゃんと数字に変換できた場合(NaNではない)のみ、その階数を採用する
+        if (!isNaN(parsed) && parsed > 0) {
+          levels = parsed; 
+        }
+      }
+
+      const height = levels * 3.5;
       const width = 20 + Math.random() * 20;
       const depth = 20 + Math.random() * 20;
 
-      // ビルを正しい位置に配置
+      // もしここまでで何か1つでもNaNが混ざっていたら、GPUが壊れる前にスキップして原点バグを防ぐ
+      if (isNaN(pos.x) || isNaN(pos.z) || isNaN(height)) return;
+
       dummy.position.set(pos.x, height / 2, pos.z);
       dummy.scale.set(width, height, depth);
       dummy.updateMatrix();
@@ -876,7 +886,7 @@ export async function buildCity(THREE, scene) {
       count++;
     });
 
-    iMesh.count = count; // 描画する上限を正確にセット（超重要）
+    iMesh.count = count;
     iMesh.instanceMatrix.needsUpdate = true;
     scene.add(iMesh);
     console.log(`ビル群（${count}棟）の建設完了！`);
