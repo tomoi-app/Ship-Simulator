@@ -19,16 +19,23 @@ fetch('./depths.json?v=' + Date.now())
   .then(data => { 
     if(data && data.elements) {
       data.elements.forEach(el => {
-        if (el.tags && (el.tags['seamark:elevation'] || el.tags['seamark:depth'])) {
-          const { x, z } = latLonToXZ(el.lat, el.lon);
-          let d = parseFloat(el.tags['seamark:elevation'] || el.tags['seamark:depth']);
-          depthData.push({ x, z, depth: Math.abs(d) });
+        if (el.tags) {
+          // ★修正：どんなタグ名（depth, ele, seamark:depth等）で書かれていても強引に拾い上げる！
+          let dStr = el.tags['seamark:elevation'] || el.tags['seamark:depth'] || el.tags['depth'] || el.tags['ele'];
+          
+          if (dStr !== undefined) {
+            const { x, z } = latLonToXZ(el.lat, el.lon);
+            let d = Math.abs(parseFloat(dStr)); // 絶対値にする
+            if (!isNaN(d) && d > 0) {
+              depthData.push({ x, z, depth: d });
+            }
+          }
         }
       });
       console.log(`ECDIS: 水深データ（${depthData.length}地点）のロード完了`); 
     }
   })
-  .catch(err => console.log("水深データはスキップします"));
+  .catch(err => console.log("水深データのロードをスキップします"));
 
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
