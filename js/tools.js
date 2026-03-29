@@ -16,7 +16,6 @@ fetch('./tokyobay.geojson')
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
 function latLonToXZ(lat, lon) {
-  // ★修正1: 3D空間と同じく東西反転を直す
   const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
   const z = (lat - ORIGIN_LAT) * 111320;
   return { x, z };
@@ -68,7 +67,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cy = h / 2;
 
   if (geoData) {
-    mapCtx.strokeStyle = '#00ffaa';    // 海岸線のフチ（蛍光グリーン）
+    mapCtx.strokeStyle = '#00ffaa';
     mapCtx.lineWidth = 1.5;
 
     geoData.features.forEach(feat => {
@@ -82,15 +81,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const { x, z } = latLonToXZ(p[1], p[0]);
           const dx = x - P.posX;
           const dz = z - P.posZ; 
-          
-          // ★修正2: 東西反転を直したため、描画方向も修正
           const sx = cx - dx / scale; 
           const sy = cy - dz / scale;
 
           if (i === 0) mapCtx.moveTo(sx, sy);
           else mapCtx.lineTo(sx, sy);
         });
-        // ★修正3: 塗りつぶし(fill)を削除し、線だけで描画する（海を覆わないように）
         mapCtx.stroke();
       };
 
@@ -129,7 +125,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.lineWidth = 2;
   mapCtx.beginPath();
   mapCtx.moveTo(cx, cy);
-  mapCtx.lineTo(cx - Math.sin(P.heading) * 40, cy - Math.cos(P.heading) * 40);
+  // ★大修正: 船が東(右)を向いたとき、海図の線も正しく右を向くように「+ Math.sin」に変更
+  mapCtx.lineTo(cx + Math.sin(P.heading) * 40, cy - Math.cos(P.heading) * 40);
   mapCtx.stroke();
 
   mapCtx.fillStyle = '#00d4ff';

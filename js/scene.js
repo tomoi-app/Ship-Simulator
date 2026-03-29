@@ -781,7 +781,7 @@ export async function buildLandmass(THREE, scene) {
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
         vertices.push(pos.x, -5, pos.z);  // 海底側の頂点
-        vertices.push(pos.x, 15, pos.z);  // 地上側の頂点（高さ15mの壁）
+        vertices.push(pos.x, 2, pos.z);   // ★修正: 防波堤の高さを2mに下げて、奥のビルが見えるようにする
       }
 
       for (let i = 0; i < points.length - 1; i++) {
