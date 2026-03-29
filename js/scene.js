@@ -748,12 +748,11 @@ export function buildAI(THREE, scene) {
 }
 
 // ============================================================
-//  scene.js の一番下をこれに上書き
+//  scene.js の一番下をこれに上書き（ついに真犯人逮捕！）
 // ============================================================
 
 export async function buildLandmass(THREE, scene) {
   try {
-    // ★ここにもキャッシュ破壊を追加
     const res = await fetch('./tokyobay.geojson?v=' + Date.now());
     const data = await res.json();
 
@@ -766,8 +765,9 @@ export async function buildLandmass(THREE, scene) {
 
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      const z = (lat - ORIGIN_LAT) * 111320; // マイナスなし
-      return new THREE.Vector2(x, z);
+      const z = (lat - ORIGIN_LAT) * 111320;
+      // ★大修正：Vector2をやめて、シンプルな {x, z} のデータ形式に変更！
+      return { x, z }; 
     }
 
     const landGroup = new THREE.Group();
@@ -779,6 +779,7 @@ export async function buildLandmass(THREE, scene) {
 
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
+        // ★これで pos.z が undefined にならず、正しく数字が入る！
         vertices.push(pos.x, -10, pos.z); 
         vertices.push(pos.x, 50, pos.z);  
       }
@@ -811,7 +812,7 @@ export async function buildLandmass(THREE, scene) {
     });
 
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！（キャッシュ無効化）");
+    console.log("陸地の読み込み完了！（座標バグ修正版）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
@@ -851,8 +852,9 @@ export async function buildCity(THREE, scene) {
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      const z = (lat - ORIGIN_LAT) * 111320; // マイナスなし
-      return new THREE.Vector2(x, z);
+      const z = (lat - ORIGIN_LAT) * 111320;
+      // ★大修正：ここも {x, z} に変更！
+      return { x, z }; 
     }
 
     let count = 0;
@@ -871,6 +873,7 @@ export async function buildCity(THREE, scene) {
       const width = 20 + Math.random() * 20;
       const depth = 20 + Math.random() * 20;
 
+      // ★pos.z が undefined ではなくなったため、ここでスキップされずに建設される！！
       if (isNaN(pos.x) || isNaN(pos.z) || isNaN(height)) return;
 
       dummy.position.set(pos.x, height / 2, pos.z);
