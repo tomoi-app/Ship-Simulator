@@ -16,10 +16,10 @@ fetch('./tokyobay.geojson')
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
 
-// ★修正1：3D空間と完全に一致する正しい座標変換
 function latLonToXZ(lat, lon) {
   const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-  const z = -(lat - ORIGIN_LAT) * 111320; // 北を-Zにする
+  // ★修正：マイナスを削除 (+Z = 北)
+  const z = (lat - ORIGIN_LAT) * 111320; 
   return { x, z };
 }
 
@@ -84,9 +84,9 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const dx = x - P.posX;
           const dz = z - P.posZ; 
           
-          // ★修正2：描画のプラスマイナスを修正（右が+X、奥(北)が-Zになるように）
           const sx = cx + dx / scale; 
-          const sy = cy + dz / scale; 
+          // ★修正：Zがプラス(北)のとき、画面の上(マイナス方向)に描画する
+          const sy = cy - dz / scale; 
 
           if (i === 0) mapCtx.moveTo(sx, sy);
           else mapCtx.lineTo(sx, sy);
@@ -105,7 +105,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
     const sx = cx + dx / scale;
-    const sy = cy + dz / scale;
+    const sy = cy - dz / scale; // ★ここも修正
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
@@ -116,7 +116,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
     const sx = cx + dx / scale;
-    const sy = cy + dz / scale;
+    const sy = cy - dz / scale; // ★ここも修正
     mapCtx.fillStyle = '#ffaa00'; 
     mapCtx.beginPath();
     mapCtx.moveTo(sx, sy - 5); mapCtx.lineTo(sx + 5, sy); 
@@ -133,7 +133,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.lineWidth = 2;
   mapCtx.beginPath();
   mapCtx.moveTo(cx, cy);
-  // ★修正3：船の向き（ヘディングライン）を3Dと完全に同期
+  // ★ヘディングラインも修正
   mapCtx.lineTo(cx + Math.sin(P.heading) * 40, cy - Math.cos(P.heading) * 40);
   mapCtx.stroke();
 

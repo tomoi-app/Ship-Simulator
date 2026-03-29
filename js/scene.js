@@ -768,7 +768,8 @@ export async function buildLandmass(THREE, scene) {
 
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      const z = -(lat - ORIGIN_LAT) * 111320;
+      // ★修正：マイナスを削除！これで「＋Zが北」になり、船の進行方向と完全に一致します
+      const z = (lat - ORIGIN_LAT) * 111320; 
       return new THREE.Vector2(x, z);
     }
 
@@ -856,7 +857,8 @@ export async function buildCity(THREE, scene) {
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      const z = -(lat - ORIGIN_LAT) * 111320;
+      // ★修正：マイナスを削除！これで「＋Zが北」になり、船の進行方向と完全に一致します
+      const z = (lat - ORIGIN_LAT) * 111320; 
       return new THREE.Vector2(x, z);
     }
 
