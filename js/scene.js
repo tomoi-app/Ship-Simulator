@@ -747,70 +747,67 @@ export function buildAI(THREE, scene) {
   return { AIships, fishBoats, tugs, wakeUniforms };
 }
 
-// ---- scene.js の一番下にこれを追加 ----
+// ============================================================
+//  ここから下を scene.js の末尾に上書きしてください
+// ============================================================
 
 export async function buildLandmass(THREE, scene) {
   try {
-    // 1. さきほどダウンロードしたデータを読み込む
     const res = await fetch('./tokyobay.geojson');
     const data = await res.json();
 
-    // 2. 陸地のマテリアル（夜や霧にも馴染む暗めのオリーブグリーン）
     const mat = new THREE.MeshStandardMaterial({ 
-      color: 0x1c2e22, 
-      roughness: 0.9, 
-      side: THREE.DoubleSide // 念のため両面描画
+      color: 0x1c2e22, roughness: 0.9, side: THREE.DoubleSide 
     });
 
-    // 3. 基準座標（東京湾の中心付近：海ほたる周辺をX=0, Z=0とする）
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
 
-    // 緯度経度からゲーム内座標（メートル）への変換
     function latLonToXZ(lat, lon) {
-      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      const z = (lat - ORIGIN_LAT) * 111320; // 北がプラス
+      // ★修正1: 東西(X軸)の反転を直すためにマイナスを追加
+      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      const z = (lat - ORIGIN_LAT) * 111320;
       return new THREE.Vector2(x, z);
     }
 
     const landGroup = new THREE.Group();
 
-    // 4. 点を繋いでポリゴンを作る関数
-    function createShape(points) {
-      if (points.length < 3) return;
-      const shape = new THREE.Shape();
-      points.forEach((p, i) => {
-        const pos = latLonToXZ(p[1], p[0]); // p[0] = 経度, p[1] = 緯度
-        if (i === 0) shape.moveTo(pos.x, pos.y);
-        else shape.lineTo(pos.x, pos.y);
-      });
+    // ★修正2: 海を塗りつぶさないよう、海岸線に沿った「壁」を作る
+    function createWall(points) {
+      if (points.length < 2) return;
+      const vertices = [];
+      const indices = [];
 
-      // ポリゴンを厚みのある立体（陸地）にする
-      const geo = new THREE.ExtrudeGeometry(shape, {
-        depth: 20,        // 20mの厚み
-        bevelEnabled: false
-      });
-      
-      geo.rotateX(-Math.PI / 2); // 3D空間で寝かせる
-      geo.translate(0, -10, 0);  // -10mの海底から+10mの陸地になるように配置
+      for (let i = 0; i < points.length; i++) {
+        const pos = latLonToXZ(points[i][1], points[i][0]);
+        vertices.push(pos.x, -5, pos.z);  // 海底側の頂点
+        vertices.push(pos.x, 15, pos.z);  // 地上側の頂点（高さ15mの壁）
+      }
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const b1 = i * 2, t1 = i * 2 + 1;
+        const b2 = (i + 1) * 2, t2 = (i + 1) * 2 + 1;
+        indices.push(b1, t1, t2);
+        indices.push(b1, t2, b2);
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
 
       const mesh = new THREE.Mesh(geo, mat);
       landGroup.add(mesh);
     }
 
-    // 5. データの中身をループしてすべての海岸線を処理
     data.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      if (type === 'LineString') {
-        createShape(coords);
-      } else if (type === 'Polygon') {
-        coords.forEach(ring => createShape(ring));
-      } else if (type === 'MultiPolygon') {
-        coords.forEach(poly => poly.forEach(ring => createShape(ring)));
-      }
+      if (type === 'LineString') createWall(coords);
+      else if (type === 'Polygon') coords.forEach(ring => createWall(ring));
+      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(ring => createWall(ring)));
     });
 
     scene.add(landGroup);
@@ -821,8 +818,6 @@ export async function buildLandmass(THREE, scene) {
   }
 }
 
-// ---- scene.js の一番下にこれを追加 ----
-
 export async function buildCity(THREE, scene) {
   try {
     const res = await fetch('./buildings.json');
@@ -830,64 +825,48 @@ export async function buildCity(THREE, scene) {
     const elements = data.elements || [];
     if (elements.length === 0) return;
 
-    // 1. ベースとなるビルの形（ただの1x1x1の箱）
     const geo = new THREE.BoxGeometry(1, 1, 1);
     
-    // 2. ビルの質感（遠景に馴染む少し青みがかったダークグレーのガラス風）
+    // ビルの質感を明るめのコンクリート・ガラス風に変更
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x1a2530,
-      roughness: 0.3,
-      metalness: 0.8
+      color: 0xa0aab2, roughness: 0.6, metalness: 0.3
     });
 
-    // 3. 魔法の「InstancedMesh」（1万個のビルを1個分の負荷で描画する！）
     const iMesh = new THREE.InstancedMesh(geo, mat, elements.length);
-    const dummy = new THREE.Object3D(); // 計算用のダミーオブジェクト
+    const dummy = new THREE.Object3D();
 
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
+    
     function latLonToXZ(lat, lon) {
-      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★ここもX軸反転を修正
+      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return new THREE.Vector2(x, z);
     }
 
     let count = 0;
-
-    // 4. データをループして配置していく
     elements.forEach((el) => {
-      // out center で取得したので、centerに座標が入る
       let lat = el.center ? el.center.lat : el.lat;
       let lon = el.center ? el.center.lon : el.lon;
       if (!lat || !lon) return;
 
       const pos = latLonToXZ(lat, lon);
-
-      // 階数データがあれば採用、なければランダムに5〜20階建てにする
-      let levels = 8; 
-      if (el.tags && el.tags['building:levels']) {
-         levels = parseInt(el.tags['building:levels']) || 8;
-      } else {
-         levels = 5 + Math.random() * 15;
-      }
-      
-      const height = levels * 3.5; // 1階あたり約3.5mとして計算
-      const width = 20 + Math.random() * 20; // 幅はランダム
+      let levels = el.tags && el.tags['building:levels'] ? parseInt(el.tags['building:levels']) : 5 + Math.random() * 15;
+      const height = (levels || 8) * 3.5;
+      const width = 20 + Math.random() * 20;
       const depth = 20 + Math.random() * 20;
 
-      // ビルを配置（Y座標は高さの半分にする必要があります）
       dummy.position.set(pos.x, height / 2, pos.z);
       dummy.scale.set(width, height, depth);
       dummy.updateMatrix();
       
-      // InstancedMeshにこのビルの位置と大きさを記憶させる
       iMesh.setMatrixAt(count, dummy.matrix);
       count++;
     });
 
     iMesh.instanceMatrix.needsUpdate = true;
     scene.add(iMesh);
-    
     console.log(`ビル群（${count}棟）の建設完了！`);
 
   } catch (err) {
