@@ -13,7 +13,7 @@ import {
   showPenaltyToast, flashScreen,
   drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard
 } from './hud.js';
-import { isToolOpen, toggleTool, drawAll as drawTools } from './tools.js';
+import { isToolOpen, toggleTool, drawAll as drawTools, getRealDepthAt } from './tools.js';
 
 // ============================================================
 //  Three.js セットアップ
@@ -589,6 +589,23 @@ function loop(t) {
 
   updateCompass(P.heading);
   drawRudder(P.rudder);
+  
+  // --- 座礁・UKC（余裕水深）監視システム ---
+  const shipDraft = 14.5; // 大型コンテナ船の喫水
+  const currentDepth = getRealDepthAt(P.posX, P.posZ);
+  const ukc = currentDepth - shipDraft;
+
+  if (currentDepth !== 999) {
+    if (ukc <= 0) {
+      if (P.speed > 0) {
+        console.error(`💥 GROUNDED! 水深 ${currentDepth.toFixed(1)}m / 喫水 ${shipDraft}m`);
+        P.speed = 0; // 強制停止
+        triggerGO('grounding'); // 2026/03/29 追加: 座礁ゲームオーバー
+      }
+    } else if (ukc < 3.0) {
+      console.warn(`⚠️ SHALLOW WATER ALARM! UKC: ${ukc.toFixed(1)}m`);
+    }
+  }
   
   updateDashboard(P, simTime, curM, mst);
 

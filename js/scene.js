@@ -748,107 +748,69 @@ export function buildAI(THREE, scene) {
 }
 
 // ============================================================
-//  scene.js の一番下をこれに丸ごと上書き（テクスチャの魔法！）
+//  scene.js の一番下をこれに上書き（東西反転バグ修正版！）
 // ============================================================
 
-// ★追加：テクスチャ生成用のベース関数（CanvasTexture）
-function createCanvasTexture(THREE, color, noiseIntensity, noiseSize, repeatX, repeatY) {
-  const size = 512; // テクスチャの解像度
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // ベースカラー
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, size, size);
-
-  // ノイズ（質感）を描画
-  for (let i = 0; i < size * size * noiseIntensity; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const alpha = Math.random() * 0.2; // 質感の粗さ
-    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`; // 黒っぽいノイズ
-    ctx.fillRect(x, y, noiseSize, noiseSize);
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping; // 繰り返し（タイル）設定
-  // テクスチャ自体の繰り返し回数（壁側のUV展開で調整するため、ここは1でOK）
-  texture.repeat.set(1, 1); 
-  return texture;
-}
-
-// リアルな緑（草地）
-function createGrassTexture(THREE) {
-  return createCanvasTexture(THREE, '#1c2e22', 0.1, 2); // 濃い緑、細かいノイズ
-}
-
-// リアルなコンクリート
-function createConcreteTexture(THREE) {
-  return createCanvasTexture(THREE, '#a0a0a0', 0.2, 3); // グレー、粗いノイズ
-}
-
-// ★修正：テクスチャを適用した buildLandmass
 export async function buildLandmass(THREE, scene) {
   try {
     const res = await fetch('./tokyobay.geojson?v=' + Date.now());
     const data = await res.json();
 
-    // ★テクスチャの生成
-    const grassTexture = createGrassTexture(THREE);
-    const concreteTexture = createConcreteTexture(THREE);
+    const texLoader = new THREE.TextureLoader();
+    // ★ 修正：生成済みの .png を使用
+    const grassTexture = texLoader.load('./grass.png', () => {
+      console.log("草地テクスチャ読み込み完了！");
+    }, undefined, (err) => console.error("grass.png が見つかりません"));
+    grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
 
-    // ★マテリアルの作成（テクスチャを貼る）
+    const concreteTexture = texLoader.load('./concrete.png', () => {
+      console.log("コンクリートテクスチャ読み込み完了！");
+    }, undefined, (err) => console.error("concrete.png が見つかりません"));
+    concreteTexture.wrapS = concreteTexture.wrapT = THREE.RepeatWrapping;
+
     const grassMat = new THREE.MeshStandardMaterial({ 
-      map: grassTexture, // テクスチャを適用
-      roughness: 0.9, 
-      side: THREE.DoubleSide 
+      map: grassTexture, roughness: 0.9, side: THREE.DoubleSide 
     });
     const concreteMat = new THREE.MeshStandardMaterial({
-      map: concreteTexture, // コンクリートテクスチャを適用
-      roughness: 0.9,
-      side: THREE.DoubleSide
+      map: concreteTexture, roughness: 0.8, side: THREE.DoubleSide
     });
 
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
 
     function latLonToXZ(lat, lon) {
-      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★最大の修正点：先頭にマイナスを付けて、東を(-X)にする！これで鏡の世界から脱出！
+      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
     }
 
     const landGroup = new THREE.Group();
 
-    // ★修正：マテリアルとUV座標を受け取るように変更
     function createWall(points, material) {
       if (points.length < 2) return;
       const vertices = [];
       const indices = [];
-      const uvs = []; // ★UV座標
+      const uvs = [];
 
-      let totalDistance = 0; // ★累積距離
+      let totalDistance = 0;
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        vertices.push(pos.x, -10, pos.z); // 下（海底）
-        vertices.push(pos.x, 50, pos.z);  // 上（崖上）
+        vertices.push(pos.x, -10, pos.z); 
+        vertices.push(pos.x, 50, pos.z);  
 
-        // ★UV座標の計算（横：壁の長さ、縦：高さ）
         if (i > 0) {
           const prevPos = latLonToXZ(points[i-1][1], points[i-1][0]);
-          // THREE.jsのVector2のdistanceToを使う（latLonToXZは{x,z}を返すのでVector2に変換）
           totalDistance += new THREE.Vector2(pos.x, pos.z).distanceTo(new THREE.Vector2(prevPos.x, prevPos.z));
         }
         
-        // ★テクスチャの繰り返しスケール（テクスチャ1枚あたりの現実のメートル）
-        const textureScaleX = 100; // 横100mごとにテクスチャ1枚
-        const textureScaleY = 60;  // 縦60m（壁の高さ全体）でテクスチャ1枚
-
+        const textureScaleX = 50; 
+        const textureScaleY = 50; 
         const u = totalDistance / textureScaleX;
-        uvs.push(u, 0); // 下（海底、v=0）
-        uvs.push(u, 1); // 上（崖上、v=1）
+        const vTop = 60 / textureScaleY; 
+
+        uvs.push(u, 0);    
+        uvs.push(u, vTop); 
       }
 
       for (let i = 0; i < points.length - 1; i++) {
@@ -860,11 +822,11 @@ export async function buildLandmass(THREE, scene) {
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); // ★UV属性追加
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
       geo.setIndex(indices);
       geo.computeVertexNormals();
 
-      const mesh = new THREE.Mesh(geo, material); // ★マテリアルを適用
+      const mesh = new THREE.Mesh(geo, material);
       mesh.frustumCulled = false; 
       landGroup.add(mesh);
     }
@@ -874,21 +836,19 @@ export async function buildLandmass(THREE, scene) {
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      // ★修正：フィーチャータイプによってマテリアルを出し分ける
-      if (type === 'LineString') createWall(coords, concreteMat); // 海岸線（LineString）はコンクリート（防波堤）
-      else if (type === 'Polygon') coords.forEach(ring => createWall(ring, grassMat)); // 陸地（Polygon）は草地
-      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(ring => createWall(ring, grassMat))); // マルチポリゴンも草地
+      if (type === 'LineString') createWall(coords, concreteMat); 
+      else if (type === 'Polygon') coords.forEach(ring => createWall(ring, grassMat)); 
+      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(ring => createWall(ring, grassMat))); 
     });
 
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！（テクスチャ適用版）");
+    console.log("陸地の読み込み完了！（東西反転バグ修正版）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
   }
 }
 
-// buildCity は変更なし（前回のまま）
 export async function buildCity(THREE, scene) {
   try {
     const res = await fetch('./buildings.json?v=' + Date.now());
@@ -921,7 +881,8 @@ export async function buildCity(THREE, scene) {
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
-      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★ ここも先頭にマイナスを追加！これで海に浮いていたビルが本来の陸地に戻る！
+      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
     }

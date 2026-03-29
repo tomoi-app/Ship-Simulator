@@ -7,17 +7,36 @@ let toolOpen = false;
 let mapCv = null;
 let mapCtx = null;
 let geoData = null;
+let depthData = []; // ★水深データを保存する配列を追加
 
 fetch('./tokyobay.geojson?v=' + Date.now())
   .then(res => res.json())
   .then(data => { geoData = data; console.log("ECDIS: 海図データのロード完了"); })
   .catch(err => console.error("ECDISエラー:", err));
 
+// ★水深点データのロード
+fetch('./depths.json?v=' + Date.now())
+  .then(res => res.json())
+  .then(data => { 
+    if (data.elements) {
+      data.elements.forEach(el => {
+        if (el.tags && (el.tags['seamark:elevation'] || el.tags['seamark:depth'])) {
+          const { x, z } = latLonToXZ(el.lat, el.lon);
+          let d = parseFloat(el.tags['seamark:elevation'] || el.tags['seamark:depth']);
+          depthData.push({ x, z, depth: Math.abs(d) });
+        }
+      });
+    }
+    console.log(`ECDIS: 水深データ（${depthData.length}地点）のロード完了`); 
+  })
+  .catch(err => console.error("水深データエラー:", err));
+
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
 
 function latLonToXZ(lat, lon) {
-  const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+  // ★ ここにもマイナスを追加
+  const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
   const z = (lat - ORIGIN_LAT) * 111320; 
   return { x, z };
 }
@@ -49,6 +68,24 @@ export function toggleTool() {
   }
 }
 
+// ★船の現在位置から一番近い水深データを探して返す関数
+export function getRealDepthAt(posX, posZ) {
+  if (depthData.length === 0) return 999;
+
+  let closestDepth = 999;
+  let minDistance = Infinity;
+
+  for (let i = 0; i < depthData.length; i++) {
+    const pt = depthData[i];
+    const distSq = (pt.x - posX) ** 2 + (pt.z - posZ) ** 2;
+    if (distSq < minDistance) {
+      minDistance = distSq;
+      closestDepth = pt.depth;
+    }
+  }
+  return closestDepth;
+}
+
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (!toolOpen || !mapCtx) return;
 
@@ -56,7 +93,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const h = mapCv.height;
   mapCtx.clearRect(0, 0, w, h);
 
-  // --- グリッド線 ---
   mapCtx.strokeStyle = 'rgba(0, 212, 255, 0.15)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
@@ -68,7 +104,26 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = w / 2;
   const cy = h / 2;
 
-  // --- 陸地の描画 ---
+  // --- ECDIS上に水深の数値をプロット（実際の海図風） ---
+  if (depthData.length > 0) {
+    mapCtx.fillStyle = '#4488aa'; 
+    mapCtx.font = '10px "Montserrat", sans-serif';
+    mapCtx.textAlign = 'center';
+    
+    depthData.forEach((pt, i) => {
+      if (i % 3 !== 0) return; // 間引いて描画
+      const dx = pt.x - P.posX;
+      const dz = pt.z - P.posZ; 
+      const sx = cx - dx / scale; 
+      const sy = cy - dz / scale; 
+      
+      if (sx > 0 && sx < w && sy > 0 && sy < h) {
+        mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
+      }
+    });
+    mapCtx.textAlign = 'left'; // 元に戻す
+  }
+
   if (geoData) {
     mapCtx.strokeStyle = '#00ffaa';
     mapCtx.lineWidth = 1.5;
@@ -85,7 +140,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const dx = x - P.posX;
           const dz = z - P.posZ; 
           
-          const sx = cx + dx / scale; 
+          // ★ 大修正：東(-X)に進んだときに、海図上では右(＋)に描画されるように引き算に変更！
+          const sx = cx - dx / scale; 
           const sy = cy - dz / scale; 
 
           if (i === 0) mapCtx.moveTo(sx, sy);
@@ -100,41 +156,36 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // --- ブイの描画 ---
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
-    const sx = cx + dx / scale;
+    const sx = cx - dx / scale; // ★ 修正
     const sy = cy - dz / scale; 
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
-  // --- 他船（AI・漁船）の描画（三角形アイコンに変更） ---
   AIships.concat(fishBoats).forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
-    const sx = cx + dx / scale;
+    const sx = cx - dx / scale; // ★ 修正
     const sy = cy - dz / scale; 
     
     mapCtx.save();
     mapCtx.translate(sx, sy);
-    // ★ 修正：他船も3Dと海図で回転方向を統一する
     mapCtx.rotate(-s.heading);
 
-    // 他船のアイコン（オレンジの三角形）
     mapCtx.beginPath();
-    mapCtx.moveTo(0, -8);  // 船首（尖らせる）
-    mapCtx.lineTo(4, 6);   // 右舷後方
-    mapCtx.lineTo(-4, 6);  // 左舷後方
+    mapCtx.moveTo(0, -8);  
+    mapCtx.lineTo(4, 6);   
+    mapCtx.lineTo(-4, 6);  
     mapCtx.closePath();
     mapCtx.fillStyle = '#ffaa00'; 
     mapCtx.fill();
 
-    // 他船のヘディングライン（短め）
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);
     mapCtx.lineTo(0, -20);
@@ -145,37 +196,33 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.restore();
   });
 
-  // --- 自船（プレイヤー）の描画（船型のアイコンに変更＆回転修正） ---
+  // 自船の描画
   mapCtx.save();
   mapCtx.translate(cx, cy);
-  // ★ 大修正：3Dと回転方向を一致させるため、マイナスをかけて反転させる
   mapCtx.rotate(-P.heading); 
 
-  // 自船のアイコン（シアンの船型・後ろを少し凹ませてより船らしく）
   mapCtx.beginPath();
-  mapCtx.moveTo(0, -12); // 船首
-  mapCtx.lineTo(7, 10);  // 右舷後方
-  mapCtx.lineTo(0, 6);   // 船尾中央（凹み）
-  mapCtx.lineTo(-7, 10); // 左舷後方
+  mapCtx.moveTo(0, -12); 
+  mapCtx.lineTo(7, 10);  
+  mapCtx.lineTo(0, 6);   
+  mapCtx.lineTo(-7, 10); 
   mapCtx.closePath();
   
   mapCtx.fillStyle = '#00d4ff'; 
   mapCtx.fill();
   mapCtx.lineWidth = 1.5;
-  mapCtx.strokeStyle = '#ffffff'; // フチを白にして視認性アップ
+  mapCtx.strokeStyle = '#ffffff'; 
   mapCtx.stroke();
   
-  // 自船のヘディングライン
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12);
-  mapCtx.lineTo(0, -50); // 前方に予測線を伸ばす
+  mapCtx.lineTo(0, -50); 
   mapCtx.strokeStyle = 'rgba(0, 212, 255, 0.8)';
   mapCtx.lineWidth = 2;
   mapCtx.stroke();
 
   mapCtx.restore();
 
-  // --- テキスト情報の描画 ---
   mapCtx.fillStyle = '#00d4ff';
   mapCtx.font = '16px "Montserrat", sans-serif';
   mapCtx.textBaseline = 'top';
@@ -186,11 +233,14 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
   mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
   
-  // ★ 修正：テキスト表示される角度（HDG）も計算方向を反転し、右旋回で数字が増えるように直す
   let deg = (-P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
   mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
   mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);
+
+  // ★船の現在地の水深を表示
+  const currentDepth = getRealDepthAt(P.posX, P.posZ);
+  mapCtx.fillText(`DEPTH : ${currentDepth === 999 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
 
   if (!geoData) {
     mapCtx.fillStyle = '#ff3333';
