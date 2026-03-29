@@ -8,13 +8,9 @@ let mapCv = null;
 let mapCtx = null;
 let geoData = null;
 
-// ★修正：URLの末尾にランダムな時間をつけて、古いキャッシュを強制的に捨てさせる！
 fetch('./tokyobay.geojson?v=' + Date.now())
   .then(res => res.json())
-  .then(data => { 
-    geoData = data; 
-    console.log("ECDIS: 海図データのロード完了（キャッシュ無効化）"); 
-  })
+  .then(data => { geoData = data; console.log("ECDIS: 海図データのロード完了"); })
   .catch(err => console.error("ECDISエラー:", err));
 
 const ORIGIN_LAT = 35.45;
@@ -22,7 +18,6 @@ const ORIGIN_LON = 139.75;
 
 function latLonToXZ(lat, lon) {
   const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-  // ★重要：マイナスなし（＋Zが北）
   const z = (lat - ORIGIN_LAT) * 111320; 
   return { x, z };
 }
@@ -61,6 +56,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const h = mapCv.height;
   mapCtx.clearRect(0, 0, w, h);
 
+  // --- グリッド線 ---
   mapCtx.strokeStyle = 'rgba(0, 212, 255, 0.15)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
@@ -72,6 +68,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = w / 2;
   const cy = h / 2;
 
+  // --- 陸地の描画 ---
   if (geoData) {
     mapCtx.strokeStyle = '#00ffaa';
     mapCtx.lineWidth = 1.5;
@@ -103,6 +100,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
+  // --- ブイの描画 ---
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
@@ -113,6 +111,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
+  // --- 他船（AI・漁船）の描画（三角形アイコンに変更） ---
   AIships.concat(fishBoats).forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
@@ -120,25 +119,63 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const dz = pos.z - P.posZ;
     const sx = cx + dx / scale;
     const sy = cy - dz / scale; 
-    mapCtx.fillStyle = '#ffaa00'; 
+    
+    mapCtx.save();
+    mapCtx.translate(sx, sy);
+    // ★ 修正：他船も3Dと海図で回転方向を統一する
+    mapCtx.rotate(-s.heading);
+
+    // 他船のアイコン（オレンジの三角形）
     mapCtx.beginPath();
-    mapCtx.moveTo(sx, sy - 5); mapCtx.lineTo(sx + 5, sy); 
-    mapCtx.lineTo(sx, sy + 5); mapCtx.lineTo(sx - 5, sy);
+    mapCtx.moveTo(0, -8);  // 船首（尖らせる）
+    mapCtx.lineTo(4, 6);   // 右舷後方
+    mapCtx.lineTo(-4, 6);  // 左舷後方
+    mapCtx.closePath();
+    mapCtx.fillStyle = '#ffaa00'; 
     mapCtx.fill();
+
+    // 他船のヘディングライン（短め）
+    mapCtx.beginPath();
+    mapCtx.moveTo(0, -8);
+    mapCtx.lineTo(0, -20);
+    mapCtx.strokeStyle = 'rgba(255, 170, 0, 0.6)';
+    mapCtx.lineWidth = 1.5;
+    mapCtx.stroke();
+
+    mapCtx.restore();
   });
 
-  mapCtx.fillStyle = '#00d4ff'; 
+  // --- 自船（プレイヤー）の描画（船型のアイコンに変更＆回転修正） ---
+  mapCtx.save();
+  mapCtx.translate(cx, cy);
+  // ★ 大修正：3Dと回転方向を一致させるため、マイナスをかけて反転させる
+  mapCtx.rotate(-P.heading); 
+
+  // 自船のアイコン（シアンの船型・後ろを少し凹ませてより船らしく）
   mapCtx.beginPath();
-  mapCtx.arc(cx, cy, 6, 0, Math.PI * 2);
-  mapCtx.fill();
+  mapCtx.moveTo(0, -12); // 船首
+  mapCtx.lineTo(7, 10);  // 右舷後方
+  mapCtx.lineTo(0, 6);   // 船尾中央（凹み）
+  mapCtx.lineTo(-7, 10); // 左舷後方
+  mapCtx.closePath();
   
-  mapCtx.strokeStyle = '#00d4ff';
-  mapCtx.lineWidth = 2;
+  mapCtx.fillStyle = '#00d4ff'; 
+  mapCtx.fill();
+  mapCtx.lineWidth = 1.5;
+  mapCtx.strokeStyle = '#ffffff'; // フチを白にして視認性アップ
+  mapCtx.stroke();
+  
+  // 自船のヘディングライン
   mapCtx.beginPath();
-  mapCtx.moveTo(cx, cy);
-  mapCtx.lineTo(cx + Math.sin(P.heading) * 40, cy - Math.cos(P.heading) * 40);
+  mapCtx.moveTo(0, -12);
+  mapCtx.lineTo(0, -50); // 前方に予測線を伸ばす
+  mapCtx.strokeStyle = 'rgba(0, 212, 255, 0.8)';
+  mapCtx.lineWidth = 2;
   mapCtx.stroke();
 
+  mapCtx.restore();
+
+  // --- テキスト情報の描画 ---
   mapCtx.fillStyle = '#00d4ff';
   mapCtx.font = '16px "Montserrat", sans-serif';
   mapCtx.textBaseline = 'top';
@@ -149,7 +186,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
   mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
   
-  let deg = (P.heading * 180 / Math.PI + 360) % 360;
+  // ★ 修正：テキスト表示される角度（HDG）も計算方向を反転し、右旋回で数字が増えるように直す
+  let deg = (-P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
   mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
   mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);

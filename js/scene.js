@@ -748,16 +748,67 @@ export function buildAI(THREE, scene) {
 }
 
 // ============================================================
-//  scene.js の一番下をこれに上書き（ついに真犯人逮捕！）
+//  scene.js の一番下をこれに丸ごと上書き（テクスチャの魔法！）
 // ============================================================
 
+// ★追加：テクスチャ生成用のベース関数（CanvasTexture）
+function createCanvasTexture(THREE, color, noiseIntensity, noiseSize, repeatX, repeatY) {
+  const size = 512; // テクスチャの解像度
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // ベースカラー
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, size, size);
+
+  // ノイズ（質感）を描画
+  for (let i = 0; i < size * size * noiseIntensity; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const alpha = Math.random() * 0.2; // 質感の粗さ
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`; // 黒っぽいノイズ
+    ctx.fillRect(x, y, noiseSize, noiseSize);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping; // 繰り返し（タイル）設定
+  // テクスチャ自体の繰り返し回数（壁側のUV展開で調整するため、ここは1でOK）
+  texture.repeat.set(1, 1); 
+  return texture;
+}
+
+// リアルな緑（草地）
+function createGrassTexture(THREE) {
+  return createCanvasTexture(THREE, '#1c2e22', 0.1, 2); // 濃い緑、細かいノイズ
+}
+
+// リアルなコンクリート
+function createConcreteTexture(THREE) {
+  return createCanvasTexture(THREE, '#a0a0a0', 0.2, 3); // グレー、粗いノイズ
+}
+
+// ★修正：テクスチャを適用した buildLandmass
 export async function buildLandmass(THREE, scene) {
   try {
     const res = await fetch('./tokyobay.geojson?v=' + Date.now());
     const data = await res.json();
 
-    const mat = new THREE.MeshStandardMaterial({ 
-      color: 0x8b9c8a, roughness: 0.9, side: THREE.DoubleSide 
+    // ★テクスチャの生成
+    const grassTexture = createGrassTexture(THREE);
+    const concreteTexture = createConcreteTexture(THREE);
+
+    // ★マテリアルの作成（テクスチャを貼る）
+    const grassMat = new THREE.MeshStandardMaterial({ 
+      map: grassTexture, // テクスチャを適用
+      roughness: 0.9, 
+      side: THREE.DoubleSide 
+    });
+    const concreteMat = new THREE.MeshStandardMaterial({
+      map: concreteTexture, // コンクリートテクスチャを適用
+      roughness: 0.9,
+      side: THREE.DoubleSide
     });
 
     const ORIGIN_LAT = 35.45;
@@ -766,22 +817,38 @@ export async function buildLandmass(THREE, scene) {
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
-      // ★大修正：Vector2をやめて、シンプルな {x, z} のデータ形式に変更！
       return { x, z }; 
     }
 
     const landGroup = new THREE.Group();
 
-    function createWall(points) {
+    // ★修正：マテリアルとUV座標を受け取るように変更
+    function createWall(points, material) {
       if (points.length < 2) return;
       const vertices = [];
       const indices = [];
+      const uvs = []; // ★UV座標
 
+      let totalDistance = 0; // ★累積距離
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        // ★これで pos.z が undefined にならず、正しく数字が入る！
-        vertices.push(pos.x, -10, pos.z); 
-        vertices.push(pos.x, 50, pos.z);  
+        vertices.push(pos.x, -10, pos.z); // 下（海底）
+        vertices.push(pos.x, 50, pos.z);  // 上（崖上）
+
+        // ★UV座標の計算（横：壁の長さ、縦：高さ）
+        if (i > 0) {
+          const prevPos = latLonToXZ(points[i-1][1], points[i-1][0]);
+          // THREE.jsのVector2のdistanceToを使う（latLonToXZは{x,z}を返すのでVector2に変換）
+          totalDistance += new THREE.Vector2(pos.x, pos.z).distanceTo(new THREE.Vector2(prevPos.x, prevPos.z));
+        }
+        
+        // ★テクスチャの繰り返しスケール（テクスチャ1枚あたりの現実のメートル）
+        const textureScaleX = 100; // 横100mごとにテクスチャ1枚
+        const textureScaleY = 60;  // 縦60m（壁の高さ全体）でテクスチャ1枚
+
+        const u = totalDistance / textureScaleX;
+        uvs.push(u, 0); // 下（海底、v=0）
+        uvs.push(u, 1); // 上（崖上、v=1）
       }
 
       for (let i = 0; i < points.length - 1; i++) {
@@ -793,10 +860,11 @@ export async function buildLandmass(THREE, scene) {
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); // ★UV属性追加
       geo.setIndex(indices);
       geo.computeVertexNormals();
 
-      const mesh = new THREE.Mesh(geo, mat);
+      const mesh = new THREE.Mesh(geo, material); // ★マテリアルを適用
       mesh.frustumCulled = false; 
       landGroup.add(mesh);
     }
@@ -806,19 +874,21 @@ export async function buildLandmass(THREE, scene) {
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      if (type === 'LineString') createWall(coords);
-      else if (type === 'Polygon') coords.forEach(ring => createWall(ring));
-      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(ring => createWall(ring)));
+      // ★修正：フィーチャータイプによってマテリアルを出し分ける
+      if (type === 'LineString') createWall(coords, concreteMat); // 海岸線（LineString）はコンクリート（防波堤）
+      else if (type === 'Polygon') coords.forEach(ring => createWall(ring, grassMat)); // 陸地（Polygon）は草地
+      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(ring => createWall(ring, grassMat))); // マルチポリゴンも草地
     });
 
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！（座標バグ修正版）");
+    console.log("陸地の読み込み完了！（テクスチャ適用版）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
   }
 }
 
+// buildCity は変更なし（前回のまま）
 export async function buildCity(THREE, scene) {
   try {
     const res = await fetch('./buildings.json?v=' + Date.now());
@@ -853,7 +923,6 @@ export async function buildCity(THREE, scene) {
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
-      // ★大修正：ここも {x, z} に変更！
       return { x, z }; 
     }
 
@@ -873,7 +942,6 @@ export async function buildCity(THREE, scene) {
       const width = 20 + Math.random() * 20;
       const depth = 20 + Math.random() * 20;
 
-      // ★pos.z が undefined ではなくなったため、ここでスキップされずに建設される！！
       if (isNaN(pos.x) || isNaN(pos.z) || isNaN(height)) return;
 
       dummy.position.set(pos.x, height / 2, pos.z);
