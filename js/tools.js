@@ -8,9 +8,13 @@ let mapCv = null;
 let mapCtx = null;
 let geoData = null;
 
-fetch('./tokyobay.geojson')
+// ★修正：URLの末尾にランダムな時間をつけて、古いキャッシュを強制的に捨てさせる！
+fetch('./tokyobay.geojson?v=' + Date.now())
   .then(res => res.json())
-  .then(data => { geoData = data; console.log("ECDIS: 海図データのロード完了"); })
+  .then(data => { 
+    geoData = data; 
+    console.log("ECDIS: 海図データのロード完了（キャッシュ無効化）"); 
+  })
   .catch(err => console.error("ECDISエラー:", err));
 
 const ORIGIN_LAT = 35.45;
@@ -18,7 +22,7 @@ const ORIGIN_LON = 139.75;
 
 function latLonToXZ(lat, lon) {
   const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-  // ★修正：マイナスを削除 (+Z = 北)
+  // ★重要：マイナスなし（＋Zが北）
   const z = (lat - ORIGIN_LAT) * 111320; 
   return { x, z };
 }
@@ -85,7 +89,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const dz = z - P.posZ; 
           
           const sx = cx + dx / scale; 
-          // ★修正：Zがプラス(北)のとき、画面の上(マイナス方向)に描画する
           const sy = cy - dz / scale; 
 
           if (i === 0) mapCtx.moveTo(sx, sy);
@@ -105,7 +108,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
     const sx = cx + dx / scale;
-    const sy = cy - dz / scale; // ★ここも修正
+    const sy = cy - dz / scale; 
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
@@ -116,7 +119,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
     const sx = cx + dx / scale;
-    const sy = cy - dz / scale; // ★ここも修正
+    const sy = cy - dz / scale; 
     mapCtx.fillStyle = '#ffaa00'; 
     mapCtx.beginPath();
     mapCtx.moveTo(sx, sy - 5); mapCtx.lineTo(sx + 5, sy); 
@@ -133,7 +136,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.lineWidth = 2;
   mapCtx.beginPath();
   mapCtx.moveTo(cx, cy);
-  // ★ヘディングラインも修正
   mapCtx.lineTo(cx + Math.sin(P.heading) * 40, cy - Math.cos(P.heading) * 40);
   mapCtx.stroke();
 

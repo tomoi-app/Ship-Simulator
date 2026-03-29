@@ -748,19 +748,17 @@ export function buildAI(THREE, scene) {
 }
 
 // ============================================================
-//  scene.js の一番下にある陸地とビルの関数をこれに上書き
+//  scene.js の一番下をこれに上書き
 // ============================================================
 
 export async function buildLandmass(THREE, scene) {
   try {
-    const res = await fetch('./tokyobay.geojson');
+    // ★ここにもキャッシュ破壊を追加
+    const res = await fetch('./tokyobay.geojson?v=' + Date.now());
     const data = await res.json();
 
-    // ★修正1：遠くからでも目立つ、明るめの土・草色（カーキグリーン）に変更
     const mat = new THREE.MeshStandardMaterial({ 
-      color: 0x8b9c8a, 
-      roughness: 0.9, 
-      side: THREE.DoubleSide 
+      color: 0x8b9c8a, roughness: 0.9, side: THREE.DoubleSide 
     });
 
     const ORIGIN_LAT = 35.45;
@@ -768,8 +766,7 @@ export async function buildLandmass(THREE, scene) {
 
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      // ★修正：マイナスを削除！これで「＋Zが北」になり、船の進行方向と完全に一致します
-      const z = (lat - ORIGIN_LAT) * 111320; 
+      const z = (lat - ORIGIN_LAT) * 111320; // マイナスなし
       return new THREE.Vector2(x, z);
     }
 
@@ -782,8 +779,7 @@ export async function buildLandmass(THREE, scene) {
 
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        vertices.push(pos.x, -10, pos.z); // 海底を少し深く
-        // ★修正2：高さを8m → 50mの巨大な崖に変更！これなら数キロ先からでも絶対に見える
+        vertices.push(pos.x, -10, pos.z); 
         vertices.push(pos.x, 50, pos.z);  
       }
 
@@ -800,7 +796,7 @@ export async function buildLandmass(THREE, scene) {
       geo.computeVertexNormals();
 
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.frustumCulled = false; // カメラが離れても消さない
+      mesh.frustumCulled = false; 
       landGroup.add(mesh);
     }
 
@@ -815,7 +811,7 @@ export async function buildLandmass(THREE, scene) {
     });
 
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！");
+    console.log("陸地の読み込み完了！（キャッシュ無効化）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
@@ -824,7 +820,7 @@ export async function buildLandmass(THREE, scene) {
 
 export async function buildCity(THREE, scene) {
   try {
-    const res = await fetch('./buildings.json');
+    const res = await fetch('./buildings.json?v=' + Date.now());
     const data = await res.json();
     const elements = data.elements || [];
     
@@ -848,17 +844,14 @@ export async function buildCity(THREE, scene) {
     });
 
     const iMesh = new THREE.InstancedMesh(geo, mat, validData.length);
-    // ★超重要：カメラが原点から離れてもビル群が勝手に消えないようにする！
     iMesh.frustumCulled = false;
-
     const dummy = new THREE.Object3D();
 
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
       const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
-      // ★修正：マイナスを削除！これで「＋Zが北」になり、船の進行方向と完全に一致します
-      const z = (lat - ORIGIN_LAT) * 111320; 
+      const z = (lat - ORIGIN_LAT) * 111320; // マイナスなし
       return new THREE.Vector2(x, z);
     }
 
