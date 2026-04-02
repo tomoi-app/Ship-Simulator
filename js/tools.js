@@ -31,42 +31,68 @@ function latLonToXZ(lat, lon) {
 // ============================================================
 // 航路データ (Fairways & Buoys) — 海図.pdf に基づく定義（修正版）
 // ============================================================
+// ============================================================
+// 航路データ (Fairways & Buoys) — 海図・S-52基準に基づく定義
+// ============================================================
 const FAIRWAYS = [
   {
     name: "URAGA SUIDO",
-    path: [
-      { lat: 35.172, lon: 139.750 }, // U1/U2付近
-      { lat: 35.220, lon: 139.735 }, // 浦賀水道中間（変針点）
-      { lat: 35.260, lon: 139.720 }  // 第二海堡付近
+    // 左舷側（西側・観音崎寄り）の境界線
+    leftBound: [
+      { lat: 35.180, lon: 139.752 }, // U1付近
+      { lat: 35.250, lon: 139.752 }, // U3付近
+      { lat: 35.310, lon: 139.752 }  // U7付近 (第二海堡の西)
     ],
-    width: 1400 // 航路幅（メートル）
+    // 右舷側（東側・富津寄り）の境界線
+    rightBound: [
+      { lat: 35.180, lon: 139.768 }, // U2付近
+      { lat: 35.250, lon: 139.768 }, // U4付近
+      { lat: 35.310, lon: 139.768 }  // U8付近
+    ],
+    center: { lat: 35.245, lon: 139.760 }
   },
   {
     name: "NAKANOSE",
-    path: [
-      { lat: 35.260, lon: 139.755 }, // N1/N2付近
-      { lat: 35.350, lon: 139.785 }  // NW1/NW2付近
+    leftBound: [
+      { lat: 35.320, lon: 139.755 }, // N1付近
+      { lat: 35.420, lon: 139.770 }  // N7付近
     ],
-    width: 1000
+    rightBound: [
+      { lat: 35.320, lon: 139.768 }, // N2付近
+      { lat: 35.420, lon: 139.783 }  // N8付近
+    ],
+    center: { lat: 35.370, lon: 139.769 }
   },
   {
     name: "TOKYO",
-    path: [
-      { lat: 35.535, lon: 139.805 }, // 東京沖灯浮標付近
-      { lat: 35.590, lon: 139.790 }  // 東水路・西水路分岐付近
+    leftBound: [
+      { lat: 35.480, lon: 139.780 },
+      { lat: 35.550, lon: 139.770 }
     ],
-    width: 500
+    rightBound: [
+      { lat: 35.480, lon: 139.790 },
+      { lat: 35.550, lon: 139.780 }
+    ],
+    center: { lat: 35.515, lon: 139.785 }
   }
 ];
 
 // 灯浮標（ブイ）のデータ
 const BUOYS = [
-  { name: "U1", lat: 35.172, lon: 139.740, color: "green" },
-  { name: "U2", lat: 35.175, lon: 139.755, color: "red" },
-  { name: "N1", lat: 35.260, lon: 139.745, color: "green" },
-  { name: "N2", lat: 35.262, lon: 139.760, color: "red" },
-  { name: "NW1", lat: 35.358, lon: 139.785, color: "yellow" },
-  { name: "KAZE-NO-TO", lat: 35.586, lon: 139.782, color: "white" }
+  // 浦賀水道航路
+  { name: "U1", lat: 35.180, lon: 139.752, color: "#11cc11" }, // 緑
+  { name: "U2", lat: 35.180, lon: 139.768, color: "#ee1111" }, // 赤
+  { name: "U3", lat: 35.250, lon: 139.752, color: "#11cc11" },
+  { name: "U4", lat: 35.250, lon: 139.768, color: "#ee1111" },
+  { name: "U7", lat: 35.310, lon: 139.752, color: "#11cc11" },
+  { name: "U8", lat: 35.310, lon: 139.768, color: "#ee1111" },
+  // 中ノ瀬航路
+  { name: "N1", lat: 35.320, lon: 139.755, color: "#11cc11" },
+  { name: "N2", lat: 35.320, lon: 139.768, color: "#ee1111" },
+  { name: "N7", lat: 35.420, lon: 139.770, color: "#11cc11" },
+  { name: "N8", lat: 35.420, lon: 139.783, color: "#ee1111" },
+  // その他
+  { name: "風の塔", lat: 35.499, lon: 139.790, color: "#ffffff" }
 ];
 
 // 平面直角座標(X, Z)から緯度経度へ逆変換する関数
@@ -576,15 +602,16 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.stroke();
   });
 
-  // ⑤ 航路 (Fairways) の描画
+  // ⑥ 航路 (Fairways) の描画（境界線の描画）
   mapCtx.save();
   FAIRWAYS.forEach(fw => {
-    mapCtx.beginPath();
-    mapCtx.strokeStyle = 'rgba(255, 0, 255, 0.6)'; // マゼンタ（破線）
-    mapCtx.lineWidth = 2;
-    mapCtx.setLineDash([10, 10]);
+    mapCtx.strokeStyle = 'rgba(200, 0, 200, 0.7)'; // 海図準拠のマゼンタ
+    mapCtx.lineWidth = 1.8;
+    mapCtx.setLineDash([8, 8]); // 破線
 
-    fw.path.forEach((pt, i) => {
+    // 左舷側境界線
+    mapCtx.beginPath();
+    fw.leftBound.forEach((pt, i) => {
       const xz = latLonToXZ(pt.lat, pt.lon);
       const sx = cx + (xz.x - P.posX) / ecdisScale;
       const sy = cy - (xz.z - P.posZ) / ecdisScale;
@@ -592,40 +619,64 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       else mapCtx.lineTo(sx, sy);
     });
     mapCtx.stroke();
-    mapCtx.setLineDash([]); // 破線解除
+
+    // 右舷側境界線
+    mapCtx.beginPath();
+    fw.rightBound.forEach((pt, i) => {
+      const xz = latLonToXZ(pt.lat, pt.lon);
+      const sx = cx + (xz.x - P.posX) / ecdisScale;
+      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      if (i === 0) mapCtx.moveTo(sx, sy);
+      else mapCtx.lineTo(sx, sy);
+    });
+    mapCtx.stroke();
 
     // 航路名の描画
-    const mid = fw.path[Math.floor(fw.path.length / 2)];
-    const mxz = latLonToXZ(mid.lat, mid.lon);
-    mapCtx.fillStyle = 'rgba(200, 0, 200, 0.9)';
-    mapCtx.font = 'italic bold 10px sans-serif';
-    mapCtx.fillText(fw.name, cx + (mxz.x - P.posX) / ecdisScale + 5, cy - (mxz.z - P.posZ) / ecdisScale);
+    const mxz = latLonToXZ(fw.center.lat, fw.center.lon);
+    mapCtx.setLineDash([]);
+    mapCtx.fillStyle = 'rgba(200, 0, 200, 0.8)';
+    mapCtx.font = 'italic bold 11px Arial, sans-serif';
+    mapCtx.textAlign = 'center';
+    mapCtx.fillText(fw.name, cx + (mxz.x - P.posX) / ecdisScale, cy - (mxz.z - P.posZ) / ecdisScale);
   });
+  mapCtx.restore();
 
-  // ⑥ 灯浮標 (Buoys) の描画
+  // ⑦ 灯浮標 (Buoys) の描画（IALA基準の形状）
   BUOYS.forEach(b => {
     const xz = latLonToXZ(b.lat, b.lon);
     const sx = cx + (xz.x - P.posX) / ecdisScale;
     const sy = cy - (xz.z - P.posZ) / ecdisScale;
 
-    if (sx > 0 && sx < w && sy > 0 && sy < h) {
-      // ブイのシンボル（菱形）
+    if (sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
       mapCtx.beginPath();
-      mapCtx.fillStyle = b.color;
-      mapCtx.strokeStyle = '#000';
-      mapCtx.lineWidth = 1;
-      mapCtx.moveTo(sx, sy - 6);
-      mapCtx.lineTo(sx + 4, sy);
-      mapCtx.lineTo(sx, sy + 6);
-      mapCtx.lineTo(sx - 4, sy);
+      if (b.color === "#11cc11") {
+        // 緑（左舷側）：三角形
+        mapCtx.moveTo(sx, sy - 6);
+        mapCtx.lineTo(sx + 5, sy + 4);
+        mapCtx.lineTo(sx - 5, sy + 4);
+      } else if (b.color === "#ee1111") {
+        // 赤（右舷側）：四角形
+        mapCtx.rect(sx - 4, sy - 4, 8, 8);
+      } else {
+        // その他（特殊標識等）：菱形
+        mapCtx.moveTo(sx, sy - 6);
+        mapCtx.lineTo(sx + 5, sy);
+        mapCtx.lineTo(sx, sy + 6);
+        mapCtx.lineTo(sx - 5, sy);
+      }
       mapCtx.closePath();
+      
+      mapCtx.fillStyle = b.color;
       mapCtx.fill();
+      mapCtx.strokeStyle = '#000000';
+      mapCtx.lineWidth = 1;
       mapCtx.stroke();
       
-      // ブイ名
-      mapCtx.fillStyle = '#333';
-      mapCtx.font = '9px Arial';
-      mapCtx.fillText(b.name, sx + 6, sy + 3);
+      // ブイ名のラベル
+      mapCtx.fillStyle = '#333333';
+      mapCtx.font = 'bold 10px Arial, sans-serif';
+      mapCtx.textAlign = 'left';
+      mapCtx.fillText(b.name, sx + 7, sy + 4);
     }
   });
   mapCtx.restore();
