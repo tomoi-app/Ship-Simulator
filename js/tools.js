@@ -369,25 +369,84 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const startR = Math.max(0, Math.floor((worldMinZ - GRID_START_Z) / RENDER_STEP) - 1);
     const endR   = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 1);
 
-    // [A] 水深帯の塗りつぶし
-    for(let r = startR; r < endR; r++) {
-      for(let c = startC; c < endC; c++) {
-        const d = renderGrid[r * gridCols + c];
-        if (d >= 20.0) continue;
+    // [A] 水深帯の「滑らかな」塗りつぶし（等深線に沿ったポリゴン生成）
+    const fillContourBand = (threshold, color) => {
+      mapCtx.fillStyle = color;
+      mapCtx.beginPath(); // 色ごとにパスを一つにまとめて高速描画
 
-        if (d <= 5.0) mapCtx.fillStyle = '#4292c6';
-        else if (d <= 10.0) mapCtx.fillStyle = '#6baed6';
-        else mapCtx.fillStyle = '#9ecae1';
+      for(let r = startR; r < endR - 1; r++) {
+        for(let c = startC; c < endC - 1; c++) {
+          const v0 = renderGrid[r * gridCols + c];           // 左上
+          const v1 = renderGrid[r * gridCols + c + 1];       // 右上
+          const v2 = renderGrid[(r + 1) * gridCols + c + 1]; // 右下
+          const v3 = renderGrid[(r + 1) * gridCols + c];     // 左下
 
-        const gx = GRID_START_X + c * RENDER_STEP;
-        const gz = GRID_START_Z + r * RENDER_STEP;
-        const sx = cx + (gx - P.posX) / ecdisScale;
-        const sy = cy - (gz - P.posZ) / ecdisScale;
-        const sSize = (RENDER_STEP / ecdisScale) + 1.5; // 隙間防止
+          const b0 = v0 <= threshold;
+          const b1 = v1 <= threshold;
+          const b2 = v2 <= threshold;
+          const b3 = v3 <= threshold;
 
-        mapCtx.fillRect(sx - sSize/2, sy - sSize/2, sSize, sSize);
+          const idx = (b0 ? 1 : 0) | (b1 ? 2 : 0) | (b2 ? 4 : 0) | (b3 ? 8 : 0);
+          if (idx === 0) continue; // 全て閾値より深い場合は塗らない
+
+          // 4つの角のスクリーン座標
+          const p0 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale,       y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
+          const p1 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale,   y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
+          const p2 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale,   y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
+          const p3 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale,       y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
+
+          // 4点すべて浅い（完全に海域内）場合は四角形をそのまま追加
+          if (idx === 15) {
+             mapCtx.moveTo(p0.x, p0.y); mapCtx.lineTo(p1.x, p1.y); mapCtx.lineTo(p2.x, p2.y); mapCtx.lineTo(p3.x, p3.y);
+             mapCtx.closePath();
+             continue;
+          }
+
+          // 線形補間（滑らかな境界を計算）
+          const interp = (ptA, ptB, valA, valB) => {
+            const t = (threshold - valA) / (valB - valA + 1e-5);
+            return { x: ptA.x + t * (ptB.x - ptA.x), y: ptA.y + t * (ptB.y - ptA.y) };
+          };
+
+          // 4つの辺の交点
+          const eT = interp(p0, p1, v0, v1); // 上辺
+          const eR = interp(p1, p2, v1, v2); // 右辺
+          const eB = interp(p3, p2, v3, v2); // 下辺
+          const eL = interp(p0, p3, v0, v3); // 左辺
+
+          // 14パターンのポリゴン形状を生成
+          let polys = [];
+          switch(idx) {
+            case 1:  polys.push([p0, eT, eL]); break;
+            case 2:  polys.push([p1, eR, eT]); break;
+            case 3:  polys.push([p0, p1, eR, eL]); break;
+            case 4:  polys.push([p2, eB, eR]); break;
+            case 5:  polys.push([p0, eT, eL], [p2, eB, eR]); break;
+            case 6:  polys.push([p1, p2, eB, eT]); break;
+            case 7:  polys.push([p0, p1, p2, eB, eL]); break;
+            case 8:  polys.push([p3, eL, eB]); break;
+            case 9:  polys.push([p0, eT, eB, p3]); break;
+            case 10: polys.push([p1, eR, eT], [p3, eL, eB]); break;
+            case 11: polys.push([p0, p1, eR, eB, p3]); break;
+            case 12: polys.push([p2, p3, eL, eR]); break;
+            case 13: polys.push([p0, eT, eR, p2, p3]); break;
+            case 14: polys.push([p1, p2, p3, eL, eT]); break;
+          }
+
+          polys.forEach(poly => {
+            mapCtx.moveTo(poly[0].x, poly[0].y);
+            for(let i=1; i<poly.length; i++) mapCtx.lineTo(poly[i].x, poly[i].y);
+            mapCtx.closePath();
+          });
+        }
       }
-    }
+      mapCtx.fill(); // 構築したパスをまとめて塗りつぶし（超高速）
+    };
+
+    // 深い方から順に重ね塗りしていく
+    fillContourBand(20.0, '#9ecae1'); // 10〜20m帯
+    fillContourBand(10.0, '#6baed6'); // 5〜10m帯
+    fillContourBand(5.0,  '#4292c6'); // 0〜5m帯
 
     // [B] マーチングスクエア法による滑らかな等深線の生成
     const drawContour = (threshold, color, width) => {
