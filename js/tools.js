@@ -186,6 +186,12 @@ function initMap() {
     if (!isDragging) return;
     panX += e.clientX - lastMouseX;
     panY += e.clientY - lastMouseY;
+    
+    // ★追加：パン（移動）できる範囲を制限して、画面の外側へ行きすぎないようにする！
+    const limit = 800; 
+    panX = Math.max(-limit, Math.min(limit, panX));
+    panY = Math.max(-limit, Math.min(limit, panY));
+
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   });
@@ -195,9 +201,13 @@ function initMap() {
 
   mapCv.addEventListener('wheel', (e) => {
     e.stopPropagation(); 
-    e.preventDefault(); // 画面スクロールも防止
-    if (e.deltaY < 0) ecdisScale = Math.max(5, ecdisScale * 0.8); 
-    else ecdisScale = Math.min(250, ecdisScale * 1.25); 
+    e.preventDefault(); 
+    if (e.deltaY < 0) {
+      ecdisScale = Math.max(5, ecdisScale * 0.8); // ズームイン限界（詳細化）
+    } else {
+      // ★修正：ズームアウト限界を 250 から 80 に変更！
+      ecdisScale = Math.min(80, ecdisScale * 1.25); 
+    }
   });
 
   mapCv.addEventListener('dblclick', (e) => {
