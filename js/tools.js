@@ -38,60 +38,57 @@ let ROUTE_OFFSET_LAT = 0.000;
 let ROUTE_OFFSET_LON = 0.000; 
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 角度維持・東京湾地形完全適合版
+// 航路データ (Fairways & Buoys) — 観音崎・第二海堡での変針完全再現版
 // ============================================================
 const FAIRWAYS = [
   {
-    name: "SOUTH APPROACH",
-    // 南方からの進入路（真っ直ぐ北上）
-    leftBound:  [ { lat: 35.140, lon: 139.765 }, { lat: 35.180, lon: 139.765 } ],
-    rightBound: [ { lat: 35.140, lon: 139.795 }, { lat: 35.180, lon: 139.795 } ],
-    center:     { lat: 35.160, lon: 139.780 }
+    name: "SOUTH APPROACH <000>",
+    // 浦賀水道南口への進入（真北 000度への直進）
+    leftBound:  [ { lat: 35.150, lon: 139.767 }, { lat: 35.250, lon: 139.767 } ],
+    rightBound: [ { lat: 35.150, lon: 139.783 }, { lat: 35.250, lon: 139.783 } ],
+    center:     { lat: 35.200, lon: 139.775 }
   },
   {
-    name: "URAGA SUIDO",
-    // 浦賀水道航路（左斜め上へ。観音崎と富津岬の間を正確に抜ける）
-    leftBound:  [ 
-      { lat: 35.180, lon: 139.765 }, // 南口
-      { lat: 35.250, lon: 139.755 }, // 観音崎のすぐ東を通過
-      { lat: 35.310, lon: 139.745 }  // 第二海堡のすぐ東を通過
-    ],
-    rightBound: [ 
-      { lat: 35.180, lon: 139.795 },
-      { lat: 35.250, lon: 139.785 }, 
-      { lat: 35.310, lon: 139.775 }  // 富津岬の西を通過
-    ],
-    center:     { lat: 35.245, lon: 139.770 }
+    name: "URAGA SUIDO <352>",
+    // 観音崎沖で変針（352度へ微左舵。第二海堡と富津岬の間を抜ける）
+    leftBound:  [ { lat: 35.250, lon: 139.767 }, { lat: 35.310, lon: 139.757 } ],
+    rightBound: [ { lat: 35.250, lon: 139.783 }, { lat: 35.310, lon: 139.773 } ],
+    center:     { lat: 35.280, lon: 139.766 }
   },
   {
-    name: "NAKANOSE",
-    // 中ノ瀬航路（右斜め上へ。第二海堡から浅瀬のエリアを東側に迂回する）
-    leftBound:  [ { lat: 35.310, lon: 139.745 }, { lat: 35.400, lon: 139.775 } ],
-    rightBound: [ { lat: 35.310, lon: 139.775 }, { lat: 35.400, lon: 139.805 } ],
-    center:     { lat: 35.355, lon: 139.775 }
+    name: "NAKANOSE <021>",
+    // 第二海堡沖で変針（北東 021度へ右舵。中ノ瀬の浅瀬を迂回する）
+    leftBound:  [ { lat: 35.310, lon: 139.759 }, { lat: 35.400, lon: 139.801 } ],
+    rightBound: [ { lat: 35.310, lon: 139.771 }, { lat: 35.400, lon: 139.813 } ],
+    center:     { lat: 35.355, lon: 139.786 }
   }
 ];
 
-// 灯浮標（ブイ）のデータ
+// 灯浮標（ブイ）のデータ - 各変針点のジョイント部分に配置
 const BUOYS = [
-  // 浦賀水道 南口
-  { name: "U1", lat: 35.180, lon: 139.765, color: "#11cc11" },
-  { name: "U2", lat: 35.180, lon: 139.795, color: "#ee1111" },
-  // 浦賀水道 中間（観音崎沖）
-  { name: "U3", lat: 35.250, lon: 139.755, color: "#11cc11" },
-  { name: "U4", lat: 35.250, lon: 139.785, color: "#ee1111" },
-  // 浦賀水道 北口（第二海堡付近・中ノ瀬との分岐点）
-  { name: "U7", lat: 35.310, lon: 139.745, color: "#11cc11" },
-  { name: "U8", lat: 35.310, lon: 139.775, color: "#ee1111" },
+  // 南方進入路 (000度)
+  { name: "U1", lat: 35.180, lon: 139.767, color: "#11cc11" },
+  { name: "U2", lat: 35.180, lon: 139.783, color: "#ee1111" },
   
+  // 観音崎沖の変針点 (000度 → 352度)
+  { name: "U3", lat: 35.250, lon: 139.767, color: "#11cc11" },
+  { name: "U4", lat: 35.250, lon: 139.783, color: "#ee1111" },
+  
+  // 第二海堡沖の変針点 (352度 → 021度)
+  { name: "U7", lat: 35.310, lon: 139.757, color: "#11cc11" },
+  { name: "U8", lat: 35.310, lon: 139.773, color: "#ee1111" },
+  
+  // 中ノ瀬航路 (021度) 始点
+  { name: "N1", lat: 35.320, lon: 139.764, color: "#11cc11" },
+  { name: "N2", lat: 35.320, lon: 139.776, color: "#ee1111" },
   // 中ノ瀬航路 中間
-  { name: "N3", lat: 35.355, lon: 139.760, color: "#11cc11" },
-  { name: "N4", lat: 35.355, lon: 139.790, color: "#ee1111" },
-  // 中ノ瀬航路 北口
-  { name: "N7", lat: 35.400, lon: 139.775, color: "#11cc11" },
-  { name: "N8", lat: 35.400, lon: 139.805, color: "#ee1111" },
+  { name: "N3", lat: 35.360, lon: 139.782, color: "#11cc11" },
+  { name: "N4", lat: 35.360, lon: 139.794, color: "#ee1111" },
+  // 中ノ瀬航路 終点
+  { name: "N7", lat: 35.400, lon: 139.801, color: "#11cc11" },
+  { name: "N8", lat: 35.400, lon: 139.813, color: "#ee1111" },
 
-  // ランドマーク（座標固定）
+  // ランドマーク（固定）
   { name: "風の塔", lat: 35.4914, lon: 139.8347, color: "#ffffff" },
   { name: "海ほたる", lat: 35.4636, lon: 139.8753, color: "#ffffff" }
 ];
