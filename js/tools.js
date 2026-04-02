@@ -29,31 +29,31 @@ function latLonToXZ(lat, lon) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 海図.pdf に基づく定義
+// 航路データ (Fairways & Buoys) — 海図.pdf に基づく定義（修正版）
 // ============================================================
 const FAIRWAYS = [
   {
     name: "URAGA SUIDO",
     path: [
-      { lat: 35.172, lon: 139.740 }, // U1付近
-      { lat: 35.215, lon: 139.730 }, // 中間 (lon 35.215 はタイポと思われるため 139.730 に修正)
-      { lat: 35.255, lon: 139.718 }  // 第二海堡付近
+      { lat: 35.172, lon: 139.750 }, // U1/U2付近
+      { lat: 35.220, lon: 139.735 }, // 浦賀水道中間（変針点）
+      { lat: 35.260, lon: 139.720 }  // 第二海堡付近
     ],
     width: 1400 // 航路幅（メートル）
   },
   {
     name: "NAKANOSE",
     path: [
-      { lat: 35.280, lon: 139.780 },
-      { lat: 35.350, lon: 139.815 }
+      { lat: 35.260, lon: 139.755 }, // N1/N2付近
+      { lat: 35.350, lon: 139.785 }  // NW1/NW2付近
     ],
     width: 1000
   },
   {
     name: "TOKYO",
     path: [
-      { lat: 35.535, lon: 139.805 },
-      { lat: 35.590, lon: 139.790 }
+      { lat: 35.535, lon: 139.805 }, // 東京沖灯浮標付近
+      { lat: 35.590, lon: 139.790 }  // 東水路・西水路分岐付近
     ],
     width: 500
   }
@@ -63,6 +63,8 @@ const FAIRWAYS = [
 const BUOYS = [
   { name: "U1", lat: 35.172, lon: 139.740, color: "green" },
   { name: "U2", lat: 35.175, lon: 139.755, color: "red" },
+  { name: "N1", lat: 35.260, lon: 139.745, color: "green" },
+  { name: "N2", lat: 35.262, lon: 139.760, color: "red" },
   { name: "NW1", lat: 35.358, lon: 139.785, color: "yellow" },
   { name: "KAZE-NO-TO", lat: 35.586, lon: 139.782, color: "white" }
 ];
