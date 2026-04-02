@@ -9,6 +9,14 @@ let mapCtx = null;
 let geoData = null;
 let depthData = []; // 水深データを格納する配列
 
+// ★追加：ECDIS操作用の変数
+let ecdisScale = 25; // 初期スケール
+let panX = 0;        // 画面の横ズレ
+let panY = 0;        // 画面の縦ズレ
+let isDragging = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
 // ★地図データを読み込んだ直後に、疑似水深を自動生成する！
 fetch('./tokyobay.geojson?v=' + Date.now())
   .then(res => res.json())
@@ -141,11 +149,55 @@ function initMap() {
     position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%',
     backgroundColor: '#020b14', border: '2px solid #00d4ff', borderRadius: '8px',
     boxShadow: '0 0 30px rgba(0, 212, 255, 0.2), inset 0 0 50px rgba(0,0,0,0.8)',
-    zIndex: '500', display: 'none', pointerEvents: 'none'
+    zIndex: '500', display: 'none', 
+    pointerEvents: 'auto' // ★大修正：'none' から 'auto' に変更してマウス操作を有効化！
   });
   
   document.body.appendChild(mapCv);
   mapCtx = mapCv.getContext('2d');
+
+  // --- ★追加：マウスイベントの設定 ---
+  
+  // ① マウスを押したとき（ドラッグ開始）
+  mapCv.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+
+  // ② マウスを動かしたとき（ドラッグ移動）
+  mapCv.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+    panX += dx;
+    panY += dy;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+
+  // ③ マウスを離したとき（ドラッグ終了）
+  mapCv.addEventListener('mouseup', () => isDragging = false);
+  mapCv.addEventListener('mouseleave', () => isDragging = false);
+
+  // ④ マウスホイール（拡大・縮小）
+  mapCv.addEventListener('wheel', (e) => {
+    e.preventDefault(); // 画面全体のスクロールを防ぐ
+    if (e.deltaY < 0) {
+      // 上にスクロール（拡大＝スケール値を小さくする）
+      ecdisScale = Math.max(5, ecdisScale * 0.8); 
+    } else {
+      // 下にスクロール（縮小＝スケール値を大きくする）
+      ecdisScale = Math.min(250, ecdisScale * 1.25); 
+    }
+  });
+
+  // ⑤ ダブルクリック（自船位置にリセット）
+  mapCv.addEventListener('dblclick', () => {
+    panX = 0;
+    panY = 0;
+    ecdisScale = 25; // 初期スケールに戻す
+  });
 }
 
 export function isToolOpen() { return toolOpen; }
@@ -166,16 +218,16 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const h = mapCv.height;
   mapCtx.clearRect(0, 0, w, h);
 
+  // ★変更：固定の scale = 25 を削除し、操作変数を中心座標に足す
+  const cx = (w / 2) + panX;
+  const cy = (h / 2) + panY;
+
   mapCtx.strokeStyle = 'rgba(0, 212, 255, 0.15)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
   for (let i = 0; i < w; i += 60) { mapCtx.moveTo(i, 0); mapCtx.lineTo(i, h); }
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
-
-  const scale = 25; 
-  const cx = w / 2;
-  const cy = h / 2;
 
   if (geoData) {
     mapCtx.strokeStyle = '#00ffaa';
@@ -193,8 +245,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const dx = x - P.posX;
           const dz = z - P.posZ; 
           
-          const sx = cx + dx / scale; 
-          const sy = cy - dz / scale; 
+          const sx = cx + dx / ecdisScale; 
+          const sy = cy - dz / ecdisScale; 
 
           if (i === 0) mapCtx.moveTo(sx, sy);
           else mapCtx.lineTo(sx, sy);
@@ -225,8 +277,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
       const dx = pt.x - P.posX;
       const dz = pt.z - P.posZ; 
-      const sx = cx + dx / scale; 
-      const sy = cy - dz / scale; 
+      const sx = cx + dx / ecdisScale; 
+      const sy = cy - dz / ecdisScale; 
       
       // 画面内に収まっている水深点だけを処理
       if (sx > 0 && sx < w && sy > 0 && sy < h) {
@@ -259,8 +311,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
-    const sx = cx + dx / scale; 
-    const sy = cy - dz / scale; 
+    const sx = cx + dx / ecdisScale; 
+    const sy = cy - dz / ecdisScale; 
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
@@ -270,8 +322,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     if (!pos) return;
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
-    const sx = cx + dx / scale; 
-    const sy = cy - dz / scale; 
+    const sx = cx + dx / ecdisScale; 
+    const sy = cy - dz / ecdisScale; 
     
     mapCtx.save();
     mapCtx.translate(sx, sy);
