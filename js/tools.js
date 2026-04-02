@@ -38,59 +38,90 @@ let ROUTE_OFFSET_LAT = 0.000;
 let ROUTE_OFFSET_LON = 0.000; 
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 海図方位角 <000> <325> <021> 完全準拠
+// 航路データ (Fairways & Buoys) — 角度維持・東京湾地形完全適合版
 // ============================================================
 const FAIRWAYS = [
   {
-    name: "SOUTH APPROACH <000><180>",
-    // 浦賀水道南口への進入（真北 000度への直進）
-    leftBound:  [ { lat: 35.180, lon: 139.824 }, { lat: 35.230, lon: 139.824 } ],
-    rightBound: [ { lat: 35.180, lon: 139.854 }, { lat: 35.230, lon: 139.854 } ],
-    center:     { lat: 35.205, lon: 139.839 }
+    name: "SOUTH APPROACH",
+    // 南方からの進入路（真っ直ぐ北上）
+    leftBound:  [ { lat: 35.140, lon: 139.765 }, { lat: 35.180, lon: 139.765 } ],
+    rightBound: [ { lat: 35.140, lon: 139.795 }, { lat: 35.180, lon: 139.795 } ],
+    center:     { lat: 35.160, lon: 139.780 }
   },
   {
-    name: "URAGA SUIDO <325><145>",
-    // 浦賀水道航路（北西 325度へ変針）
-    // ※画面上で正確に325度になるよう、緯度に対する経度の変位量を tan(-35°)÷縮尺 で計算
-    leftBound:  [ { lat: 35.230, lon: 139.824 }, { lat: 35.310, lon: 139.755 } ],
-    rightBound: [ { lat: 35.230, lon: 139.854 }, { lat: 35.310, lon: 139.785 } ],
-    center:     { lat: 35.270, lon: 139.789 }
+    name: "URAGA SUIDO",
+    // 浦賀水道航路（左斜め上へ。観音崎と富津岬の間を正確に抜ける）
+    leftBound:  [ 
+      { lat: 35.180, lon: 139.765 }, // 南口
+      { lat: 35.250, lon: 139.755 }, // 観音崎のすぐ東を通過
+      { lat: 35.310, lon: 139.745 }  // 第二海堡のすぐ東を通過
+    ],
+    rightBound: [ 
+      { lat: 35.180, lon: 139.795 },
+      { lat: 35.250, lon: 139.785 }, 
+      { lat: 35.310, lon: 139.775 }  // 富津岬の西を通過
+    ],
+    center:     { lat: 35.245, lon: 139.770 }
   },
   {
-    name: "NAKANOSE <021>",
-    // 中ノ瀬航路（北東 021度へ変針）
-    // ※浅瀬を避けるため、画面上で正確に021度になるよう経度変位量を tan(21°)÷縮尺 で計算
-    leftBound:  [ { lat: 35.310, lon: 139.755 }, { lat: 35.400, lon: 139.797 } ],
-    rightBound: [ { lat: 35.310, lon: 139.785 }, { lat: 35.400, lon: 139.827 } ],
-    center:     { lat: 35.355, lon: 139.791 }
+    name: "NAKANOSE",
+    // 中ノ瀬航路（右斜め上へ。第二海堡から浅瀬のエリアを東側に迂回する）
+    leftBound:  [ { lat: 35.310, lon: 139.745 }, { lat: 35.400, lon: 139.775 } ],
+    rightBound: [ { lat: 35.310, lon: 139.775 }, { lat: 35.400, lon: 139.805 } ],
+    center:     { lat: 35.355, lon: 139.775 }
   }
 ];
 
-// 灯浮標（ブイ）のデータ - 変針点（ジョイント部分）に正確に配置
+// 灯浮標（ブイ）のデータ
 const BUOYS = [
-  // 進入路(000) から 浦賀水道(325) への変針点
-  { name: "U1", lat: 35.230, lon: 139.824, color: "#11cc11" },
-  { name: "U2", lat: 35.230, lon: 139.854, color: "#ee1111" },
-  // 浦賀水道 中間
-  { name: "U3", lat: 35.270, lon: 139.789, color: "#11cc11" },
-  { name: "U4", lat: 35.270, lon: 139.819, color: "#ee1111" },
-  // 浦賀水道(325) から 中ノ瀬(021) への変針点（第二海堡付近）
-  { name: "U7", lat: 35.310, lon: 139.755, color: "#11cc11" },
-  { name: "U8", lat: 35.310, lon: 139.785, color: "#ee1111" },
+  // 浦賀水道 南口
+  { name: "U1", lat: 35.180, lon: 139.765, color: "#11cc11" },
+  { name: "U2", lat: 35.180, lon: 139.795, color: "#ee1111" },
+  // 浦賀水道 中間（観音崎沖）
+  { name: "U3", lat: 35.250, lon: 139.755, color: "#11cc11" },
+  { name: "U4", lat: 35.250, lon: 139.785, color: "#ee1111" },
+  // 浦賀水道 北口（第二海堡付近・中ノ瀬との分岐点）
+  { name: "U7", lat: 35.310, lon: 139.745, color: "#11cc11" },
+  { name: "U8", lat: 35.310, lon: 139.775, color: "#ee1111" },
   
-  // 中ノ瀬航路 始点（U7/U8から分岐）
-  { name: "N1", lat: 35.315, lon: 139.757, color: "#11cc11" },
-  { name: "N2", lat: 35.315, lon: 139.787, color: "#ee1111" },
   // 中ノ瀬航路 中間
-  { name: "N3", lat: 35.355, lon: 139.776, color: "#11cc11" },
-  { name: "N4", lat: 35.355, lon: 139.806, color: "#ee1111" },
-  // 中ノ瀬航路 終点
-  { name: "N7", lat: 35.400, lon: 139.797, color: "#11cc11" },
-  { name: "N8", lat: 35.400, lon: 139.827, color: "#ee1111" },
+  { name: "N3", lat: 35.355, lon: 139.760, color: "#11cc11" },
+  { name: "N4", lat: 35.355, lon: 139.790, color: "#ee1111" },
+  // 中ノ瀬航路 北口
+  { name: "N7", lat: 35.400, lon: 139.775, color: "#11cc11" },
+  { name: "N8", lat: 35.400, lon: 139.805, color: "#ee1111" },
 
-  // ランドマーク（固定）
+  // ランドマーク（座標固定）
   { name: "風の塔", lat: 35.4914, lon: 139.8347, color: "#ffffff" },
   { name: "海ほたる", lat: 35.4636, lon: 139.8753, color: "#ffffff" }
+];
+
+// ============================================================
+// 地名データ (Landmarks & Text Labels) — 海図.pdf に基づく定義
+// ============================================================
+const LANDMARKS = [
+  // --- 灯台・灯標（文字の配置をマークに重ねないよう調整） ---
+  { name: "観音崎灯台", lat: 35.253, lon: 139.746, align: "right", offset: -12 },
+  { name: "浦賀灯台",   lat: 35.210, lon: 139.730, align: "right", offset: -12 },
+  { name: "富津灯台",   lat: 35.310, lon: 139.775, align: "left",  offset: 12 },
+  { name: "中ノ瀬灯標", lat: 35.360, lon: 139.760, align: "center", offset: 20 }, 
+
+  // --- 海域 ---
+  // 大きく薄く配置し、背景として機能させる
+  { name: "東 京 湾",   lat: 35.450, lon: 139.850, size: 24, weight: "bold", color: "rgba(0,0,0,0.4)" }, 
+  { name: "浦賀水道",   lat: 35.240, lon: 139.770, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)" },
+  { name: "中 ノ 瀬",   lat: 35.360, lon: 139.765, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)" }, 
+  
+  // --- 港湾・主要施設 ---
+  { name: "木更津港",   lat: 35.370, lon: 139.900, align: "left", offset: 12 },
+  { name: "横須賀港",   lat: 35.290, lon: 139.670, align: "right", offset: -12 },
+  { name: "横浜港",     lat: 35.450, lon: 139.670, align: "right", offset: -12 },
+  { name: "東京港",     lat: 35.600, lon: 139.770, align: "center", offset: 20 },
+  { name: "羽田空港",   lat: 35.550, lon: 139.780, align: "center", offset: 20 },
+  
+  // --- 地形 ---
+  { name: "富津岬",     lat: 35.310, lon: 139.810, align: "left", offset: 12 },
+  { name: "第二海堡",   lat: 35.308, lon: 139.740, align: "right", offset: -12 },
 ];
 
 // 平面直角座標(X, Z)から緯度経度へ逆変換する関数
@@ -289,11 +320,22 @@ let gridCols = 0;
 let gridRows = 0;
 // --- ここまで追加 ---
 
-function _gridKey(x, z) {
-  return `${Math.round(x / GRID_CELL)},${Math.round(z / GRID_CELL)}`;
-}
+let hasAddedCoastlineDepth = false; // ★ 重複追加を防ぐフラグ
 
 function _buildDepthGrid() {
+  // ★ ここから追加：海岸線（陸地ポリゴンの頂点）を「水深0.0mのデータ」として合成する
+  if (!hasAddedCoastlineDepth && parsedPolygonsXZ.length > 0) {
+    parsedPolygonsXZ.forEach(item => {
+      // 陸地の輪郭線を水深0mとして扱うことで、岸壁に絶壁ができるのを防ぐ
+      item.poly.forEach(pt => {
+        depthData.push({ x: pt.x, z: pt.z, depth: 0.0 });
+      });
+    });
+    hasAddedCoastlineDepth = true;
+    console.log("ECDIS: 海岸線を水深0mデータとして合成しました");
+  }
+  // ★ ここまで追加
+
   depthGrid.clear();
   depthData.forEach(pt => {
     const key = _gridKey(pt.x, pt.z);
@@ -599,6 +641,42 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.fill(); 
       mapCtx.stroke();
   });
+
+  // ⑤ 地名・テキストラベル (Landmarks) の描画
+  mapCtx.save();
+  // ECDIS用のフォント設定（日本語対応、sans-serif）
+  const baseFont = "sans-serif";
+  
+  LANDMARKS.forEach(lm => {
+    const xz = latLonToXZ(lm.lat, lm.lon);
+    const sx = cx + (xz.x - P.posX) / ecdisScale;
+    const sy = cy - (xz.z - P.posZ) / ecdisScale;
+
+    // 画面外（および画面端のバッファ）なら描画しない
+    if (sx < -100 || sx > w + 100 || sy < -100 || sy > h + 100) return;
+
+    // 個別のスタイル設定
+    const size = lm.size || 11;
+    const weight = lm.weight || "normal";
+    const color = lm.color || "#000000"; // ユーザー要望の黒文字
+    mapCtx.font = `${weight} ${size}px ${baseFont}`;
+    
+    // 文字の配置（マークへの重なり防止）
+    const align = lm.align || "center";
+    mapCtx.textAlign = align;
+    const offset = lm.offset || 0;
+
+    // --- 視認性のための白い縁取り（halo） ---
+    // これを入れないと、濃い青の水深帯や航路と重なった時に黒文字が読めなくなります
+    mapCtx.lineWidth = 3;
+    mapCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    mapCtx.strokeText(lm.name, sx + offset, sy + 3); // 3px下にずらしてベースライン調整
+
+    // --- 本体（黒文字）描画 ---
+    mapCtx.fillStyle = color;
+    mapCtx.fillText(lm.name, sx + offset, sy + 3);
+  });
+  mapCtx.restore();
 
   // ⑥ 航路 (Fairways) の描画（境界線の描画）
   mapCtx.save();
