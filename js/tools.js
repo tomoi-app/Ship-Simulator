@@ -31,59 +31,70 @@ function latLonToXZ(lat, lon) {
 // ============================================================
 // 航路データ (Fairways & Buoys) — 観音崎・第二海堡での変針完全再現版
 // ============================================================
+// ============================================================
+// 航路データ (Fairways & Buoys) — 第二海堡通過後の変針ルート
+// ============================================================
 const FAIRWAYS = [
   {
-    name: "SOUTH APPROACH <000>",
+    name: "SOUTH APPROACH",
     leftBound:  [ { lat: 35.150, lon: 139.767 }, { lat: 35.250, lon: 139.767 } ],
-    rightBound: [ { lat: 35.150, lon: 139.783 }, { lat: 35.250, lon: 139.783 } ],
-    center:     { lat: 35.200, lon: 139.775 }
+    rightBound: [ { lat: 35.150, lon: 139.783 }, { lat: 35.250, lon: 139.783 } ]
   },
   {
-    name: "URAGA SUIDO <352>",
-    leftBound:  [ { lat: 35.250, lon: 139.767 }, { lat: 35.310, lon: 139.757 } ],
-    rightBound: [ { lat: 35.250, lon: 139.783 }, { lat: 35.310, lon: 139.773 } ],
-    center:     { lat: 35.280, lon: 139.766 }
+    name: "URAGA SUIDO",
+    // 352度変針。第二海堡（35.308）を完全に通過した北側（35.320）まで直進
+    leftBound:  [ { lat: 35.250, lon: 139.767 }, { lat: 35.320, lon: 139.755 } ],
+    rightBound: [ { lat: 35.250, lon: 139.783 }, { lat: 35.320, lon: 139.771 } ]
   },
   {
-    name: "NAKANOSE <021>",
-    leftBound:  [ { lat: 35.310, lon: 139.759 }, { lat: 35.400, lon: 139.801 } ],
-    rightBound: [ { lat: 35.310, lon: 139.771 }, { lat: 35.400, lon: 139.813 } ],
-    center:     { lat: 35.355, lon: 139.786 }
+    name: "NAKANOSE",
+    // 第二海堡通過後（35.320）から021度へ右舵
+    leftBound:  [ { lat: 35.320, lon: 139.755 }, { lat: 35.400, lon: 139.792 } ],
+    rightBound: [ { lat: 35.320, lon: 139.771 }, { lat: 35.400, lon: 139.808 } ]
   }
 ];
 
 const BUOYS = [
+  // 南方進入路
   { name: "U1", lat: 35.180, lon: 139.767, color: "#11cc11" },
   { name: "U2", lat: 35.180, lon: 139.783, color: "#ee1111" },
+  // 観音崎沖変針点
   { name: "U3", lat: 35.250, lon: 139.767, color: "#11cc11" },
   { name: "U4", lat: 35.250, lon: 139.783, color: "#ee1111" },
-  { name: "U7", lat: 35.310, lon: 139.757, color: "#11cc11" },
-  { name: "U8", lat: 35.310, lon: 139.773, color: "#ee1111" },
-  { name: "N1", lat: 35.320, lon: 139.764, color: "#11cc11" },
-  { name: "N2", lat: 35.320, lon: 139.776, color: "#ee1111" },
-  { name: "N3", lat: 35.360, lon: 139.782, color: "#11cc11" },
-  { name: "N4", lat: 35.360, lon: 139.794, color: "#ee1111" },
-  { name: "N7", lat: 35.400, lon: 139.801, color: "#11cc11" },
-  { name: "N8", lat: 35.400, lon: 139.813, color: "#ee1111" },
+  // 浦賀水道中間
+  { name: "U5", lat: 35.285, lon: 139.761, color: "#11cc11" },
+  { name: "U6", lat: 35.285, lon: 139.777, color: "#ee1111" },
+  // 第二海堡北側・変針点（021度へ）
+  { name: "U7", lat: 35.320, lon: 139.755, color: "#11cc11" },
+  { name: "U8", lat: 35.320, lon: 139.771, color: "#ee1111" },
+  // 中ノ瀬航路
+  { name: "N1", lat: 35.345, lon: 139.766, color: "#11cc11" },
+  { name: "N2", lat: 35.345, lon: 139.782, color: "#ee1111" },
+  { name: "N3", lat: 35.370, lon: 139.778, color: "#11cc11" },
+  { name: "N4", lat: 35.370, lon: 139.794, color: "#ee1111" },
+  { name: "N7", lat: 35.400, lon: 139.792, color: "#11cc11" },
+  { name: "N8", lat: 35.400, lon: 139.808, color: "#ee1111" },
+  // ランドマーク
   { name: "風の塔", lat: 35.4914, lon: 139.8347, color: "#ffffff" },
   { name: "海ほたる", lat: 35.4636, lon: 139.8753, color: "#ffffff" }
 ];
 
 const LANDMARKS = [
-  { name: "観音崎灯台", lat: 35.253, lon: 139.746, align: "right", offset: -12 },
-  { name: "浦賀灯台",   lat: 35.210, lon: 139.730, align: "right", offset: -12 },
-  { name: "富津灯台",   lat: 35.310, lon: 139.775, align: "left",  offset: 12 },
-  { name: "中ノ瀬灯標", lat: 35.360, lon: 139.760, align: "center", offset: 20 }, 
+  // 航路やブイと被らないよう、陸地側に大きくオフセット
+  { name: "観音崎灯台", lat: 35.253, lon: 139.735, align: "right" },
+  { name: "浦賀灯台",   lat: 35.210, lon: 139.720, align: "right" },
+  { name: "富津灯台",   lat: 35.310, lon: 139.795, align: "left" },
+  { name: "中ノ瀬灯標", lat: 35.360, lon: 139.745, align: "right" }, 
   { name: "東 京 湾",   lat: 35.450, lon: 139.850, size: 24, weight: "bold", color: "rgba(0,0,0,0.4)" }, 
-  { name: "浦賀水道",   lat: 35.240, lon: 139.770, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)" },
-  { name: "中 ノ 瀬",   lat: 35.360, lon: 139.765, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)" }, 
-  { name: "木更津港",   lat: 35.370, lon: 139.900, align: "left", offset: 12 },
-  { name: "横須賀港",   lat: 35.290, lon: 139.670, align: "right", offset: -12 },
-  { name: "横浜港",     lat: 35.450, lon: 139.670, align: "right", offset: -12 },
-  { name: "東京港",     lat: 35.600, lon: 139.770, align: "center", offset: 20 },
-  { name: "羽田空港",   lat: 35.550, lon: 139.780, align: "center", offset: 20 },
-  { name: "富津岬",     lat: 35.310, lon: 139.810, align: "left", offset: 12 },
-  { name: "第二海堡",   lat: 35.308, lon: 139.740, align: "right", offset: -12 },
+  { name: "浦賀水道",   lat: 35.260, lon: 139.720, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" },
+  { name: "中 ノ 瀬",   lat: 35.360, lon: 139.740, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" }, 
+  { name: "木更津港",   lat: 35.370, lon: 139.900, align: "left" },
+  { name: "横須賀港",   lat: 35.290, lon: 139.670, align: "right" },
+  { name: "横浜港",     lat: 35.450, lon: 139.670, align: "right" },
+  { name: "東京港",     lat: 35.600, lon: 139.770, align: "center" },
+  { name: "羽田空港",   lat: 35.550, lon: 139.780, align: "center" },
+  { name: "富津岬",     lat: 35.310, lon: 139.820, align: "left" },
+  { name: "第二海堡",   lat: 35.308, lon: 139.730, align: "right" },
 ];
 
 function xzToLatLon(x, z) {
@@ -152,6 +163,16 @@ fetch('./tokyobay.geojson?v=' + Date.now())
   });
 
 function generateRealisticDepths() {
+  console.log("🌊 水深データ生成をWeb Workerに委譲...");
+
+  // 航路の中心線を計算してWorkerに渡す（浚渫エリアの定義用）
+  const fairwayLines = FAIRWAYS.map(fw => {
+    return fw.leftBound.map((lb, i) => {
+      const rb = fw.rightBound[i];
+      return latLonToXZ((lb.lat + rb.lat) / 2, (lb.lon + rb.lon) / 2);
+    });
+  });
+
   const workerCode = `
     function isPointInPolygon(px, pz, poly) {
       let inside = false;
@@ -162,50 +183,108 @@ function generateRealisticDepths() {
       }
       return inside;
     }
+
+    // 線分と点の最短距離の2乗を求める
+    function distToSegmentSq(px, pz, x1, z1, x2, z2) {
+      const l2 = (x1-x2)**2 + (z1-z2)**2;
+      if (l2 === 0) return (px-x1)**2 + (pz-z1)**2;
+      let t = ((px - x1) * (x2 - x1) + (pz - z1) * (z2 - z1)) / l2;
+      t = Math.max(0, Math.min(1, t));
+      return (px - (x1 + t * (x2 - x1)))**2 + (pz - (z1 + t * (z2 - z1)))**2;
+    }
+
     self.onmessage = function(e) {
-      const { polygons, shoals } = e.data;
+      const { polygons, shoals, fairways } = e.data;
       const result = [];
       let seed = 12345;
       function rand() { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; }
+
       for (let x = -30000; x <= 60000; x += 300) {
         for (let z = -75000; z <= 30000; z += 300) {
           let onLand = false;
+          let minDistSq = Infinity;
+
           for (let i = 0; i < polygons.length; i++) {
             const { poly, bounds } = polygons[i];
-            if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) continue;
+            
+            // 遠すぎる陸地ポリゴンは計算をスキップして高速化（5km以上）
+            const dx = Math.max(bounds.minX - x, 0, x - bounds.maxX);
+            const dz = Math.max(bounds.minZ - z, 0, z - bounds.maxZ);
+            if (dx*dx + dz*dz > 25000000) continue;
+
             if (isPointInPolygon(x, z, poly)) { onLand = true; break; }
+
+            // 陸地の輪郭線との最短距離を計算
+            for (let j = 0, k = poly.length - 1; j < poly.length; k = j++) {
+              const dSq = distToSegmentSq(x, z, poly[k].x, poly[k].z, poly[j].x, poly[j].z);
+              if (dSq < minDistSq) minDistSq = dSq;
+            }
           }
           if (onLand) continue;
-          let depth = 25.0 + rand() * 5;
+
+          const distToCoast = Math.sqrt(minDistSq);
+          
+          // ① 岸壁からのグラデーション：陸地から離れるほど滑らかに深くする（1kmで13m、2kmで24m到達）
+          let depth = 2.0 + (distToCoast / 1000) * 11.0 + rand() * 3;
+          
+          // ② 既存の浅瀬（中ノ瀬など）の適用
           shoals.forEach(s => {
-            const d = Math.sqrt((s.pos.x - x)**2 + (s.pos.z - z)**2);
-            if (d < s.radius) {
+            const dSq = (s.pos.x - x)**2 + (s.pos.z - z)**2;
+            if (dSq < s.radius**2) {
+              const d = Math.sqrt(dSq);
               const ratio = 1.0 - Math.pow(d / s.radius, 2);
               depth = depth * (1 - ratio) + s.depth * ratio;
             }
           });
-          depth = Math.max(2.5, Math.min(45.0, depth));
-          const ox = (rand() - 0.5) * 150, oz = (rand() - 0.5) * 150;
+
+          // ③ 航路（FAIRWAYS）の確保：航路エリア内は浅瀬にならないよう人工的に掘り下げる
+          let inFairway = false;
+          fairways.forEach(fwPath => {
+            for (let i = 0; i < fwPath.length - 1; i++) {
+              const p1 = fwPath[i];
+              const p2 = fwPath[i+1];
+              const dSq = distToSegmentSq(x, z, p1.x, p1.z, p2.x, p2.z);
+              // 航路の中心線から半径 900m 以内を安全水域として判定
+              if (dSq < 810000) { 
+                inFairway = true;
+              }
+            }
+          });
+
+          if (inFairway) {
+            depth = Math.max(depth, 22.0 + rand() * 2); // 航路内は最低22mを確保
+          }
+
+          depth = Math.max(2.0, Math.min(45.0, depth));
+          
+          const ox = (rand() - 0.5) * 100, oz = (rand() - 0.5) * 100;
           result.push({ x: x + ox, z: z + oz, depth });
         }
       }
       self.postMessage(result);
     };
   `;
-  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  const blob   = new Blob([workerCode], { type: 'application/javascript' });
   const worker = new Worker(URL.createObjectURL(blob));
+
   const famousShoals = [
-    { name: "中ノ瀬",   pos: latLonToXZ(35.4200, 139.7750), radius: 6000, depth: 9.0 },
+    { name: "中ノ瀬",   pos: latLonToXZ(35.3900, 139.7750), radius: 6000, depth: 9.0 },
     { name: "富津岬沖", pos: latLonToXZ(35.3150, 139.7900), radius: 4000, depth: 3.0 },
     { name: "観音崎",   pos: latLonToXZ(35.2600, 139.7500), radius: 2000, depth: 8.0 },
     { name: "盤洲干潟", pos: latLonToXZ(35.4000, 139.9000), radius: 6000, depth: 2.0 },
     { name: "羽田沖",   pos: latLonToXZ(35.5400, 139.8000), radius: 3000, depth: 7.0 },
   ];
-  worker.postMessage({ polygons: parsedPolygonsXZ, shoals: famousShoals });
+
+  // 計算した fairwayLines を Worker に渡す
+  worker.postMessage({ polygons: parsedPolygonsXZ, shoals: famousShoals, fairways: fairwayLines });
+
   worker.onmessage = function(e) {
     depthData.length = 0;
     e.data.sort((a, b) => b.depth - a.depth).forEach(pt => depthData.push(pt));
-    _buildDepthGrid(); worker.terminate(); URL.revokeObjectURL(blob);
+    _buildDepthGrid();  
+    console.log(`ECDIS: 水深データ（${depthData.length}地点）生成完了！`);
+    worker.terminate();
+    URL.revokeObjectURL(blob);
   };
 }
 
@@ -213,7 +292,7 @@ const GRID_CELL = 600;
 const depthGrid = new Map();
 const GRID_START_X = -30000, GRID_END_X = 60000;
 const GRID_START_Z = -75000, GRID_END_Z = 30000;
-const RENDER_STEP = 600;
+const RENDER_STEP = 300;
 let renderGrid = null;
 let gridCols = 0; let gridRows = 0;
 let hasAddedCoastlineDepth = false;
@@ -277,10 +356,10 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (renderGrid) {
     const worldMinX = P.posX - (w / 2) * ecdisScale, worldMaxX = P.posX + (w / 2) * ecdisScale;
     const worldMaxZ = P.posZ + (h / 2) * ecdisScale, worldMinZ = P.posZ - (h / 2) * ecdisScale;
-    const startC = Math.max(0, Math.floor((worldMinX - GRID_START_X) / RENDER_STEP) - 1);
-    const endC = Math.min(gridCols - 1, Math.ceil((worldMaxX - GRID_START_X) / RENDER_STEP) + 1);
-    const startR = Math.max(0, Math.floor((worldMinZ - GRID_START_Z) / RENDER_STEP) - 1);
-    const endR = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 1);
+    const startC = Math.max(0, Math.floor((worldMinX - GRID_START_X) / RENDER_STEP) - 4);
+    const endC = Math.min(gridCols - 1, Math.ceil((worldMaxX - GRID_START_X) / RENDER_STEP) + 4);
+    const startR = Math.max(0, Math.floor((worldMinZ - GRID_START_Z) / RENDER_STEP) - 4);
+    const endR = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 4);
 
     const getV = (r, c) => { const v = renderGrid[r * gridCols + c]; return (v === undefined || isNaN(v)) ? 50.0 : v; };
     const fillContourBand = (threshold, color) => {
@@ -397,11 +476,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   mapCtx.save();
   const font = "sans-serif";
-  FAIRWAYS.forEach(fw => {
-    const mxz = latLonToXZ(fw.center.lat, fw.center.lon);
-    mapCtx.fillStyle = 'rgba(200, 0, 200, 0.9)'; mapCtx.font = `italic bold 11px ${font}`; mapCtx.textAlign = 'center';
-    mapCtx.fillText(fw.name, cx + (mxz.x-P.posX)/ecdisScale, cy - (mxz.z-P.posZ)/ecdisScale);
-  });
   BUOYS.forEach(b => {
     const xz = latLonToXZ(b.lat, b.lon); const sx = cx + (xz.x-P.posX)/ecdisScale, sy = cy - (xz.z-P.posZ)/ecdisScale;
     if (sx > -20 && sx < w+20 && sy > -20 && sy < h+20) {
