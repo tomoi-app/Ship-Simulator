@@ -330,172 +330,371 @@ function initMap() {
   mapCv = document.createElement('canvas'); mapCv.id = 'ecdis-monitor';
   Object.assign(mapCv.style, { position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%', backgroundColor: '#e4f1fc', border: '4px solid #4a5b6c', borderRadius: '2px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: '500', display: 'none', pointerEvents: 'auto' });
   document.body.appendChild(mapCv); mapCtx = mapCv.getContext('2d');
-  mapCv.addEventListener('mousedown', (e) => { e.stopPropagation(); isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY; });
-  mapCv.addEventListener('mousemove', (e) => { e.stopPropagation(); if (!isDragging) return; panX += e.clientX - lastMouseX; panY += e.clientY - lastMouseY; lastMouseX = e.clientX; lastMouseY = e.clientY; });
-  mapCv.addEventListener('mouseup', (e) => { e.stopPropagation(); isDragging = false; });
-  mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
-  mapCv.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); if (e.deltaY < 0) ecdisScale = Math.max(5, ecdisScale * 0.8); else ecdisScale = Math.min(80, ecdisScale * 1.25); });
-  mapCv.addEventListener('dblclick', (e) => { e.stopPropagation(); panX = 0; panY = 0; ecdisScale = 25; });
-}
-
-export function isToolOpen() { return toolOpen; }
-export function toggleTool() {
-  initMap(); toolOpen = !toolOpen; mapCv.style.display = toolOpen ? 'block' : 'none';
-  if (toolOpen) { mapCv.width = mapCv.clientWidth; mapCv.height = mapCv.clientHeight; }
-}
-
-export function drawAll(P, AIships, fishBoats, buoys, curM) {
+  mapCv.addEventListener('mousedown', (e) => { e.stopPropagation(); isDragging = true; laexport function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (!toolOpen || !mapCtx || !geoData) return;
   const w = mapCv.width, h = mapCv.height;
-  const cx = (w / 2) + panX; const cy = (h / 2) + panY;
+  const cx = (w / 2) + panX;
+  const cy = (h / 2) + panY;
+
+  // ① 画面リセットと深海ベース色の塗りつぶし
   mapCtx.clearRect(0, 0, w, h);
-  mapCtx.fillStyle = '#e4f1fc'; mapCtx.fillRect(0, 0, w, h);
+  mapCtx.fillStyle = '#e4f1fc';
+  mapCtx.fillRect(0, 0, w, h);
 
+  // ② 水深による「滑らかな等深帯」と「等深線」
   if (renderGrid) {
-    const worldMinX = P.posX - (w / 2) * ecdisScale, worldMaxX = P.posX + (w / 2) * ecdisScale;
-    const worldMaxZ = P.posZ + (h / 2) * ecdisScale, worldMinZ = P.posZ - (h / 2) * ecdisScale;
-    const startC = Math.max(0, Math.floor((worldMinX - GRID_START_X) / RENDER_STEP) - 4);
-    const endC = Math.min(gridCols - 1, Math.ceil((worldMaxX - GRID_START_X) / RENDER_STEP) + 4);
-    const startR = Math.max(0, Math.floor((worldMinZ - GRID_START_Z) / RENDER_STEP) - 4);
-    const endR = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 4);
+    const worldMinX = P.posX - cx * ecdisScale;
+    const worldMaxX = P.posX + (w - cx) * ecdisScale;
+    const worldMaxZ = P.posZ + cy * ecdisScale; 
+    const worldMinZ = P.posZ - (h - cy) * ecdisScale;
 
-    const getV = (r, c) => { const v = renderGrid[r * gridCols + c]; return (v === undefined || isNaN(v)) ? 50.0 : v; };
+    // 計算マージンを広めに取り、画面端の色欠けを防止
+    const startC = Math.max(0, Math.floor((worldMinX - GRID_START_X) / RENDER_STEP) - 4);
+    const endC   = Math.min(gridCols - 1, Math.ceil((worldMaxX - GRID_START_X) / RENDER_STEP) + 4);
+    const startR = Math.max(0, Math.floor((worldMinZ - GRID_START_Z) / RENDER_STEP) - 4);
+    const endR   = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 4);
+
+    const getV = (r, c) => {
+      const v = renderGrid[r * gridCols + c];
+      return (v === undefined || isNaN(v)) ? 50.0 : v;
+    };
+
+    // [A] 水深帯の塗りつぶし（★バグ修正：セルごとに独立して描画・塗りつぶしを行う）
     const fillContourBand = (threshold, color) => {
-      mapCtx.fillStyle = color; mapCtx.beginPath();
+      mapCtx.fillStyle = color;
+
       for(let r = startR; r < endR - 1; r++) {
         for(let c = startC; c < endC - 1; c++) {
-          const v0 = getV(r, c), v1 = getV(r, c+1), v2 = getV(r+1, c+1), v3 = getV(r+1, c);
+          const v0 = getV(r, c), v1 = getV(r, c + 1), v2 = getV(r + 1, c + 1), v3 = getV(r + 1, c);
           const b0 = v0 <= threshold, b1 = v1 <= threshold, b2 = v2 <= threshold, b3 = v3 <= threshold;
+
           const idx = (b0 ? 1 : 0) | (b1 ? 2 : 0) | (b2 ? 4 : 0) | (b3 ? 8 : 0);
           if (idx === 0) continue;
-          const p0 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale, y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
-          const p1 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale, y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
-          const p2 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale, y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
-          const p3 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale, y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
-          if (idx === 15) { mapCtx.moveTo(p0.x, p0.y); mapCtx.lineTo(p1.x, p1.y); mapCtx.lineTo(p2.x, p2.y); mapCtx.lineTo(p3.x, p3.y); mapCtx.closePath(); continue; }
-          const interp = (ptA, ptB, valA, valB) => { const t = (threshold - valA) / (valB - valA + 1e-5); return { x: ptA.x + t * (ptB.x - ptA.x), y: ptA.y + t * (ptB.y - ptA.y) }; };
-          const eT = interp(p0, p1, v0, v1), eR = interp(p1, p2, v1, v2), eB = interp(p3, p2, v3, v2), eL = interp(p0, p3, v0, v3);
+
+          const p0 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale,       y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
+          const p1 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale,   y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
+          const p2 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale,   y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
+          const p3 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale,       y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
+
+          if (idx === 15) {
+             mapCtx.beginPath();
+             mapCtx.moveTo(p0.x, p0.y); mapCtx.lineTo(p1.x, p1.y); mapCtx.lineTo(p2.x, p2.y); mapCtx.lineTo(p3.x, p3.y);
+             mapCtx.closePath();
+             mapCtx.fill();
+             continue;
+          }
+
+          // ★バグ修正：0除算による Infinity 発生を完全にブロック
+          const interp = (ptA, ptB, valA, valB) => {
+            let t = 0.5;
+            if (Math.abs(valB - valA) > 1e-5) t = (threshold - valA) / (valB - valA);
+            return { x: ptA.x + t * (ptB.x - ptA.x), y: ptA.y + t * (ptB.y - ptA.y) };
+          };
+
+          const eT = interp(p0, p1, v0, v1);
+          const eR = interp(p1, p2, v1, v2);
+          const eB = interp(p3, p2, v3, v2);
+          const eL = interp(p0, p3, v0, v3);
+
           let polys = [];
           switch(idx) {
-            case 1: polys.push([p0, eT, eL]); break; case 2: polys.push([p1, eR, eT]); break; case 3: polys.push([p0, p1, eR, eL]); break;
-            case 4: polys.push([p2, eB, eR]); break; case 5: polys.push([p0, eT, eL], [p2, eB, eR]); break; case 6: polys.push([p1, p2, eB, eT]); break;
-            case 7: polys.push([p0, p1, p2, eB, eL]); break; case 8: polys.push([p3, eL, eB]); break; case 9: polys.push([p0, eT, eB, p3]); break;
-            case 10: polys.push([p1, eR, eT], [p3, eL, eB]); break; case 11: polys.push([p0, p1, eR, eB, p3]); break;
-            case 12: polys.push([p3, eL, eR, p2]); break; case 13: polys.push([p0, eT, eR, p2, p3]); break; case 14: polys.push([p1, p2, p3, eL, eT]); break;
+            case 1:  polys.push([p0, eT, eL]); break;
+            case 2:  polys.push([p1, eR, eT]); break;
+            case 3:  polys.push([p0, p1, eR, eL]); break;
+            case 4:  polys.push([p2, eB, eR]); break;
+            case 5:  polys.push([p0, eT, eL], [p2, eB, eR]); break;
+            case 6:  polys.push([p1, p2, eB, eT]); break;
+            case 7:  polys.push([p0, p1, p2, eB, eL]); break;
+            case 8:  polys.push([p3, eL, eB]); break;
+            case 9:  polys.push([p0, eT, eB, p3]); break;
+            case 10: polys.push([p1, eR, eT], [p3, eL, eB]); break;
+            case 11: polys.push([p0, p1, eR, eB, p3]); break;
+            case 12: polys.push([p3, eL, eR, p2]); break;
+            case 13: polys.push([p0, eT, eR, p2, p3]); break;
+            case 14: polys.push([p1, p2, p3, eL, eT]); break;
           }
-          polys.forEach(poly => { mapCtx.moveTo(poly[0].x, poly[0].y); for(let i=1; i<poly.length; i++) mapCtx.lineTo(poly[i].x, poly[i].y); mapCtx.closePath(); });
+
+          polys.forEach(poly => {
+            mapCtx.beginPath();
+            mapCtx.moveTo(poly[0].x, poly[0].y);
+            for(let i=1; i<poly.length; i++) mapCtx.lineTo(poly[i].x, poly[i].y);
+            mapCtx.closePath();
+            mapCtx.fill();
+          });
         }
       }
-      mapCtx.fill();
     };
-    fillContourBand(20.0, '#9ecae1'); fillContourBand(10.0, '#6baed6'); fillContourBand(5.0, '#4292c6');
+
+    fillContourBand(20.0, '#9ecae1');
+    fillContourBand(10.0, '#6baed6');
+    fillContourBand(5.0,  '#4292c6');
+
+    // [B] 等深線の描画（こちらも安全のためセルごとに独立描画に修正）
     const drawContour = (threshold, color, width) => {
-      mapCtx.beginPath(); mapCtx.strokeStyle = color; mapCtx.lineWidth = width; mapCtx.lineCap = 'round';
+      mapCtx.strokeStyle = color;
+      mapCtx.lineWidth = width;
+      mapCtx.lineCap = 'round';
+      
       for(let r = startR; r < endR - 1; r++) {
         for(let c = startC; c < endC - 1; c++) {
-          const v0 = getV(r, c), v1 = getV(r, c+1), v2 = getV(r+1, c+1), v3 = getV(r+1, c);
+          const v0 = getV(r, c), v1 = getV(r, c + 1), v2 = getV(r + 1, c + 1), v3 = getV(r + 1, c);
           const b0 = v0 <= threshold, b1 = v1 <= threshold, b2 = v2 <= threshold, b3 = v3 <= threshold;
           if (b0 === b1 && b1 === b2 && b2 === b3) continue;
-          const pt0 = { x: GRID_START_X + c * RENDER_STEP, z: GRID_START_Z + r * RENDER_STEP };
-          const pt1 = { x: GRID_START_X + (c+1) * RENDER_STEP, z: GRID_START_Z + r * RENDER_STEP };
-          const pt2 = { x: GRID_START_X + (c+1) * RENDER_STEP, z: GRID_START_Z + (r+1) * RENDER_STEP };
-          const pt3 = { x: GRID_START_X + c * RENDER_STEP, z: GRID_START_Z + (r+1) * RENDER_STEP };
-          const interp = (pA, pB, valA, valB) => { const t = (threshold - valA) / (valB - valA + 1e-5); return { x: pA.x + t * (pB.x - pA.x), z: pA.z + t * (pB.z - pA.z) }; };
-          let pts = []; if (b0 !== b1) pts.push(interp(pt0, pt1, v0, v1)); if (b1 !== b2) pts.push(interp(pt1, pt2, v1, v2)); if (b2 !== b3) pts.push(interp(pt2, pt3, v2, v3)); if (b3 !== b0) pts.push(interp(pt3, pt0, v3, v0));
-          if (pts.length >= 2) {
-            const s1 = { x: cx + (pts[0].x - P.posX)/ecdisScale, y: cy - (pts[0].z - P.posZ)/ecdisScale };
-            const s2 = { x: cx + (pts[1].x - P.posX)/ecdisScale, y: cy - (pts[1].z - P.posZ)/ecdisScale };
-            mapCtx.moveTo(s1.x, s1.y); mapCtx.lineTo(s2.x, s2.y);
-            if (pts.length === 4) {
-              const s3 = { x: cx + (pts[2].x - P.posX)/ecdisScale, y: cy - (pts[2].z - P.posZ)/ecdisScale };
-              const s4 = { x: cx + (pts[3].x - P.posX)/ecdisScale, y: cy - (pts[3].z - P.posZ)/ecdisScale };
-              mapCtx.moveTo(s3.x, s3.y); mapCtx.lineTo(s4.x, s4.y);
+
+          const pt0 = { x: GRID_START_X + c * RENDER_STEP,       z: GRID_START_Z + r * RENDER_STEP };
+          const pt1 = { x: GRID_START_X + (c + 1) * RENDER_STEP, z: GRID_START_Z + r * RENDER_STEP };
+          const pt2 = { x: GRID_START_X + (c + 1) * RENDER_STEP, z: GRID_START_Z + (r + 1) * RENDER_STEP };
+          const pt3 = { x: GRID_START_X + c * RENDER_STEP,       z: GRID_START_Z + (r + 1) * RENDER_STEP };
+
+          const interp = (pA, pB, valA, valB) => {
+            let t = 0.5;
+            if (Math.abs(valB - valA) > 1e-5) t = (threshold - valA) / (valB - valA);
+            return { x: pA.x + t * (pB.x - pA.x), z: pA.z + t * (pB.z - pA.z) };
+          };
+
+          let points = [];
+          if (b0 !== b1) points.push(interp(pt0, pt1, v0, v1));
+          if (b1 !== b2) points.push(interp(pt1, pt2, v1, v2));
+          if (b2 !== b3) points.push(interp(pt2, pt3, v2, v3));
+          if (b3 !== b0) points.push(interp(pt3, pt0, v3, v0));
+
+          if (points.length >= 2) {
+            mapCtx.beginPath();
+            const sp1 = { x: cx + (points[0].x - P.posX) / ecdisScale, y: cy - (points[0].z - P.posZ) / ecdisScale };
+            const sp2 = { x: cx + (points[1].x - P.posX) / ecdisScale, y: cy - (points[1].z - P.posZ) / ecdisScale };
+            mapCtx.moveTo(sp1.x, sp1.y); mapCtx.lineTo(sp2.x, sp2.y);
+            if (points.length === 4) {
+              const sp3 = { x: cx + (points[2].x - P.posX) / ecdisScale, y: cy - (points[2].z - P.posZ) / ecdisScale };
+              const sp4 = { x: cx + (points[3].x - P.posX) / ecdisScale, y: cy - (points[3].z - P.posZ) / ecdisScale };
+              mapCtx.moveTo(sp3.x, sp3.y); mapCtx.lineTo(sp4.x, sp4.y);
             }
+            mapCtx.stroke();
           }
         }
       }
-      mapCtx.stroke();
     };
-    drawContour(5.0, '#1c5a8a', 1.8); drawContour(10.0, '#327ba8', 1.2); drawContour(20.0, '#5a9dc4', 1.0);
+
+    drawContour(5.0, '#1c5a8a', 1.8);
+    drawContour(10.0, '#327ba8', 1.2);
+    drawContour(20.0, '#5a9dc4', 1.0);
   }
 
-  mapCtx.strokeStyle = 'rgba(0,0,0,0.1)'; mapCtx.lineWidth = 1; mapCtx.beginPath();
-  for(let i=0; i<w; i+=60) { mapCtx.moveTo(i, 0); mapCtx.lineTo(i, h); }
-  for(let i=0; i<h; i+=60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
+  // ③ グリッド線
+  mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+  mapCtx.lineWidth = 1;
+  mapCtx.beginPath();
+  for (let i = 0; i < w; i += 60) { mapCtx.moveTo(i, 0); mapCtx.lineTo(i, h); }
+  for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  mapCtx.fillStyle = '#dcb982'; mapCtx.strokeStyle = '#222222'; mapCtx.lineWidth = 1.0;
+  // ④ 陸地の描画
+  mapCtx.fillStyle = '#dcb982'; 
+  mapCtx.strokeStyle = '#222222'; 
+  mapCtx.lineWidth = 1.0;
   parsedPolygonsXZ.forEach(item => {
-    mapCtx.beginPath();
-    item.poly.forEach((pt, i) => { const sx = cx + (pt.x-P.posX)/ecdisScale, sy = cy - (pt.z-P.posZ)/ecdisScale; if(i===0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy); });
-    mapCtx.closePath(); mapCtx.fill(); mapCtx.stroke();
+      mapCtx.beginPath();
+      item.poly.forEach((pt, i) => {
+         const sx = cx + (pt.x - P.posX) / ecdisScale;
+         const sy = cy - (pt.z - P.posZ) / ecdisScale;
+         if (i === 0) mapCtx.moveTo(sx, sy);
+         else mapCtx.lineTo(sx, sy);
+      });
+      mapCtx.closePath();
+      mapCtx.fill(); 
+      mapCtx.stroke();
   });
 
+  // ⑤ 航路の境界線
   mapCtx.save();
   FAIRWAYS.forEach(fw => {
-    mapCtx.strokeStyle = 'rgba(200, 0, 200, 0.7)'; mapCtx.lineWidth = 1.8; mapCtx.setLineDash([8, 8]);
-    mapCtx.beginPath(); fw.leftBound.forEach((pt, i) => { const xz = latLonToXZ(pt.lat, pt.lon); const sx = cx + (xz.x-P.posX)/ecdisScale, sy = cy - (xz.z-P.posZ)/ecdisScale; if(i===0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy); }); mapCtx.stroke();
-    mapCtx.beginPath(); fw.rightBound.forEach((pt, i) => { const xz = latLonToXZ(pt.lat, pt.lon); const sx = cx + (xz.x-P.posX)/ecdisScale, sy = cy - (xz.z-P.posZ)/ecdisScale; if(i===0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy); }); mapCtx.stroke();
+    mapCtx.strokeStyle = 'rgba(200, 0, 200, 0.7)';
+    mapCtx.lineWidth = 1.8;
+    mapCtx.setLineDash([8, 8]);
+
+    mapCtx.beginPath();
+    fw.leftBound.forEach((pt, i) => {
+      const xz = latLonToXZ(pt.lat, pt.lon);
+      const sx = cx + (xz.x - P.posX) / ecdisScale;
+      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      if (i === 0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy);
+    });
+    mapCtx.stroke();
+
+    mapCtx.beginPath();
+    fw.rightBound.forEach((pt, i) => {
+      const xz = latLonToXZ(pt.lat, pt.lon);
+      const sx = cx + (xz.x - P.posX) / ecdisScale;
+      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      if (i === 0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy);
+    });
+    mapCtx.stroke();
   });
   mapCtx.restore();
 
+  // ⑥ 灯浮標の図形
   BUOYS.forEach(b => {
-    const xz = latLonToXZ(b.lat, b.lon); const sx = cx + (xz.x-P.posX)/ecdisScale, sy = cy - (xz.z-P.posZ)/ecdisScale;
+    const xz = latLonToXZ(b.lat, b.lon);
+    const sx = cx + (xz.x - P.posX) / ecdisScale;
+    const sy = cy - (xz.z - P.posZ) / ecdisScale;
+
     if (sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
       mapCtx.beginPath();
-      if (b.color === "#11cc11") { mapCtx.moveTo(sx, sy-6); mapCtx.lineTo(sx+5, sy+4); mapCtx.lineTo(sx-5, sy+4); }
-      else if (b.color === "#ee1111") { mapCtx.rect(sx-4, sy-4, 8, 8); }
-      else { mapCtx.moveTo(sx, sy-6); mapCtx.lineTo(sx+5, sy); mapCtx.lineTo(sx, sy+6); mapCtx.lineTo(sx-5, sy); }
-      mapCtx.closePath(); mapCtx.fillStyle = b.color; mapCtx.fill(); mapCtx.strokeStyle = '#000000'; mapCtx.lineWidth = 1; mapCtx.stroke();
+      if (b.color === "#11cc11") {
+        mapCtx.moveTo(sx, sy - 6); mapCtx.lineTo(sx + 5, sy + 4); mapCtx.lineTo(sx - 5, sy + 4);
+      } else if (b.color === "#ee1111") {
+        mapCtx.rect(sx - 4, sy - 4, 8, 8);
+      } else {
+        mapCtx.moveTo(sx, sy - 6); mapCtx.lineTo(sx + 5, sy); mapCtx.lineTo(sx, sy + 6); mapCtx.lineTo(sx - 5, sy);
+      }
+      mapCtx.closePath();
+      mapCtx.fillStyle = b.color;
+      mapCtx.fill();
+      mapCtx.strokeStyle = '#000000';
+      mapCtx.lineWidth = 1;
+      mapCtx.stroke();
     }
   });
 
+  // ⑦ 水深の数字プロット（0.0mは除外）
   if (depthData.length > 0) {
-    const dPos = []; mapCtx.textAlign = 'center';
-    depthData.forEach(pt => {
+    const drawnPositions = []; 
+    mapCtx.textAlign = 'center';
+    
+    depthData.forEach((pt) => {
       if (pt.depth === 0.0) return;
-      const sx = cx + (pt.x-P.posX)/ecdisScale, sy = cy - (pt.z-P.posZ)/ecdisScale;
+      
+      const sx = cx + (pt.x - P.posX) / ecdisScale; 
+      const sy = cy - (pt.z - P.posZ) / ecdisScale; 
+      
       if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        const rad = pt.depth >= 20.0 ? 60 : 35;
-        if (dPos.some(p => Math.abs(p.x-sx) < rad && Math.abs(p.y-sy) < rad*0.6)) return;
-        dPos.push({x: sx, y: sy});
-        if (pt.depth <= 15.0) { mapCtx.fillStyle = '#000000'; mapCtx.font = 'bold 11px Arial'; }
-        else { mapCtx.fillStyle = '#5a6b7c'; mapCtx.font = '10px Arial'; }
+        const overlapRadius = pt.depth >= 20.0 ? 60 : 35;
+        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < overlapRadius && Math.abs(p.y - sy) < overlapRadius * 0.6);
+        if (isOverlapping) return;
+
+        drawnPositions.push({ x: sx, y: sy });
+
+        if (pt.depth <= 15.0) {
+          mapCtx.fillStyle = '#000000'; 
+          mapCtx.font = 'bold 11px Arial, sans-serif'; 
+        } else {
+          mapCtx.fillStyle = '#5a6b7c'; 
+          mapCtx.font = '10px Arial, sans-serif';
+        }
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
       }
     });
   }
 
-  mapCtx.save(); mapCtx.translate(cx, cy); mapCtx.rotate(P.heading);
-  mapCtx.beginPath(); mapCtx.moveTo(0, -12); mapCtx.lineTo(6, 8); mapCtx.lineTo(0, 4); mapCtx.lineTo(-6, 8); mapCtx.closePath();
-  mapCtx.lineWidth = 2; mapCtx.strokeStyle = '#000000'; mapCtx.stroke();
-  mapCtx.beginPath(); mapCtx.moveTo(0, -12); mapCtx.lineTo(0, -60); mapCtx.stroke();
+  // ⑧ 他船（AISターゲット）
+  if (AIships) {
+    AIships.concat(fishBoats || []).forEach(s => {
+      const pos = s.mesh ? s.mesh.position : s.position; 
+      if (!pos) return;
+      const sx = cx + (pos.x - P.posX) / ecdisScale; 
+      const sy = cy - (pos.z - P.posZ) / ecdisScale; 
+      
+      mapCtx.save();
+      mapCtx.translate(sx, sy);
+      mapCtx.rotate(s.heading || 0);
+
+      mapCtx.beginPath();
+      mapCtx.moveTo(0, -8); mapCtx.lineTo(5, 5); mapCtx.lineTo(-5, 5);  
+      mapCtx.closePath();
+      mapCtx.strokeStyle = '#000000'; 
+      mapCtx.lineWidth = 1.5;
+      mapCtx.stroke(); 
+
+      mapCtx.beginPath();
+      mapCtx.moveTo(0, -8); mapCtx.lineTo(0, -25); 
+      mapCtx.stroke();
+      mapCtx.restore();
+    });
+  }
+
+  // ⑨ 自船
+  mapCtx.save();
+  mapCtx.translate(cx, cy);
+  mapCtx.rotate(P.heading); 
+  mapCtx.beginPath();
+  mapCtx.moveTo(0, -12); mapCtx.lineTo(6, 8); mapCtx.lineTo(0, 4); mapCtx.lineTo(-6, 8); 
+  mapCtx.closePath();
+  mapCtx.lineWidth = 2;
+  mapCtx.strokeStyle = '#000000'; 
+  mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
+  mapCtx.stroke();
+  mapCtx.beginPath();
+  mapCtx.moveTo(0, -12); mapCtx.lineTo(0, -60); 
+  mapCtx.strokeStyle = '#000000';
+  mapCtx.stroke();
   mapCtx.restore();
 
+  // ⑩ 全テキストの最前面描画
   mapCtx.save();
-  const font = "sans-serif";
+  const baseFont = "sans-serif";
+
   BUOYS.forEach(b => {
-    const xz = latLonToXZ(b.lat, b.lon); const sx = cx + (xz.x-P.posX)/ecdisScale, sy = cy - (xz.z-P.posZ)/ecdisScale;
-    if (sx > -20 && sx < w+20 && sy > -20 && sy < h+20) {
-      mapCtx.font = `bold 10px ${font}`; mapCtx.textAlign = 'left'; mapCtx.lineWidth = 2.5; mapCtx.strokeStyle = '#ffffff';
-      mapCtx.strokeText(b.name, sx+7, sy+4); mapCtx.fillStyle = '#111111'; mapCtx.fillText(b.name, sx+7, sy+4);
+    const xz = latLonToXZ(b.lat, b.lon);
+    const sx = cx + (xz.x - P.posX) / ecdisScale;
+    const sy = cy - (xz.z - P.posZ) / ecdisScale;
+    if (sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
+      mapCtx.font = `bold 10px ${baseFont}`;
+      mapCtx.textAlign = 'left';
+      mapCtx.lineWidth = 2.5;
+      mapCtx.strokeStyle = '#ffffff';
+      mapCtx.strokeText(b.name, sx + 7, sy + 4);
+      mapCtx.fillStyle = '#111111';
+      mapCtx.fillText(b.name, sx + 7, sy + 4);
     }
   });
+
   if (typeof LANDMARKS !== 'undefined') {
     LANDMARKS.forEach(lm => {
-      const xz = latLonToXZ(lm.lat, lm.lon); const sx = cx + (xz.x-P.posX)/ecdisScale, sy = cy - (xz.z-P.posZ)/ecdisScale;
-      if (sx < -100 || sx > w+100 || sy < -100 || sy > h+100) return;
-      mapCtx.font = `${lm.weight || 'normal'} ${lm.size || 11}px ${font}`; mapCtx.textAlign = lm.align || "center";
-      const off = lm.offset || 0;
-      if (!lm.color || lm.color.indexOf('rgba(0,0,0,') === -1) { mapCtx.lineWidth = 3; mapCtx.strokeStyle = "rgba(255, 255, 255, 0.8)"; mapCtx.strokeText(lm.name, sx+off, sy+3); }
-      mapCtx.fillStyle = lm.color || "#000000"; mapCtx.fillText(lm.name, sx+off, sy+3);
+      const xz = latLonToXZ(lm.lat, lm.lon);
+      const sx = cx + (xz.x - P.posX) / ecdisScale;
+      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      if (sx < -100 || sx > w + 100 || sy < -100 || sy > h + 100) return;
+
+      const size = lm.size || 11;
+      const weight = lm.weight || "normal";
+      mapCtx.font = `${weight} ${size}px ${baseFont}`;
+      mapCtx.textAlign = lm.align || "center";
+      const offset = lm.offset || 0;
+
+      if (!lm.color || lm.color.indexOf('rgba(0,0,0,') === -1) {
+        mapCtx.lineWidth = 3;
+        mapCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        mapCtx.strokeText(lm.name, sx + offset, sy + 3);
+      }
+      mapCtx.fillStyle = lm.color || "#000000";
+      mapCtx.fillText(lm.name, sx + offset, sy + 3);
     });
   }
   mapCtx.restore();
 
-  mapCtx.fillStyle = '#000000'; mapCtx.font = 'bold 14px Arial'; mapCtx.textAlign = 'left'; mapCtx.textBaseline = 'top';
+  // ⑪ 左上の情報テキスト
+  mapCtx.fillStyle = '#000000'; 
+  mapCtx.font = 'bold 14px Arial, sans-serif';
+  mapCtx.textAlign = 'left';
+  mapCtx.textBaseline = 'top';
   mapCtx.fillText('ECDIS - TOKYO BAY SYSTEM', 20, 20);
-  mapCtx.font = '12px Arial'; mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale*100)}`, 20, 45);
+  mapCtx.font = '12px Arial, sans-serif';
+  mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
+  
   const ll = xzToLatLon(P.posX, P.posZ);
-  if (ll) { mapCtx.fillText(`LAT   : ${formatLatLon(ll.lat, true)}`, 20, 65); mapCtx.fillText(`LON   : ${formatLatLon(ll.lon, false)}`, 20, 80); }
+  if (ll) {
+    mapCtx.fillText(`LAT   : ${formatLatLon(ll.lat, true)}`, 20, 65);
+    mapCtx.fillText(`LON   : ${formatLatLon(ll.lon, false)}`, 20, 80);
+  }
+
+  let deg = (P.heading * 180 / Math.PI + 360) % 360;
+  if (deg < 0) deg += 360;
+  mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
+  mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);
+
+  const currentDepth = getRealDepthAt(P.posX, P.posZ);
+  mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
+
+  mapCtx.textAlign = 'right';
+  mapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  mapCtx.fillText('[Drag] Pan / [Wheel] Zoom / [DblClick] Reset', w - 20, h - 30);
 }
