@@ -6,6 +6,7 @@
 export const P = {
   // 位置・姿勢
   posX: 0, posZ: 0,
+  shipScale: 1.0,  // GLTFロード完了前のデフォルト値（NaN防止）
   heading: 0,      // rad（北=0, 東=π/2）
   speed: 0,        // 対水速力（knot）
   driftX: 0,       // 横流れ X成分（m/s）

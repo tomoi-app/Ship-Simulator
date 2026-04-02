@@ -63,23 +63,30 @@ function drawRain() {
 }
 
 // ============================================================
-//  メニュー画面の背景設定（船・建物を消して軽くする）
+//  メニュー画面の背景設定
+//  shipGroup / buoys / AIships / tugs を gameGroup にまとめて
+//  isMenuMode に応じて一括 visible 切替する
 // ============================================================
-function setMenuState(isMenuMode) {
-  scene.children.forEach(c => {
-    if (c.type.includes('Light')) return; 
-    if (c === sky || c === ocean) return; 
-    if (c.geometry && c.geometry.type === 'PlaneGeometry' && c.position.y > 100) return; 
-    
-    // 船や建物など重いものは非表示
-    c.visible = !isMenuMode; 
-  });
+const gameGroup = new THREE.Group();
+gameGroup.name = 'gameGroup';
+scene.add(gameGroup);
 
-  if (isMenuMode) {
-    camera.position.set(0, 40, 0); 
-    camera.rotation.order = 'YXZ';
-    camera.rotation.set(0, Math.PI, 0); // 南を向く
-  }
+// buildShip / buildWorld / buildAI で生成されたオブジェクトを
+// scene から gameGroup に付け替える（ライト・海・空はそのまま）
+function reparentToGameGroup() {
+  const keep = new Set([sky, ocean, gameGroup]);
+  scene.children.slice().forEach(c => {
+    if (keep.has(c)) return;
+    if (c.isLight) return;
+    scene.remove(c);
+    gameGroup.add(c);
+  });
+}
+// GLTF等の非同期ロードが完了してから付け替えるため、次フレームで実行
+requestAnimationFrame(reparentToGameGroup);
+
+function setMenuState(isMenuMode) {
+  gameGroup.visible = !isMenuMode;
 }
 
 // ============================================================
@@ -557,6 +564,10 @@ window.goSel = function() {
   document.getElementById('comp-c')?.classList.add('h');
   document.getElementById('telegraph-panel')?.classList.add('h');
   document.getElementById('time-scale-btn')?.classList.add('h');
+
+  // カメラ視点をリセット（次ミッション開始時に正面を向く）
+  camOffset.yaw   = 0;
+  camOffset.pitch = 0;
   
   // メニューに戻った時はトップのモード選択画面に戻す
   showModeSel(); 
@@ -597,9 +608,15 @@ function loop(t) {
 
   // --- 以下はゲーム中のみ実行される処理 ---
   const scaledDt = dt * timeScale;
-  simTime += scaledDt * 1000; 
+  simTime += scaledDt * 1000;
 
-  updatePhysics(dt, curM ? curM.waves : 1, goActive, simTime, timeScale);
+  // timeScale が大きいほどサブステップを増やして物理発散を防ぐ
+  // timeScale=1→1step, 2→2, 4→4, 8→8
+  const subSteps = timeScale;
+  const subDt    = dt / subSteps;
+  for (let i = 0; i < subSteps; i++) {
+    updatePhysics(subDt, curM ? curM.waves : 1, goActive, simTime, timeScale);
+  }
   updAI(scaledDt); 
   updTugs(scaledDt);
 
