@@ -147,11 +147,10 @@ function initMap() {
   
   Object.assign(mapCv.style, {
     position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%',
-    // ECDIS標準のDayモード（深海は白）
-    backgroundColor: '#ffffff', 
-    border: '2px solid #555555', 
-    borderRadius: '4px',
-    boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+    backgroundColor: '#ffffff', // ベースは白（深海）
+    border: '4px solid #4a5b6c', // ECDISのベゼル枠
+    borderRadius: '2px',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
     zIndex: '500', display: 'none', 
     pointerEvents: 'auto'
   });
@@ -159,38 +158,36 @@ function initMap() {
   document.body.appendChild(mapCv);
   mapCtx = mapCv.getContext('2d');
 
+  // ★大修正：e.stopPropagation() を追加して、裏側の3D視点操作を完全にブロック！
   mapCv.addEventListener('mousedown', (e) => {
+    e.stopPropagation(); 
     isDragging = true;
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   });
 
   mapCv.addEventListener('mousemove', (e) => {
+    e.stopPropagation();
     if (!isDragging) return;
-    const dx = e.clientX - lastMouseX;
-    const dy = e.clientY - lastMouseY;
-    panX += dx;
-    panY += dy;
+    panX += e.clientX - lastMouseX;
+    panY += e.clientY - lastMouseY;
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   });
 
-  mapCv.addEventListener('mouseup', () => isDragging = false);
-  mapCv.addEventListener('mouseleave', () => isDragging = false);
+  mapCv.addEventListener('mouseup', (e) => { e.stopPropagation(); isDragging = false; });
+  mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
 
   mapCv.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    if (e.deltaY < 0) {
-      ecdisScale = Math.max(5, ecdisScale * 0.8); 
-    } else {
-      ecdisScale = Math.min(250, ecdisScale * 1.25); 
-    }
+    e.stopPropagation(); 
+    e.preventDefault(); // 画面スクロールも防止
+    if (e.deltaY < 0) ecdisScale = Math.max(5, ecdisScale * 0.8); 
+    else ecdisScale = Math.min(250, ecdisScale * 1.25); 
   });
 
-  mapCv.addEventListener('dblclick', () => {
-    panX = 0;
-    panY = 0;
-    ecdisScale = 25;
+  mapCv.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    panX = 0; panY = 0; ecdisScale = 25;
   });
 }
 
@@ -210,12 +207,43 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   const w = mapCv.width;
   const h = mapCv.height;
-  mapCtx.clearRect(0, 0, w, h);
+  
+  // ★追加：画面全体をまず「安全な深海（白）」で塗りつぶす
+  mapCtx.fillStyle = '#ffffff';
+  mapCtx.fillRect(0, 0, w, h);
 
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // グリッド線（薄いグレー）
+  // --- ★追加：水深による海の色分け（浅瀬のシェーディング） ---
+  if (depthData.length > 0) {
+    depthData.forEach((pt) => {
+      // 15m以上の安全な深海は白のままにするためスキップ
+      if (pt.depth >= 15.0) return;
+
+      const dx = pt.x - P.posX;
+      const dz = pt.z - P.posZ; 
+      const sx = cx + dx / ecdisScale; 
+      const sy = cy - dz / ecdisScale; 
+      
+      // 画面内の点のみ処理
+      if (sx > -50 && sx < w + 50 && sy > -50 && sy < h + 50) {
+        // 円の半径（水深の点をつなげて等深線のような塗りつぶしを作る）
+        const radius = 450 / ecdisScale; 
+
+        mapCtx.beginPath();
+        if (pt.depth <= 5.0) {
+          mapCtx.fillStyle = '#87ccdf'; // 5m以下：濃い水色（危険）
+        } else if (pt.depth <= 15.0) {
+          mapCtx.fillStyle = '#bfe4f0'; // 5〜15m：薄い水色（警戒）
+        }
+        mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+        mapCtx.fill();
+      }
+    });
+  }
+
+  // --- グリッド線（目立たないグレー） ---
   mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
@@ -223,11 +251,10 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // 陸地の描画
+  // --- 陸地の描画 ---
   if (geoData) {
-    // ECDIS規格の陸地色（黄土色）
+    // ★変更：ECDIS標準の陸地色（黄土色/サンドカラー）
     mapCtx.fillStyle = '#dcb982'; 
-    // 海岸線（黒）
     mapCtx.strokeStyle = '#222222'; 
     mapCtx.lineWidth = 1.0;
 
@@ -249,6 +276,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           else mapCtx.lineTo(sx, sy);
         });
         
+        // ★ ここで陸地を黄土色に塗りつぶす
         if (isPolygon) {
           mapCtx.closePath();
           mapCtx.fill(); 
@@ -262,7 +290,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // 水深のプロット
+  // --- 水深の数字プロット ---
   if (depthData.length > 0) {
     const safetyDepth = 15.0; 
     const drawnPositions = []; 
@@ -282,13 +310,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
         drawnPositions.push({ x: sx, y: sy });
 
+        // ★文字の色もDayモード仕様に変更
         if (pt.depth <= safetyDepth) {
-          // 浅瀬：黒の太字
-          mapCtx.fillStyle = '#000000'; 
+          mapCtx.fillStyle = '#000000'; // 浅瀬：黒の太字
           mapCtx.font = 'bold 11px Arial, sans-serif'; 
         } else {
-          // 安全水深以上：グレーの細字
-          mapCtx.fillStyle = '#777777'; 
+          mapCtx.fillStyle = '#777777'; // 安全水深以上：グレーの細字
           mapCtx.font = '10px Arial, sans-serif';
         }
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
@@ -296,7 +323,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // ブイの描画
+  // --- ブイの描画 ---
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
@@ -307,7 +334,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
-  // 他船（AISターゲット）の描画
+  // --- 他船（AISターゲット）の描画 ---
   AIships.concat(fishBoats).forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
@@ -320,7 +347,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.translate(sx, sy);
     mapCtx.rotate(s.heading);
 
-    // AISターゲット：黒枠の三角形
+    // ★黒枠の三角形に変更
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);  
     mapCtx.lineTo(5, 5);   
@@ -334,16 +361,15 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.moveTo(0, -8);
     mapCtx.lineTo(0, -25); 
     mapCtx.stroke();
-
     mapCtx.restore();
   });
 
-  // 自船の描画
+  // --- 自船の描画 ---
   mapCtx.save();
   mapCtx.translate(cx, cy);
   mapCtx.rotate(P.heading); 
 
-  // 自船：黒の太い枠線
+  // ★黒の太い枠線に変更
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12); 
   mapCtx.lineTo(6, 8);  
@@ -356,17 +382,15 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
   mapCtx.stroke();
   
-  // ヘディングライン
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12);
   mapCtx.lineTo(0, -60); 
   mapCtx.strokeStyle = '#000000';
   mapCtx.stroke();
-
   mapCtx.restore();
 
-  // 左上の情報テキスト（Dayモード用に黒文字へ変更）
-  mapCtx.fillStyle = '#000000'; 
+  // --- 左上の情報テキスト ---
+  mapCtx.fillStyle = '#000000'; // 黒文字
   mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
