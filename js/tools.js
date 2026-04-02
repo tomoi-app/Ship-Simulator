@@ -119,21 +119,22 @@ function isPointInPolygon(px, pz, poly) {
 }
 
 function generateRealisticDepths() {
-  console.log("🌊 リアル水深データ（等深線対応・陸地完全回避版）の生成を開始...");
+  console.log("🌊 リアル水深データ（等深線対応・長方形拡大版）の生成を開始...");
   
-  // ★ 有名な浅瀬の完全実装
+  // ★ 中ノ瀬が海図上で広大な浅瀬として目立つように、半径と深さを微調整
   const famousShoals = [
-    { name: "中ノ瀬", pos: latLonToXZ(35.4200, 139.7750), radius: 4500, depth: 10.0 },
-    { name: "富津岬沖", pos: latLonToXZ(35.3150, 139.7900), radius: 3500, depth: 5.0 },
-    { name: "観音崎", pos: latLonToXZ(35.2600, 139.7500), radius: 1200, depth: 8.0 },
+    { name: "中ノ瀬", pos: latLonToXZ(35.4200, 139.7750), radius: 6000, depth: 9.0 },
+    { name: "富津岬沖", pos: latLonToXZ(35.3150, 139.7900), radius: 4000, depth: 3.0 },
+    { name: "観音崎", pos: latLonToXZ(35.2600, 139.7500), radius: 2000, depth: 8.0 },
     { name: "盤洲干潟", pos: latLonToXZ(35.4000, 139.9000), radius: 6000, depth: 2.0 },
-    { name: "羽田沖", pos: latLonToXZ(35.5400, 139.8000), radius: 2500, depth: 7.0 }
+    { name: "羽田沖", pos: latLonToXZ(35.5400, 139.8000), radius: 3000, depth: 7.0 }
   ];
 
-  for (let x = -45000; x <= 45000; x += 300) { 
-    for (let z = -45000; z <= 45000; z += 300) {
+  // ★ 房総半島の先端までカバーする非対称な長方形でループ！
+  // x(東西): -30km 〜 +60km  /  z(南北): -75km 〜 +30km
+  for (let x = -30000; x <= 60000; x += 300) { 
+    for (let z = -75000; z <= 30000; z += 300) {
       
-      // ★ 陸地判定：座標が陸地の中なら、絶対に水深を生成しない（スキップ）
       let onLand = false;
       for (let i = 0; i < parsedPolygonsXZ.length; i++) {
           const { poly, bounds } = parsedPolygonsXZ[i];
@@ -142,15 +143,16 @@ function generateRealisticDepths() {
       }
       if (onLand) continue; 
 
-      // 陸からの距離による基本水深（少しノイズを入れて海図らしく）
-      let calculatedDepth = 15.0 + (Math.random() * 5); 
+      // ★ 修正点1：東京湾全体のベース水深を 25m〜30m に深くする
+      // これにより「20mより深い海」となり、ベース色（一番薄い青）になります。
+      let calculatedDepth = 25.0 + (Math.random() * 5); 
 
-      // 浅瀬の適用
       famousShoals.forEach(s => {
         const dToShoal = Math.sqrt((s.pos.x - x)**2 + (s.pos.z - z)**2);
         if (dToShoal < s.radius) {
-          const ratio = 1.0 - (dToShoal / s.radius);
-          // 浅瀬の中心に近いほど、指定した水深に近づく
+          // ★ 修正点2：浅瀬の範囲を広く見せるため、変化を「放物線（カーブ）」にする
+          // 中心から離れても急激に深くならず、広い範囲で浅瀬色になります！
+          const ratio = 1.0 - Math.pow(dToShoal / s.radius, 2);
           calculatedDepth = calculatedDepth * (1 - ratio) + s.depth * ratio;
         }
       });
@@ -164,7 +166,6 @@ function generateRealisticDepths() {
     }
   }
 
-  // ★ 描画用に、深い順（深海→浅瀬）に並べ替える
   depthData.sort((a, b) => b.depth - a.depth);
   console.log(`ECDIS: 水深データ（${depthData.length}地点）生成完了！`);
 }
@@ -218,8 +219,8 @@ function initMap() {
     panX += e.clientX - lastMouseX;
     panY += e.clientY - lastMouseY;
     
-    // パン移動の限界を 3000 に拡大！
-    const limit = 3000;
+    // 南の果てまで見に行けるように限界を拡大
+    const limit = 6000;
     panX = Math.max(-limit, Math.min(limit, panX));
     panY = Math.max(-limit, Math.min(limit, panY));
 
