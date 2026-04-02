@@ -42,54 +42,63 @@ function formatLatLon(deg, isLat) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 手書きの赤線（西側シフト）に完全準拠
+// 航路データ (Fairways & Buoys) — 000右寄せ・325急角度版
 // ============================================================
 const FAIRWAYS = [
   {
     name: "SOUTH APPROACH",
-    leftBound:  [ { lat: 35.150, lon: 139.736 }, { lat: 35.250, lon: 139.736 } ],
-    rightBound: [ { lat: 35.150, lon: 139.752 }, { lat: 35.250, lon: 139.752 } ]
+    // 進入路を大きく右（東）へスライド。変針点も早めの緯度35.230に設定
+    leftBound:  [ { lat: 35.150, lon: 139.760 }, { lat: 35.230, lon: 139.760 } ],
+    rightBound: [ { lat: 35.150, lon: 139.776 }, { lat: 35.230, lon: 139.776 } ]
   },
   {
     name: "URAGA SUIDO",
-    leftBound:  [ { lat: 35.250, lon: 139.736 }, { lat: 35.320, lon: 139.726 } ],
-    rightBound: [ { lat: 35.250, lon: 139.752 }, { lat: 35.320, lon: 139.742 } ]
+    // 139.760から139.718へ、より角度をつけて斜めに横断するルート
+    leftBound:  [ { lat: 35.230, lon: 139.760 }, { lat: 35.320, lon: 139.718 } ],
+    rightBound: [ { lat: 35.230, lon: 139.776 }, { lat: 35.320, lon: 139.734 } ]
   },
   {
     name: "NAKANOSE",
-    leftBound:  [ { lat: 35.320, lon: 139.726 }, { lat: 35.400, lon: 139.756 } ],
-    rightBound: [ { lat: 35.320, lon: 139.742 }, { lat: 35.400, lon: 139.772 } ]
+    // 中ノ瀬は位置を完全固定
+    leftBound:  [ { lat: 35.320, lon: 139.718 }, { lat: 35.400, lon: 139.748 } ],
+    rightBound: [ { lat: 35.320, lon: 139.734 }, { lat: 35.400, lon: 139.764 } ]
   }
 ];
 
 const BUOYS = [
-  { name: "U1", lat: 35.180, lon: 139.736, color: "#11cc11" },
-  { name: "U2", lat: 35.180, lon: 139.752, color: "#ee1111" },
-  { name: "U3", lat: 35.250, lon: 139.736, color: "#11cc11" },
-  { name: "U4", lat: 35.250, lon: 139.752, color: "#ee1111" },
-  { name: "U5", lat: 35.285, lon: 139.731, color: "#11cc11" },
-  { name: "U6", lat: 35.285, lon: 139.747, color: "#ee1111" },
-  { name: "U7", lat: 35.320, lon: 139.726, color: "#11cc11" },
-  { name: "U8", lat: 35.320, lon: 139.742, color: "#ee1111" },
-  { name: "N1", lat: 35.340, lon: 139.733, color: "#11cc11" },
-  { name: "N2", lat: 35.340, lon: 139.749, color: "#ee1111" },
-  { name: "N3", lat: 35.370, lon: 139.745, color: "#11cc11" },
-  { name: "N4", lat: 35.370, lon: 139.761, color: "#ee1111" },
-  { name: "N7", lat: 35.400, lon: 139.756, color: "#11cc11" },
-  { name: "N8", lat: 35.400, lon: 139.772, color: "#ee1111" },
+  // 浦賀水道 南口
+  { name: "U1", lat: 35.180, lon: 139.760, color: "#11cc11" },
+  { name: "U2", lat: 35.180, lon: 139.776, color: "#ee1111" },
+  // 観音崎沖の変針点 (000 -> 325)
+  { name: "U3", lat: 35.230, lon: 139.760, color: "#11cc11" },
+  { name: "U4", lat: 35.230, lon: 139.776, color: "#ee1111" },
+  // 浦賀水道 中間
+  { name: "U5", lat: 35.275, lon: 139.739, color: "#11cc11" },
+  { name: "U6", lat: 35.275, lon: 139.755, color: "#ee1111" },
+  // 第二海堡北側の変針点 (325 -> 021)
+  { name: "U7", lat: 35.320, lon: 139.718, color: "#11cc11" },
+  { name: "U8", lat: 35.320, lon: 139.734, color: "#ee1111" },
+  // 中ノ瀬
+  { name: "N1", lat: 35.340, lon: 139.726, color: "#11cc11" },
+  { name: "N2", lat: 35.340, lon: 139.742, color: "#ee1111" },
+  { name: "N3", lat: 35.370, lon: 139.737, color: "#11cc11" },
+  { name: "N4", lat: 35.370, lon: 139.753, color: "#ee1111" },
+  { name: "N7", lat: 35.400, lon: 139.748, color: "#11cc11" },
+  { name: "N8", lat: 35.400, lon: 139.764, color: "#ee1111" },
+  // ランドマーク
   { name: "風の塔", lat: 35.4914, lon: 139.8347, color: "#ffffff" },
   { name: "海ほたる", lat: 35.4636, lon: 139.8753, color: "#ffffff" }
 ];
 
 const LANDMARKS = [
-  { name: "観音崎灯台", lat: 35.253, lon: 139.735, align: "right" },
-  { name: "第二海堡",   lat: 35.308, lon: 139.725, align: "right" },
-  { name: "浦賀灯台",   lat: 35.210, lon: 139.720, align: "right" },
-  { name: "富津灯台",   lat: 35.310, lon: 139.790, align: "left" },
-  { name: "中ノ瀬灯標", lat: 35.360, lon: 139.740, align: "right" }, 
+  { name: "観音崎灯台", lat: 35.253, lon: 139.730, align: "right" },
+  { name: "第二海堡",   lat: 35.308, lon: 139.710, align: "right" },
+  { name: "浦賀灯台",   lat: 35.210, lon: 139.715, align: "right" },
+  { name: "富津灯台",   lat: 35.310, lon: 139.780, align: "left" },
+  { name: "中ノ瀬灯標", lat: 35.360, lon: 139.725, align: "right" }, 
   { name: "東 京 湾",   lat: 35.450, lon: 139.850, size: 24, weight: "bold", color: "rgba(0,0,0,0.4)" }, 
-  { name: "浦賀水道",   lat: 35.270, lon: 139.710, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" },
-  { name: "中 ノ 瀬",   lat: 35.360, lon: 139.735, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" }, 
+  { name: "浦賀水道",   lat: 35.270, lon: 139.700, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" },
+  { name: "中 ノ 瀬",   lat: 35.360, lon: 139.720, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" }, 
   { name: "木更津港",   lat: 35.370, lon: 139.900, align: "left" },
   { name: "横須賀港",   lat: 35.290, lon: 139.670, align: "right" },
   { name: "横浜港",     lat: 35.450, lon: 139.670, align: "right" },
