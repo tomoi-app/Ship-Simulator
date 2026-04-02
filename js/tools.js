@@ -208,23 +208,48 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // --- ECDIS上に水深の数値をプロット ---
+  // --- ECDIS上に水深の数値をプロット（リアルECDIS仕様） ---
   if (depthData.length > 0) {
-    mapCtx.fillStyle = '#4488aa'; 
-    // 実際のECDISのように、文字を少し斜体にして海図らしさを出す
-    mapCtx.font = 'italic 11px "Montserrat", sans-serif'; 
+    // 1. 本船の安全水深（Safety Depth）を設定
+    // ※今回は喫水(Draft)12m + 余裕水深(UKC)3m = 15.0m を安全水深とする
+    const safetyDepth = 15.0; 
+    
+    // 2. 文字の重なり（クラッター）を防ぐための配列
+    const drawnPositions = []; 
+
     mapCtx.textAlign = 'center';
     
     depthData.forEach((pt) => {
+      // 水深50m以上の安全な深海は、海図をスッキリさせるため数字を非表示にする
+      if (pt.depth >= 50.0) return;
+
       const dx = pt.x - P.posX;
       const dz = pt.z - P.posZ; 
       const sx = cx + dx / scale; 
       const sy = cy - dz / scale; 
       
-      // 画面内に収まっている水深点だけを描画
+      // 画面内に収まっている水深点だけを処理
       if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        // 水深10m未満の浅瀬はオレンジ色にして注意を促す
-        mapCtx.fillStyle = pt.depth < 10.0 ? '#cc8844' : '#4488aa';
+        
+        // 3. 重なり判定：近く（縦横25ピクセル以内）に既に数字を描画していたらスキップ
+        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < 25 && Math.abs(p.y - sy) < 15);
+        if (isOverlapping) return;
+
+        // 描画位置を記録
+        drawnPositions.push({ x: sx, y: sy });
+
+        // 4. ECDIS規格に倣った色とフォントの使い分け
+        if (pt.depth <= safetyDepth) {
+          // 【危険・浅瀬】安全水深以下：太字＆目立つ警告色（オレンジ）
+          mapCtx.fillStyle = '#ff8800'; 
+          mapCtx.font = 'bold 12px "Montserrat", sans-serif';
+        } else {
+          // 【安全】安全水深より深い：細字＆目立たない色（半透明の暗い水色）
+          mapCtx.fillStyle = 'rgba(68, 136, 170, 0.4)'; 
+          mapCtx.font = 'italic 10px "Montserrat", sans-serif';
+        }
+
+        // 実際のECDISのように、少数第一位まで表示
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
       }
     });
