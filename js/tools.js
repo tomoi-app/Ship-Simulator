@@ -37,82 +37,101 @@ function latLonToXZ(lat, lon) {
 }
 
 // ============================================================
-// 🌊 リアル疑似水深ジェネレーター（海岸線からの距離で深さを計算）
+// 🌊 リアル疑似水深ジェネレーター（厳密な陸地判定アルゴリズム搭載）
 // ============================================================
 function generateRealisticDepths() {
   if (!geoData) return;
-  console.log("🌊 リアル疑似水深データの生成を開始します...");
+  console.log("🌊 リアル疑似水深データ（高密度版）の生成を開始します...");
   
-  // 1. 計算を高速化するために、海岸線の座標（点）をすべて抽出
   const landPoints = [];
+  const landPolygons = []; // ★ 陸地の「面」を保存する配列
+
+  // 1. 陸地データの抽出と「面」の構築
   geoData.features.forEach(feat => {
     if (!feat.geometry) return;
     const type = feat.geometry.type;
     const coords = feat.geometry.coordinates;
 
-    const addPoints = (points) => {
+    const extractPoints = (points) => {
+      const poly = [];
       points.forEach(p => {
          const {x, z} = latLonToXZ(p[1], p[0]);
          landPoints.push({x, z});
+         poly.push({x, z});
       });
+      return poly;
     };
 
-    if (type === 'LineString') addPoints(coords);
-    else if (type === 'Polygon') coords.forEach(r => addPoints(r));
-    else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => addPoints(r)));
+    if (type === 'Polygon') {
+      coords.forEach(r => landPolygons.push(extractPoints(r)));
+    } else if (type === 'MultiPolygon') {
+      coords.forEach(poly => poly.forEach(r => landPolygons.push(extractPoints(r))));
+    } else if (type === 'LineString') {
+      const poly = extractPoints(coords);
+      // ★ 枠線の始点と終点が近い（5km以内）なら、強制的に「陸地の面（ポリゴン）」として扱う
+      const dist = Math.sqrt((coords[0][0] - coords[coords.length-1][0])**2 + (coords[0][1] - coords[coords.length-1][1])**2);
+      if (dist < 0.05) { 
+          landPolygons.push(poly);
+      }
+    }
   });
 
-  // ★ 実務的危険度に基づく、東京湾5大危険水域の錬成
+  // ★ PIP（Point in Polygon）アルゴリズム：指定した座標が「陸地の内側」かを厳密に判定
+  function isPointInPolygon(px, pz, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          let xi = poly[i].x, zi = poly[i].z;
+          let xj = poly[j].x, zj = poly[j].z;
+          let intersect = ((zi > pz) != (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+          if (intersect) inside = !inside;
+      }
+      return inside;
+  }
+
   const famousShoals = [
-    // ① 中ノ瀬（木更津沖：広大な浅瀬。この中心を貫く航路から外れると即座に10m前後の水深に捕まる）
     { name: "Nakanose", pos: latLonToXZ(35.4200, 139.7750), radius: 4500, depth: 10.0 },
-    
-    // ② 富津岬〜第一海堡ライン（張り出す浅瀬。変針時の潮流圧流で逸脱しやすい罠）
-    { name: "Futtsu - Fort No.1", pos: latLonToXZ(35.3150, 139.7900), radius: 3500, depth: 5.0 },
-    
-    // ③ 観音崎周辺（湾口の最難関。狭水道・交通密集・急流のトリプルコンボ＋岩礁）
+    { name: "Futtsu", pos: latLonToXZ(35.3150, 139.7900), radius: 3500, depth: 5.0 },
     { name: "Kannonzaki", pos: latLonToXZ(35.2600, 139.7500), radius: 1200, depth: 8.0 },
-    
-    // ④ 盤洲干潟（航路外の広大な罠。他船避航などで東側に逃げすぎると終わる）
-    { name: "Banzu Flat", pos: latLonToXZ(35.4000, 139.9000), radius: 6000, depth: 2.0 },
-    
-    // ⑤ 羽田沖（多摩川河口の土砂堆積。東京港・川崎港アプローチ時の脅威）
-    { name: "Haneda Offshore", pos: latLonToXZ(35.5400, 139.8000), radius: 2500, depth: 7.0 }
+    { name: "Banzu", pos: latLonToXZ(35.4000, 139.9000), radius: 6000, depth: 2.0 },
+    { name: "Haneda", pos: latLonToXZ(35.5400, 139.8000), radius: 2500, depth: 7.0 }
   ];
 
-  // 2. 東京湾全体（50km四方）に、600m間隔で水深の「点」をばらまく
-  for (let x = -25000; x <= 25000; x += 600) { 
-    for (let z = -25000; z <= 25000; z += 600) {
+  // 2. 水深データの生成（隙間をなくすため、600m→300m間隔の高密度に強化！）
+  for (let x = -25000; x <= 25000; x += 300) { 
+    for (let z = -25000; z <= 25000; z += 300) {
       
+      // ★ 最重要：この座標が「陸地」なら、水深データは絶対に作らない（スキップ）
+      let onLand = false;
+      for (let i = 0; i < landPolygons.length; i++) {
+          if (isPointInPolygon(x, z, landPolygons[i])) {
+              onLand = true; break;
+          }
+      }
+      if (onLand) continue; 
+
+      // 陸地からの距離を計算（高速化のため間引いて計算）
       let minDist = Infinity;
-      // 近くの陸地（海岸線）との距離を測る（高速化のため5つ飛ばしで計算）
       for (let i = 0; i < landPoints.length; i += 5) {
-        const lp = landPoints[i];
-        const dist = Math.sqrt((lp.x - x)**2 + (lp.z - z)**2);
+        const dist = Math.abs(landPoints[i].x - x) + Math.abs(landPoints[i].z - z);
         if (dist < minDist) minDist = dist;
       }
+      minDist = minDist * 0.7; // 近似値
 
-      // 3. 陸地から離れている場所（海）だけに水深を設定する
-      if (minDist > 100) { 
-        // 基本計算：距離50mにつき1m深くなる ＋ ランダムなデコボコ
-        let calculatedDepth = (minDist / 50) + (Math.random() * 3 - 1.5); 
-        
-        // ★ 危険水域（浅瀬）の判定を上書き
+      if (minDist > 50) { 
+        let calculatedDepth = (minDist / 50) + (Math.random() * 2 - 1); 
+
         famousShoals.forEach(s => {
           const dToShoal = Math.sqrt((s.pos.x - x)**2 + (s.pos.z - z)**2);
           if (dToShoal < s.radius) {
-            // 中心に近いほど指定の水深に近づける
             const ratio = 1.0 - (dToShoal / s.radius);
             calculatedDepth = calculatedDepth * (1 - ratio) + s.depth * ratio;
           }
         });
 
-        // 水深の限界値を 2.5m 〜 45.0m に設定
         calculatedDepth = Math.max(2.5, Math.min(45.0, calculatedDepth)); 
         
-        // 点が規則的なグリッドに並ばないように、座標も少しズラす
-        const offsetX = (Math.random() - 0.5) * 200;
-        const offsetZ = (Math.random() - 0.5) * 200;
+        const offsetX = (Math.random() - 0.5) * 100;
+        const offsetZ = (Math.random() - 0.5) * 100;
         
         depthData.push({ x: x + offsetX, z: z + offsetZ, depth: calculatedDepth });
       }
@@ -121,9 +140,6 @@ function generateRealisticDepths() {
   console.log(`ECDIS: リアル疑似水深データ（${depthData.length}地点）の生成完了！`);
 }
 
-// ============================================================
-// 現在地の水深を取得する関数
-// ============================================================
 export function getRealDepthAt(posX, posZ) {
   if (depthData.length === 0) return 99.9; 
   let closestDepth = 99.9;
@@ -131,7 +147,6 @@ export function getRealDepthAt(posX, posZ) {
   for (let i = 0; i < depthData.length; i++) {
     const pt = depthData[i];
     const distSq = (pt.x - posX) ** 2 + (pt.z - posZ) ** 2;
-    // 500m以内で一番近い水深点のデータを採用
     if (distSq < minDistance && distSq < 250000) { 
       minDistance = distSq;
       closestDepth = pt.depth;
@@ -202,6 +217,9 @@ export function toggleTool() {
   }
 }
 
+// ============================================================
+// 🎨 海図の描画（完璧な陸地塗りつぶし＆本物の青色グラデーション）
+// ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (!toolOpen || !mapCtx) return;
 
@@ -210,32 +228,40 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // ★ 魔法のトリック1：画面全体をまず「陸地（黄土色）」で塗りつぶす！
-  // これにより、どんなにデータが欠けていても枠線の内側は必ず陸地になります。
-  mapCtx.fillStyle = '#dcb982'; 
+  // ★ 1. 海のベースカラー（白は使わず、本物のような落ち着いた深海の青）
+  mapCtx.fillStyle = '#9cb8c9'; 
   mapCtx.fillRect(0, 0, w, h);
 
-  // --- 海の描画（青色の滑らかなグラデーション） ---
+  // ★ 2. 水深による滑らかな青の濃淡（グラデーション）
   if (depthData.length > 0) {
     depthData.forEach((pt) => {
+      if (pt.depth >= 20.0) return; // 20m以上の深海はベースの青のまま
+
       const dx = pt.x - P.posX;
       const dz = pt.z - P.posZ; 
       const sx = cx + dx / ecdisScale; 
       const sy = cy - dz / ecdisScale; 
       
-      // 海の描画半径（グリッドの隙間を埋める大きさ）
-      const radius = 600 / ecdisScale; 
+      const radius = 500 / ecdisScale; // 色を滑らかに重ね合わせるための半径
       
       if (sx > -radius && sx < w + radius && sy > -radius && sy < h + radius) {
-        // ★ 魔法のトリック2：水深(0m〜25m)に応じた滑らかな青色グラデーション（白は不使用）
-        // 浅い(0m) = 濃い青 rgb(60, 120, 170)
-        // 深い(25m以上) = 薄い青 rgb(170, 200, 220)
-        let ratio = Math.max(0, Math.min(1, pt.depth / 25.0));
-        const r = Math.floor(60 + (170 - 60) * ratio);
-        const g = Math.floor(120 + (200 - 120) * ratio);
-        const b = Math.floor(170 + (220 - 170) * ratio);
+        const grad = mapCtx.createRadialGradient(sx, sy, 0, sx, sy, radius);
 
-        mapCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        if (pt.depth <= 5.0) {
+          // 危険な浅瀬（0-5m）：明るい水色
+          grad.addColorStop(0, 'rgba(156, 214, 235, 0.9)'); 
+          grad.addColorStop(1, 'rgba(156, 214, 235, 0)');
+        } else if (pt.depth <= 15.0) {
+          // 警戒水域（5-15m）：中間の青
+          grad.addColorStop(0, 'rgba(136, 192, 216, 0.6)'); 
+          grad.addColorStop(1, 'rgba(136, 192, 216, 0)');
+        } else {
+          // やや浅い（15-20m）：薄い青
+          grad.addColorStop(0, 'rgba(146, 185, 208, 0.4)'); 
+          grad.addColorStop(1, 'rgba(146, 185, 208, 0)');
+        }
+
+        mapCtx.fillStyle = grad;
         mapCtx.beginPath();
         mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
         mapCtx.fill();
@@ -243,7 +269,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // --- グリッド線（目立たないグレー） ---
+  // --- グリッド線 ---
   mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
@@ -251,8 +277,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // --- 海岸線と陸地の描画 ---
+  // ★ 3. 陸地の描画（枠線を強制的に閉じて黄土色に塗る！）
   if (geoData) {
+    mapCtx.fillStyle = '#dcb982'; // 本物の黄土色
+    mapCtx.strokeStyle = '#222222'; 
+    mapCtx.lineWidth = 1.0;
+
     geoData.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
@@ -271,31 +301,26 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           else mapCtx.lineTo(sx, sy);
         });
         
-        // 本当のポリゴンの場合のみ閉じる（直線バグ防止）
+        // 枠線の内側をすべて黄土色で塗りつぶす
         if (isPolygon) {
           mapCtx.closePath();
+          mapCtx.fill(); 
         }
-
-        // ★ 魔法のトリック3：海岸線に「現実の1000m幅」の黄土色の線を引く
-        // これが消しゴムの役割を果たし、陸地に食い込んだ海を綺麗に消し去ります！
-        mapCtx.lineWidth = 1000 / ecdisScale; 
-        mapCtx.strokeStyle = '#dcb982'; // 陸地色
-        mapCtx.stroke();
-
-        // 最後に、実際の海岸線を細い黒で描画する
-        mapCtx.lineWidth = 1.0;
-        mapCtx.strokeStyle = '#222222';
         mapCtx.stroke();
       };
 
-      // LineString（線）は閉じない（false）設定に戻しました！
-      if (type === 'LineString') drawShape(coords, false); 
-      else if (type === 'Polygon') coords.forEach(r => drawShape(r, true));
+      if (type === 'Polygon') coords.forEach(r => drawShape(r, true));
       else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => drawShape(r, true)));
+      else if (type === 'LineString') {
+         // 線データでも、始点と終点が近いなら強制的に「面」にして内側を塗る
+         const dist = Math.sqrt((coords[0][0] - coords[coords.length-1][0])**2 + (coords[0][1] - coords[coords.length-1][1])**2);
+         if (dist < 0.05) drawShape(coords, true);
+         else drawShape(coords, false);
+      }
     });
   }
 
-  // --- 水深の数字プロット ---
+  // --- 4. 水深の数字プロット（見やすく間引き） ---
   if (depthData.length > 0) {
     const safetyDepth = 15.0; 
     const drawnPositions = []; 
@@ -310,7 +335,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       const sy = cy - dz / ecdisScale; 
       
       if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < 25 && Math.abs(p.y - sy) < 15);
+        // ★ 数字が密集しすぎないように、チェック範囲を広げてスッキリさせる
+        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < 30 && Math.abs(p.y - sy) < 20);
         if (isOverlapping) return;
 
         drawnPositions.push({ x: sx, y: sy });
@@ -319,7 +345,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           mapCtx.fillStyle = '#000000'; // 浅瀬：黒の太字
           mapCtx.font = 'bold 11px Arial, sans-serif'; 
         } else {
-          mapCtx.fillStyle = '#666666'; // 安全水深以上：グレーの細字
+          mapCtx.fillStyle = '#666666'; // 安全：グレーの細字
           mapCtx.font = '10px Arial, sans-serif';
         }
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
@@ -327,7 +353,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // --- ブイの描画 ---
+  // --- ブイ ---
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
@@ -338,7 +364,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
-  // --- 他船（AISターゲット）の描画 ---
+  // --- 他船（黒枠） ---
   AIships.concat(fishBoats).forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
@@ -367,7 +393,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.restore();
   });
 
-  // --- 自船の描画 ---
+  // --- 自船（黒太枠） ---
   mapCtx.save();
   mapCtx.translate(cx, cy);
   mapCtx.rotate(P.heading); 
