@@ -218,7 +218,7 @@ export function toggleTool() {
 }
 
 // ============================================================
-// 🎨 海図の描画（完璧な陸地塗りつぶし＆本物の青色グラデーション）
+//  2. 海図の描画（水深表示オフ・陸と海を正確に分ける完全版）
 // ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (!toolOpen || !mapCtx) return;
@@ -228,48 +228,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // ★ 1. 海のベースカラー（白は使わず、本物のような落ち着いた深海の青）
-  mapCtx.fillStyle = '#9cb8c9'; 
+  // 1. 画面全体を「海（青色）」で塗りつぶす
+  mapCtx.fillStyle = '#9cb8c9'; // 本物のECDISに近い落ち着いた青色
   mapCtx.fillRect(0, 0, w, h);
 
-  // ★ 2. 水深による滑らかな青の濃淡（グラデーション）
-  if (depthData.length > 0) {
-    depthData.forEach((pt) => {
-      if (pt.depth >= 20.0) return; // 20m以上の深海はベースの青のまま
-
-      const dx = pt.x - P.posX;
-      const dz = pt.z - P.posZ; 
-      const sx = cx + dx / ecdisScale; 
-      const sy = cy - dz / ecdisScale; 
-      
-      const radius = 500 / ecdisScale; // 色を滑らかに重ね合わせるための半径
-      
-      if (sx > -radius && sx < w + radius && sy > -radius && sy < h + radius) {
-        const grad = mapCtx.createRadialGradient(sx, sy, 0, sx, sy, radius);
-
-        if (pt.depth <= 5.0) {
-          // 危険な浅瀬（0-5m）：明るい水色
-          grad.addColorStop(0, 'rgba(156, 214, 235, 0.9)'); 
-          grad.addColorStop(1, 'rgba(156, 214, 235, 0)');
-        } else if (pt.depth <= 15.0) {
-          // 警戒水域（5-15m）：中間の青
-          grad.addColorStop(0, 'rgba(136, 192, 216, 0.6)'); 
-          grad.addColorStop(1, 'rgba(136, 192, 216, 0)');
-        } else {
-          // やや浅い（15-20m）：薄い青
-          grad.addColorStop(0, 'rgba(146, 185, 208, 0.4)'); 
-          grad.addColorStop(1, 'rgba(146, 185, 208, 0)');
-        }
-
-        mapCtx.fillStyle = grad;
-        mapCtx.beginPath();
-        mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
-        mapCtx.fill();
-      }
-    });
-  }
-
-  // --- グリッド線 ---
+  // グリッド線
   mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
@@ -277,12 +240,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // ★ 3. 陸地の描画（枠線を強制的に閉じて黄土色に塗る！）
+  // 2. 陸地データの正確な描画（バグの原因を完全排除）
   if (geoData) {
-    mapCtx.fillStyle = '#dcb982'; // 本物の黄土色
-    mapCtx.strokeStyle = '#222222'; 
-    mapCtx.lineWidth = 1.0;
-
     geoData.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
@@ -293,149 +252,118 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
         points.forEach((p, i) => {
           const { x, z } = latLonToXZ(p[1], p[0]);
           const dx = x - P.posX;
-          const dz = z - P.posZ; 
-          const sx = cx + dx / ecdisScale; 
-          const sy = cy - dz / ecdisScale; 
+          const dz = z - P.posZ;
+          const sx = cx + dx / ecdisScale;
+          const sy = cy - dz / ecdisScale;
 
           if (i === 0) mapCtx.moveTo(sx, sy);
           else mapCtx.lineTo(sx, sy);
         });
-        
-        // 枠線の内側をすべて黄土色で塗りつぶす
+
+        // 面データ（Polygon）の場合のみ、内側を黄土色に塗る
         if (isPolygon) {
           mapCtx.closePath();
-          mapCtx.fill(); 
+          mapCtx.fillStyle = '#dcb982'; // 陸地（黄土色）
+          mapCtx.fill();
         }
+
+        // 線を描く（海岸線）
+        mapCtx.lineWidth = 1.0;
+        mapCtx.strokeStyle = '#222222';
         mapCtx.stroke();
       };
 
-      if (type === 'Polygon') coords.forEach(r => drawShape(r, true));
-      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => drawShape(r, true)));
-      else if (type === 'LineString') {
-         // 線データでも、始点と終点が近いなら強制的に「面」にして内側を塗る
-         const dist = Math.sqrt((coords[0][0] - coords[coords.length-1][0])**2 + (coords[0][1] - coords[coords.length-1][1])**2);
-         if (dist < 0.05) drawShape(coords, true);
-         else drawShape(coords, false);
+      // データ型に忠実に描画する（強引な塗りつぶしを絶対にしない）
+      if (type === 'Polygon') {
+        coords.forEach(r => drawShape(r, true));
+      } else if (type === 'MultiPolygon') {
+        coords.forEach(poly => poly.forEach(r => drawShape(r, true)));
+      } else if (type === 'LineString') {
+        drawShape(coords, false); // ★線データは絶対に塗りつぶさない！
       }
     });
   }
 
-  // --- 4. 水深の数字プロット（見やすく間引き） ---
-  if (depthData.length > 0) {
-    const safetyDepth = 15.0; 
-    const drawnPositions = []; 
-    mapCtx.textAlign = 'center';
-    
-    depthData.forEach((pt) => {
-      if (pt.depth >= 50.0) return;
-
-      const dx = pt.x - P.posX;
-      const dz = pt.z - P.posZ; 
-      const sx = cx + dx / ecdisScale; 
-      const sy = cy - dz / ecdisScale; 
-      
-      if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        // ★ 数字が密集しすぎないように、チェック範囲を広げてスッキリさせる
-        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < 30 && Math.abs(p.y - sy) < 20);
-        if (isOverlapping) return;
-
-        drawnPositions.push({ x: sx, y: sy });
-
-        if (pt.depth <= safetyDepth) {
-          mapCtx.fillStyle = '#000000'; // 浅瀬：黒の太字
-          mapCtx.font = 'bold 11px Arial, sans-serif'; 
-        } else {
-          mapCtx.fillStyle = '#666666'; // 安全：グレーの細字
-          mapCtx.font = '10px Arial, sans-serif';
-        }
-        mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
-      }
-    });
-  }
-
-  // --- ブイ ---
+  // 3. ブイの描画
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
-    const sx = cx + dx / ecdisScale; 
-    const sy = cy - dz / ecdisScale; 
+    const sx = cx + dx / ecdisScale;
+    const sy = cy - dz / ecdisScale;
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
-  // --- 他船（黒枠） ---
+  // 4. 他船（AISターゲット）の描画
   AIships.concat(fishBoats).forEach(s => {
-    const pos = s.mesh ? s.mesh.position : s.position; 
+    const pos = s.mesh ? s.mesh.position : s.position;
     if (!pos) return;
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
-    const sx = cx + dx / ecdisScale; 
-    const sy = cy - dz / ecdisScale; 
-    
+    const sx = cx + dx / ecdisScale;
+    const sy = cy - dz / ecdisScale;
+
     mapCtx.save();
     mapCtx.translate(sx, sy);
     mapCtx.rotate(s.heading);
 
     mapCtx.beginPath();
-    mapCtx.moveTo(0, -8);  
-    mapCtx.lineTo(5, 5);   
-    mapCtx.lineTo(-5, 5);  
+    mapCtx.moveTo(0, -8);
+    mapCtx.lineTo(5, 5);
+    mapCtx.lineTo(-5, 5);
     mapCtx.closePath();
-    mapCtx.strokeStyle = '#000000'; 
+    mapCtx.strokeStyle = '#000000';
     mapCtx.lineWidth = 1.5;
-    mapCtx.stroke(); 
+    mapCtx.stroke();
 
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);
-    mapCtx.lineTo(0, -25); 
+    mapCtx.lineTo(0, -25);
     mapCtx.stroke();
     mapCtx.restore();
   });
 
-  // --- 自船（黒太枠） ---
+  // 5. 自船の描画
   mapCtx.save();
   mapCtx.translate(cx, cy);
-  mapCtx.rotate(P.heading); 
+  mapCtx.rotate(P.heading);
 
   mapCtx.beginPath();
-  mapCtx.moveTo(0, -12); 
-  mapCtx.lineTo(6, 8);  
-  mapCtx.lineTo(0, 4);   
-  mapCtx.lineTo(-6, 8); 
+  mapCtx.moveTo(0, -12);
+  mapCtx.lineTo(6, 8);
+  mapCtx.lineTo(0, 4);
+  mapCtx.lineTo(-6, 8);
   mapCtx.closePath();
-  
+
   mapCtx.lineWidth = 2;
-  mapCtx.strokeStyle = '#000000'; 
-  mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
+  mapCtx.strokeStyle = '#000000';
+  mapCtx.fillStyle = 'rgba(0,0,0,0)';
   mapCtx.stroke();
-  
+
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12);
-  mapCtx.lineTo(0, -60); 
+  mapCtx.lineTo(0, -60);
   mapCtx.strokeStyle = '#000000';
   mapCtx.stroke();
   mapCtx.restore();
 
-  // --- 左上の情報テキスト ---
-  mapCtx.fillStyle = '#000000'; 
+  // 6. テキスト情報の描画
+  mapCtx.fillStyle = '#000000';
   mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
   mapCtx.fillText('ECDIS - TOKYO BAY SYSTEM', 20, 20);
-  
+
   mapCtx.font = '12px Arial, sans-serif';
   mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
   mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
   mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
-  
+
   let deg = (P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
   mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
   mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);
-
-  const currentDepth = getRealDepthAt(P.posX, P.posZ);
-  mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
 
   mapCtx.textAlign = 'right';
   mapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
