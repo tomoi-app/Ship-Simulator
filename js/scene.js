@@ -433,10 +433,8 @@ export function buildShip(THREE, scene) {
     // 3. モデルの中心のズレを修正する（原点に持ってくる）
     //    喫水線 = モデル底面がy=0に来るようにオフセット
     //    center.y はスケール前の値なので scaleFactor を掛けて実メートルに換算
-    const bottomY   = box.min.y * scaleFactor;   // スケール後のモデル底面Y
-    const draftTarget = -8.0;                    // 喫水線より少し沈める（m）
     model.position.x = -center.x * scaleFactor;
-    model.position.y = -bottomY + draftTarget;   // 底面をdraftTarget(m)沈める
+    model.position.y = (-center.y * scaleFactor) + 20;
     model.position.z = -center.z * scaleFactor;
 
   
