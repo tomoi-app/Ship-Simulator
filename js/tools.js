@@ -29,6 +29,15 @@ function latLonToXZ(lat, lon) {
 }
 
 // ============================================================
+// 航路・ブイの全体位置補正（風の塔キャリブレーション用）
+// ============================================================
+// 地図ポリゴンと航路データの測地系のズレを吸収するためのオフセット値です。
+// 「風の塔」のブイが、実際の陸地ポリゴンに重なるように数値を微調整してください。
+// （0.001 で約 111m スライドします）
+const ROUTE_OFFSET_LAT = 0.000; // プラスで北、マイナスで南へ移動
+const ROUTE_OFFSET_LON = 0.000; // プラスで東、マイナスで西へ移動
+
+// ============================================================
 // 航路データ (Fairways & Buoys) — WGS84 正確な緯度経度ベース
 // ============================================================
 const FAIRWAYS = [
@@ -599,7 +608,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     // 左舷側境界線
     mapCtx.beginPath();
     fw.leftBound.forEach((pt, i) => {
-      const xz = latLonToXZ(pt.lat, pt.lon);
+      // ★ 緯度経度にオフセットを加算
+      const xz = latLonToXZ(pt.lat + ROUTE_OFFSET_LAT, pt.lon + ROUTE_OFFSET_LON);
       const sx = cx + (xz.x - P.posX) / ecdisScale;
       const sy = cy - (xz.z - P.posZ) / ecdisScale;
       if (i === 0) mapCtx.moveTo(sx, sy);
@@ -610,7 +620,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     // 右舷側境界線
     mapCtx.beginPath();
     fw.rightBound.forEach((pt, i) => {
-      const xz = latLonToXZ(pt.lat, pt.lon);
+      // ★ 緯度経度にオフセットを加算
+      const xz = latLonToXZ(pt.lat + ROUTE_OFFSET_LAT, pt.lon + ROUTE_OFFSET_LON);
       const sx = cx + (xz.x - P.posX) / ecdisScale;
       const sy = cy - (xz.z - P.posZ) / ecdisScale;
       if (i === 0) mapCtx.moveTo(sx, sy);
@@ -619,7 +630,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.stroke();
 
     // 航路名の描画
-    const mxz = latLonToXZ(fw.center.lat, fw.center.lon);
+    const mxz = latLonToXZ(fw.center.lat + ROUTE_OFFSET_LAT, fw.center.lon + ROUTE_OFFSET_LON);
     mapCtx.setLineDash([]);
     mapCtx.fillStyle = 'rgba(200, 0, 200, 0.8)';
     mapCtx.font = 'italic bold 11px Arial, sans-serif';
@@ -630,7 +641,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   // ⑦ 灯浮標 (Buoys) の描画（IALA基準の形状）
   BUOYS.forEach(b => {
-    const xz = latLonToXZ(b.lat, b.lon);
+    // ★ 緯度経度にオフセットを加算
+    const xz = latLonToXZ(b.lat + ROUTE_OFFSET_LAT, b.lon + ROUTE_OFFSET_LON);
     const sx = cx + (xz.x - P.posX) / ecdisScale;
     const sy = cy - (xz.z - P.posZ) / ecdisScale;
 
@@ -666,7 +678,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.fillText(b.name, sx + 7, sy + 4);
     }
   });
-  mapCtx.restore();
 
   // ⑦ 水深の数字プロット（深海も含めてすべて描画するように変更）
   if (depthData.length > 0) {
