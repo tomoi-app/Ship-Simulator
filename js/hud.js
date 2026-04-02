@@ -280,6 +280,9 @@ export function applyWeatherOverlay(m) {
   const ni  = document.getElementById('night-ov');
   const wo  = document.getElementById('wx-ov');
   const rc  = document.getElementById('rain-cv');
+  
+  // ★追加: 天候情報表示用の要素を取得
+  const wi  = document.getElementById('wx-info'); 
 
   if (ni)  ni.style.background = 'rgba(0,4,16,0)';
   if (wo)  wo.style.background = 'rgba(0,0,0,0)';
@@ -295,8 +298,12 @@ export function applyWeatherOverlay(m) {
   if (m.wx === 'rain') {
     if (rc) rc.style.opacity = '.7';
   }
+  
   if (m.fog > 0.4) {
     if (wi) { wi.classList.remove('h'); wi.textContent = `🌫 視程${Math.round((1 - m.fog) * 10 + 1)}km — レーダー活用`; }
+  } else {
+    // ★追加: 霧が晴れている場合は表示を隠す
+    if (wi) { wi.classList.add('h'); }
   }
 }
 

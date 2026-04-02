@@ -29,7 +29,7 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.01, 5
 
 const { scene, sky, sun, amb, moon } = buildScene(THREE);
 const { ocean, wu }                   = buildOcean(THREE, scene);
-const { shipGroup, prop }             = buildShip(THREE, scene);
+const { shipGroup, prop, navLights } = buildShip(THREE, scene);
 const { buoys }                       = buildWorld(THREE, scene);
 const { AIships, fishBoats, tugs, wakeUniforms } = buildAI(THREE, scene);
 buildLandmass(THREE, scene);
@@ -334,6 +334,9 @@ window.startM = function(id) {
   applyWeatherScene(m);
   applyWeatherOverlay(m);
   
+  // ★追加: 夜間('ngt')の場合は航海灯を点灯させる
+  toggleNight(scene, m.wx === 'ngt');
+  
   // メニューフラグを解除し、ゲームの物理演算を有効化
   isMenu = false;
 };
@@ -509,9 +512,9 @@ function upd3D(t) {
   camera.rotation.y = Math.PI + yr;
   camera.rotation.x = pr;
 
-  if (curM?.wx === 'ngt') {
+  if (curM?.wx === 'ngt' && navLights && navLights.mast) {
     const fl = 0.82 + Math.sin(t * 0.003) * 0.18;
-    navL.mast.intensity = 3.8 * fl;
+    navLights.mast.intensity = 3.8 * fl;
   }
 
   prop.rotation.x += P.speed * 0.06;

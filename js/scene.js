@@ -516,15 +516,15 @@ export function buildShip(THREE, scene) {
   sternLight.rotation.y = Math.PI; // 真後ろを照射
   navLights.add(sternLight);
 
-  navLights.visible = false; // 初期状態は消灯（夜間に点灯）
-  SG.add(navLights);
+  // ★追加: main.js からマスト灯の光度を操作できるよう、SpotLightへの参照を持たせる
+  // fwdMast は Group で、[0]:Mesh, [1]:Object3D(target), [2]:SpotLight の順に add されているため [2] を取得
+  navLights.mast = fwdMast.children[2]; 
 
-  // プロペラアニメーション用のダミー
   const prop = new THREE.Group(); 
   SG.add(prop);
 
   scene.add(SG);
-  return { shipGroup: SG, prop };
+  return { shipGroup: SG, prop, navLights };
 }
 
 export function toggleNight(scene, night) {

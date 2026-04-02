@@ -28,6 +28,22 @@ function latLonToXZ(lat, lon) {
   return { x, z };
 }
 
+// 平面直角座標(X, Z)から緯度経度へ逆変換する関数
+function xzToLatLon(x, z) {
+  const lat = (z / 111320) + ORIGIN_LAT;
+  const lon = (x / (111320 * Math.cos(ORIGIN_LAT * Math.PI / 180))) + ORIGIN_LON;
+  return { lat, lon };
+}
+
+// 緯度経度を海図で一般的な「度分表記 (XX° YY.YY')」に変換する関数
+function formatLatLon(deg, isLat) {
+  const absDeg = Math.abs(deg);
+  const d = Math.floor(absDeg);
+  const m = ((absDeg - d) * 60).toFixed(2);
+  const dir = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W');
+  return `${String(d).padStart(isLat ? 2 : 3, '0')}° ${String(m).padStart(5, '0')}' ${dir}`;
+}
+
 // ============================================================
 // 1. 地図データのロードと「陸地ポリゴン」の生成（1回だけ実行）
 // ============================================================
@@ -199,6 +215,15 @@ function generateRealisticDepths() {
 const GRID_CELL = 600;   // セルサイズ（水深データの間隔300mの2倍）
 const depthGrid = new Map();
 
+// --- ここから追加：空間補間（Interpolation）用のデータ ---
+const GRID_START_X = -30000, GRID_END_X = 60000;
+const GRID_START_Z = -75000, GRID_END_Z = 30000;
+const RENDER_STEP = 600; // 描画用の空間補間解像度（メートル）
+let renderGrid = null;
+let gridCols = 0;
+let gridRows = 0;
+// --- ここまで追加 ---
+
 function _gridKey(x, z) {
   return `${Math.round(x / GRID_CELL)},${Math.round(z / GRID_CELL)}`;
 }
@@ -209,6 +234,22 @@ function _buildDepthGrid() {
     const key = _gridKey(pt.x, pt.z);
     if (!depthGrid.has(key)) depthGrid.set(key, pt.depth);
   });
+
+  // --- ここから追加：等深線描画のための空間補間グリッド生成 ---
+  gridCols = Math.ceil((GRID_END_X - GRID_START_X) / RENDER_STEP) + 1;
+  gridRows = Math.ceil((GRID_END_Z - GRID_START_Z) / RENDER_STEP) + 1;
+  renderGrid = new Float32Array(gridCols * gridRows);
+  
+  for(let r = 0; r < gridRows; r++) {
+    for(let c = 0; c < gridCols; c++) {
+      const gx = GRID_START_X + c * RENDER_STEP;
+      const gz = GRID_START_Z + r * RENDER_STEP;
+      // 既存の高速検索を使ってグリッドの各交点の深度を確定する
+      renderGrid[r * gridCols + c] = getRealDepthAt(gx, gz);
+    }
+  }
+  // --- ここまで追加 ---
+
   console.log(`ECDIS: 深度グリッド構築完了（${depthGrid.size}セル）`);
 }
 
@@ -315,33 +356,98 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.fillStyle = '#c6dbef'; 
   mapCtx.fillRect(0, 0, w, h);
 
-  // ② 水深による「等深帯（Color Bands）」の描画
-  if (depthData.length > 0) {
-    depthData.forEach((pt) => {
-      if (pt.depth >= 20.0) return; // 深海はベース色のまま
+  // ② 水深による「等深帯（Color Bands）」と「等深線」の描画（空間補間グリッド使用）
+  if (renderGrid) {
+    // 処理を軽くするため、画面に見えている範囲のグリッドだけを計算する
+    const worldMinX = P.posX - cx * ecdisScale;
+    const worldMaxX = P.posX + (w - cx) * ecdisScale;
+    const worldMaxZ = P.posZ + cy * ecdisScale; 
+    const worldMinZ = P.posZ - (h - cy) * ecdisScale;
 
-      const dx = pt.x - P.posX;
-      const dz = pt.z - P.posZ; 
-      const sx = cx + dx / ecdisScale; 
-      const sy = cy - dz / ecdisScale; 
-      
-      const radius = 550 / ecdisScale; 
-      
-      if (sx > -radius && sx < w + radius && sy > -radius && sy < h + radius) {
-        // ★ 水深帯による色分け（円が重なることで等深線が形成される）
-        if (pt.depth <= 5.0) {
-          mapCtx.fillStyle = '#4292c6'; // 危険浅瀬（0-5m）：濃い青
-        } else if (pt.depth <= 10.0) {
-          mapCtx.fillStyle = '#6baed6'; // 警戒水域（5-10m）：普通の青
-        } else if (pt.depth <= 20.0) {
-          mapCtx.fillStyle = '#9ecae1'; // 浅瀬（10-20m）：薄めの青
-        }
+    const startC = Math.max(0, Math.floor((worldMinX - GRID_START_X) / RENDER_STEP) - 1);
+    const endC   = Math.min(gridCols - 1, Math.ceil((worldMaxX - GRID_START_X) / RENDER_STEP) + 1);
+    const startR = Math.max(0, Math.floor((worldMinZ - GRID_START_Z) / RENDER_STEP) - 1);
+    const endR   = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 1);
 
-        mapCtx.beginPath();
-        mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
-        mapCtx.fill();
+    // [A] 水深帯の塗りつぶし
+    for(let r = startR; r < endR; r++) {
+      for(let c = startC; c < endC; c++) {
+        const d = renderGrid[r * gridCols + c];
+        if (d >= 20.0) continue;
+
+        if (d <= 5.0) mapCtx.fillStyle = '#4292c6';
+        else if (d <= 10.0) mapCtx.fillStyle = '#6baed6';
+        else mapCtx.fillStyle = '#9ecae1';
+
+        const gx = GRID_START_X + c * RENDER_STEP;
+        const gz = GRID_START_Z + r * RENDER_STEP;
+        const sx = cx + (gx - P.posX) / ecdisScale;
+        const sy = cy - (gz - P.posZ) / ecdisScale;
+        const sSize = (RENDER_STEP / ecdisScale) + 1.5; // 隙間防止
+
+        mapCtx.fillRect(sx - sSize/2, sy - sSize/2, sSize, sSize);
       }
-    });
+    }
+
+    // [B] マーチングスクエア法による滑らかな等深線の生成
+    const drawContour = (threshold, color, width) => {
+      mapCtx.beginPath();
+      mapCtx.strokeStyle = color;
+      mapCtx.lineWidth = width;
+      mapCtx.lineCap = 'round';
+      
+      for(let r = startR; r < endR - 1; r++) {
+        for(let c = startC; c < endC - 1; c++) {
+          const v0 = renderGrid[r * gridCols + c];
+          const v1 = renderGrid[r * gridCols + c + 1];
+          const v2 = renderGrid[(r + 1) * gridCols + c + 1];
+          const v3 = renderGrid[(r + 1) * gridCols + c];
+
+          const b0 = v0 <= threshold, b1 = v1 <= threshold;
+          const b2 = v2 <= threshold, b3 = v3 <= threshold;
+          if (b0 === b1 && b1 === b2 && b2 === b3) continue; // 線が通らないセルはスキップ
+
+          // 4つの角のワールド座標
+          const pt0 = { x: GRID_START_X + c * RENDER_STEP,       z: GRID_START_Z + r * RENDER_STEP };
+          const pt1 = { x: GRID_START_X + (c + 1) * RENDER_STEP, z: GRID_START_Z + r * RENDER_STEP };
+          const pt2 = { x: GRID_START_X + (c + 1) * RENDER_STEP, z: GRID_START_Z + (r + 1) * RENDER_STEP };
+          const pt3 = { x: GRID_START_X + c * RENDER_STEP,       z: GRID_START_Z + (r + 1) * RENDER_STEP };
+
+          // 閾値に一致する正確な交点を線形補間で計算
+          const interp = (pA, pB, valA, valB) => {
+            const t = (threshold - valA) / (valB - valA + 1e-5);
+            return { x: pA.x + t * (pB.x - pA.x), z: pA.z + t * (pB.z - pA.z) };
+          };
+
+          let points = [];
+          if (b0 !== b1) points.push(interp(pt0, pt1, v0, v1)); // 上辺との交点
+          if (b1 !== b2) points.push(interp(pt1, pt2, v1, v2)); // 右辺との交点
+          if (b2 !== b3) points.push(interp(pt2, pt3, v2, v3)); // 下辺との交点
+          if (b3 !== b0) points.push(interp(pt3, pt0, v3, v0)); // 左辺との交点
+
+          if (points.length >= 2) {
+            const sp1 = { x: cx + (points[0].x - P.posX) / ecdisScale, y: cy - (points[0].z - P.posZ) / ecdisScale };
+            const sp2 = { x: cx + (points[1].x - P.posX) / ecdisScale, y: cy - (points[1].z - P.posZ) / ecdisScale };
+            mapCtx.moveTo(sp1.x, sp1.y);
+            mapCtx.lineTo(sp2.x, sp2.y);
+            
+            // 鞍点（線が交差する特殊なセル）の場合はもう1本引く
+            if (points.length === 4) {
+              const sp3 = { x: cx + (points[2].x - P.posX) / ecdisScale, y: cy - (points[2].z - P.posZ) / ecdisScale };
+              const sp4 = { x: cx + (points[3].x - P.posX) / ecdisScale, y: cy - (points[3].z - P.posZ) / ecdisScale };
+              mapCtx.moveTo(sp3.x, sp3.y);
+              mapCtx.lineTo(sp4.x, sp4.y);
+            }
+          }
+        }
+      }
+      mapCtx.stroke();
+    };
+
+    // 海図らしく 5m, 10m, 20m の等深線をくっきりと描画
+    drawContour(5.0, '#1c5a8a', 1.8);
+    drawContour(10.0, '#327ba8', 1.2);
+    drawContour(20.0, '#5a9dc4', 1.0);
   }
 
   // ③ グリッド線
@@ -370,33 +476,33 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.stroke();
   });
 
-  // ⑤ 水深の数字プロット
+  // ⑤ 水深の数字プロット（深海も含めてすべて描画するように変更）
   if (depthData.length > 0) {
     const safetyDepth = 15.0; 
     const drawnPositions = []; 
     mapCtx.textAlign = 'center';
     
     depthData.forEach((pt) => {
-      // 20m以上の深海は数字を出さずスッキリさせる
-      if (pt.depth >= 20.0) return;
-
+      // 20m以上の制限を削除し、全ての水深を描画対象にする
+      
       const dx = pt.x - P.posX;
       const dz = pt.z - P.posZ; 
       const sx = cx + dx / ecdisScale; 
       const sy = cy - dz / ecdisScale; 
       
       if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        // 数字が重ならないよう間引き幅を広げる
-        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < 35 && Math.abs(p.y - sy) < 20);
+        // 深い場所は数字が密集しないよう、間引き判定（overlapRadius）を広めにとる
+        const overlapRadius = pt.depth >= 20.0 ? 60 : 35;
+        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < overlapRadius && Math.abs(p.y - sy) < overlapRadius * 0.6);
         if (isOverlapping) return;
 
         drawnPositions.push({ x: sx, y: sy });
 
         if (pt.depth <= safetyDepth) {
-          mapCtx.fillStyle = '#000000'; 
+          mapCtx.fillStyle = '#000000'; // 浅瀬は黒で強調
           mapCtx.font = 'bold 11px Arial, sans-serif'; 
         } else {
-          mapCtx.fillStyle = '#444444'; 
+          mapCtx.fillStyle = '#5a6b7c'; // 深海は少し落ち着いた色に
           mapCtx.font = '10px Arial, sans-serif';
         }
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
@@ -477,8 +583,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   
   mapCtx.font = '12px Arial, sans-serif';
   mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
-  mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
-  mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
+  
+  // 現在のX, Z座標を緯度経度に変換
+  const ll = xzToLatLon(P.posX, P.posZ);
+  mapCtx.fillText(`LAT   : ${formatLatLon(ll.lat, true)}`, 20, 65);
+  mapCtx.fillText(`LON   : ${formatLatLon(ll.lon, false)}`, 20, 80);
   
   let deg = (P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
