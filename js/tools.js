@@ -28,6 +28,45 @@ function latLonToXZ(lat, lon) {
   return { x, z };
 }
 
+// ============================================================
+// 航路データ (Fairways & Buoys) — 海図.pdf に基づく定義
+// ============================================================
+const FAIRWAYS = [
+  {
+    name: "URAGA SUIDO",
+    path: [
+      { lat: 35.172, lon: 139.740 }, // U1付近
+      { lat: 35.215, lon: 139.730 }, // 中間 (lon 35.215 はタイポと思われるため 139.730 に修正)
+      { lat: 35.255, lon: 139.718 }  // 第二海堡付近
+    ],
+    width: 1400 // 航路幅（メートル）
+  },
+  {
+    name: "NAKANOSE",
+    path: [
+      { lat: 35.280, lon: 139.780 },
+      { lat: 35.350, lon: 139.815 }
+    ],
+    width: 1000
+  },
+  {
+    name: "TOKYO",
+    path: [
+      { lat: 35.535, lon: 139.805 },
+      { lat: 35.590, lon: 139.790 }
+    ],
+    width: 500
+  }
+];
+
+// 灯浮標（ブイ）のデータ
+const BUOYS = [
+  { name: "U1", lat: 35.172, lon: 139.740, color: "green" },
+  { name: "U2", lat: 35.175, lon: 139.755, color: "red" },
+  { name: "NW1", lat: 35.358, lon: 139.785, color: "yellow" },
+  { name: "KAZE-NO-TO", lat: 35.586, lon: 139.782, color: "white" }
+];
+
 // 平面直角座標(X, Z)から緯度経度へ逆変換する関数
 function xzToLatLon(x, z) {
   const lat = (z / 111320) + ORIGIN_LAT;
@@ -535,7 +574,61 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.stroke();
   });
 
-  // ⑤ 水深の数字プロット（深海も含めてすべて描画するように変更）
+  // ⑤ 航路 (Fairways) の描画
+  mapCtx.save();
+  FAIRWAYS.forEach(fw => {
+    mapCtx.beginPath();
+    mapCtx.strokeStyle = 'rgba(255, 0, 255, 0.6)'; // マゼンタ（破線）
+    mapCtx.lineWidth = 2;
+    mapCtx.setLineDash([10, 10]);
+
+    fw.path.forEach((pt, i) => {
+      const xz = latLonToXZ(pt.lat, pt.lon);
+      const sx = cx + (xz.x - P.posX) / ecdisScale;
+      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      if (i === 0) mapCtx.moveTo(sx, sy);
+      else mapCtx.lineTo(sx, sy);
+    });
+    mapCtx.stroke();
+    mapCtx.setLineDash([]); // 破線解除
+
+    // 航路名の描画
+    const mid = fw.path[Math.floor(fw.path.length / 2)];
+    const mxz = latLonToXZ(mid.lat, mid.lon);
+    mapCtx.fillStyle = 'rgba(200, 0, 200, 0.9)';
+    mapCtx.font = 'italic bold 10px sans-serif';
+    mapCtx.fillText(fw.name, cx + (mxz.x - P.posX) / ecdisScale + 5, cy - (mxz.z - P.posZ) / ecdisScale);
+  });
+
+  // ⑥ 灯浮標 (Buoys) の描画
+  BUOYS.forEach(b => {
+    const xz = latLonToXZ(b.lat, b.lon);
+    const sx = cx + (xz.x - P.posX) / ecdisScale;
+    const sy = cy - (xz.z - P.posZ) / ecdisScale;
+
+    if (sx > 0 && sx < w && sy > 0 && sy < h) {
+      // ブイのシンボル（菱形）
+      mapCtx.beginPath();
+      mapCtx.fillStyle = b.color;
+      mapCtx.strokeStyle = '#000';
+      mapCtx.lineWidth = 1;
+      mapCtx.moveTo(sx, sy - 6);
+      mapCtx.lineTo(sx + 4, sy);
+      mapCtx.lineTo(sx, sy + 6);
+      mapCtx.lineTo(sx - 4, sy);
+      mapCtx.closePath();
+      mapCtx.fill();
+      mapCtx.stroke();
+      
+      // ブイ名
+      mapCtx.fillStyle = '#333';
+      mapCtx.font = '9px Arial';
+      mapCtx.fillText(b.name, sx + 6, sy + 3);
+    }
+  });
+  mapCtx.restore();
+
+  // ⑦ 水深の数字プロット（深海も含めてすべて描画するように変更）
   if (depthData.length > 0) {
     const safetyDepth = 15.0; 
     const drawnPositions = []; 
@@ -569,18 +662,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // ⑥ ブイ
-  buoys.forEach(b => {
-    if(!b.position) return;
-    const dx = b.position.x - P.posX;
-    const dz = b.position.z - P.posZ;
-    const sx = cx + dx / ecdisScale; 
-    const sy = cy - dz / ecdisScale; 
-    mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
-    mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
-  });
 
-  // ⑦ 他船（AISターゲット）
+  // ⑧ 他船（AISターゲット）
   AIships.concat(fishBoats).forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
@@ -609,7 +692,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.restore();
   });
 
-  // ⑧ 自船
+  // ⑨ 自船
   mapCtx.save();
   mapCtx.translate(cx, cy);
   mapCtx.rotate(P.heading); 
@@ -633,7 +716,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.stroke();
   mapCtx.restore();
 
-  // ⑨ 情報テキスト
+  // ⑩ 情報テキスト
   mapCtx.fillStyle = '#000000'; 
   mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
