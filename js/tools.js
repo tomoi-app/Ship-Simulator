@@ -207,42 +207,35 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   const w = mapCv.width;
   const h = mapCv.height;
-  
-  // ★ 修正1：海の色に「白」は使わず、一番深い海を「ベースの青色」で塗りつぶす
-  mapCtx.fillStyle = '#b0d4e5'; 
-  mapCtx.fillRect(0, 0, w, h);
-
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // --- ★ 修正2：水深による「滑らかな」グラデーション ---
+  // ★ 魔法のトリック1：画面全体をまず「陸地（黄土色）」で塗りつぶす！
+  // これにより、どんなにデータが欠けていても枠線の内側は必ず陸地になります。
+  mapCtx.fillStyle = '#dcb982'; 
+  mapCtx.fillRect(0, 0, w, h);
+
+  // --- 海の描画（青色の滑らかなグラデーション） ---
   if (depthData.length > 0) {
     depthData.forEach((pt) => {
-      if (pt.depth >= 15.0) return; // 15m以上の深海はベースの青色のまま
-
       const dx = pt.x - P.posX;
       const dz = pt.z - P.posZ; 
       const sx = cx + dx / ecdisScale; 
       const sy = cy - dz / ecdisScale; 
       
-      // グラデーションが滑らかに混ざり合うように、少し大きめの半径を設定
-      const radius = 800 / ecdisScale; 
+      // 海の描画半径（グリッドの隙間を埋める大きさ）
+      const radius = 600 / ecdisScale; 
       
       if (sx > -radius && sx < w + radius && sy > -radius && sy < h + radius) {
-        // 中心から外側に向かって色が溶け込むグラデーションを作成
-        const grad = mapCtx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+        // ★ 魔法のトリック2：水深(0m〜25m)に応じた滑らかな青色グラデーション（白は不使用）
+        // 浅い(0m) = 濃い青 rgb(60, 120, 170)
+        // 深い(25m以上) = 薄い青 rgb(170, 200, 220)
+        let ratio = Math.max(0, Math.min(1, pt.depth / 25.0));
+        const r = Math.floor(60 + (170 - 60) * ratio);
+        const g = Math.floor(120 + (200 - 120) * ratio);
+        const b = Math.floor(170 + (220 - 170) * ratio);
 
-        if (pt.depth <= 5.0) {
-          // 5m以下（危険）：一番濃い青
-          grad.addColorStop(0, 'rgba(63, 139, 191, 0.85)'); 
-          grad.addColorStop(1, 'rgba(63, 139, 191, 0)'); // 透明にフェードアウト
-        } else {
-          // 5〜15m（警戒）：中間の青
-          grad.addColorStop(0, 'rgba(122, 181, 214, 0.6)'); 
-          grad.addColorStop(1, 'rgba(122, 181, 214, 0)');
-        }
-
-        mapCtx.fillStyle = grad;
+        mapCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         mapCtx.beginPath();
         mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
         mapCtx.fill();
@@ -258,18 +251,14 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // --- ★ 修正3：陸地の完全塗りつぶし ---
+  // --- 海岸線と陸地の描画 ---
   if (geoData) {
-    mapCtx.fillStyle = '#dcb982'; // 本物の黄土色
-    mapCtx.strokeStyle = '#222222'; 
-    mapCtx.lineWidth = 1.0;
-
     geoData.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      const drawShape = (points) => {
+      const drawShape = (points, isPolygon) => {
         mapCtx.beginPath();
         points.forEach((p, i) => {
           const { x, z } = latLonToXZ(p[1], p[0]);
@@ -282,15 +271,27 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           else mapCtx.lineTo(sx, sy);
         });
         
-        // ★ 最大のポイント：枠線（LineString）であっても、強制的に線を閉じて黄土色に塗りつぶす！
-        mapCtx.closePath(); 
-        mapCtx.fill(); 
+        // 本当のポリゴンの場合のみ閉じる（直線バグ防止）
+        if (isPolygon) {
+          mapCtx.closePath();
+        }
+
+        // ★ 魔法のトリック3：海岸線に「現実の1000m幅」の黄土色の線を引く
+        // これが消しゴムの役割を果たし、陸地に食い込んだ海を綺麗に消し去ります！
+        mapCtx.lineWidth = 1000 / ecdisScale; 
+        mapCtx.strokeStyle = '#dcb982'; // 陸地色
+        mapCtx.stroke();
+
+        // 最後に、実際の海岸線を細い黒で描画する
+        mapCtx.lineWidth = 1.0;
+        mapCtx.strokeStyle = '#222222';
         mapCtx.stroke();
       };
 
-      if (type === 'LineString') drawShape(coords);
-      else if (type === 'Polygon') coords.forEach(r => drawShape(r));
-      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => drawShape(r)));
+      // LineString（線）は閉じない（false）設定に戻しました！
+      if (type === 'LineString') drawShape(coords, false); 
+      else if (type === 'Polygon') coords.forEach(r => drawShape(r, true));
+      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => drawShape(r, true)));
     });
   }
 
