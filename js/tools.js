@@ -130,8 +130,8 @@ function generateRealisticDepths() {
     { name: "羽田沖", pos: latLonToXZ(35.5400, 139.8000), radius: 2500, depth: 7.0 }
   ];
 
-  for (let x = -25000; x <= 25000; x += 300) { 
-    for (let z = -25000; z <= 25000; z += 300) {
+  for (let x = -45000; x <= 45000; x += 300) { 
+    for (let z = -45000; z <= 45000; z += 300) {
       
       // ★ 陸地判定：座標が陸地の中なら、絶対に水深を生成しない（スキップ）
       let onLand = false;
@@ -218,8 +218,8 @@ function initMap() {
     panX += e.clientX - lastMouseX;
     panY += e.clientY - lastMouseY;
     
-    // パン移動の限界を設定（マップの外に行き過ぎないように）
-    const limit = 1000;
+    // パン移動の限界を 3000 に拡大！
+    const limit = 3000;
     panX = Math.max(-limit, Math.min(limit, panX));
     panY = Math.max(-limit, Math.min(limit, panY));
 
