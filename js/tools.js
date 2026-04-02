@@ -208,35 +208,42 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const w = mapCv.width;
   const h = mapCv.height;
   
-  // ★追加：画面全体をまず「安全な深海（白）」で塗りつぶす
-  mapCtx.fillStyle = '#ffffff';
+  // ★ 修正1：海の色に「白」は使わず、一番深い海を「ベースの青色」で塗りつぶす
+  mapCtx.fillStyle = '#b0d4e5'; 
   mapCtx.fillRect(0, 0, w, h);
 
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // --- ★追加：水深による海の色分け（浅瀬のシェーディング） ---
+  // --- ★ 修正2：水深による「滑らかな」グラデーション ---
   if (depthData.length > 0) {
     depthData.forEach((pt) => {
-      // 15m以上の安全な深海は白のままにするためスキップ
-      if (pt.depth >= 15.0) return;
+      if (pt.depth >= 15.0) return; // 15m以上の深海はベースの青色のまま
 
       const dx = pt.x - P.posX;
       const dz = pt.z - P.posZ; 
       const sx = cx + dx / ecdisScale; 
       const sy = cy - dz / ecdisScale; 
       
-      // 画面内の点のみ処理
-      if (sx > -50 && sx < w + 50 && sy > -50 && sy < h + 50) {
-        // 円の半径（水深の点をつなげて等深線のような塗りつぶしを作る）
-        const radius = 450 / ecdisScale; 
+      // グラデーションが滑らかに混ざり合うように、少し大きめの半径を設定
+      const radius = 800 / ecdisScale; 
+      
+      if (sx > -radius && sx < w + radius && sy > -radius && sy < h + radius) {
+        // 中心から外側に向かって色が溶け込むグラデーションを作成
+        const grad = mapCtx.createRadialGradient(sx, sy, 0, sx, sy, radius);
 
-        mapCtx.beginPath();
         if (pt.depth <= 5.0) {
-          mapCtx.fillStyle = '#87ccdf'; // 5m以下：濃い水色（危険）
-        } else if (pt.depth <= 15.0) {
-          mapCtx.fillStyle = '#bfe4f0'; // 5〜15m：薄い水色（警戒）
+          // 5m以下（危険）：一番濃い青
+          grad.addColorStop(0, 'rgba(63, 139, 191, 0.85)'); 
+          grad.addColorStop(1, 'rgba(63, 139, 191, 0)'); // 透明にフェードアウト
+        } else {
+          // 5〜15m（警戒）：中間の青
+          grad.addColorStop(0, 'rgba(122, 181, 214, 0.6)'); 
+          grad.addColorStop(1, 'rgba(122, 181, 214, 0)');
         }
+
+        mapCtx.fillStyle = grad;
+        mapCtx.beginPath();
         mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
         mapCtx.fill();
       }
@@ -251,10 +258,9 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // --- 陸地の描画 ---
+  // --- ★ 修正3：陸地の完全塗りつぶし ---
   if (geoData) {
-    // ★変更：ECDIS標準の陸地色（黄土色/サンドカラー）
-    mapCtx.fillStyle = '#dcb982'; 
+    mapCtx.fillStyle = '#dcb982'; // 本物の黄土色
     mapCtx.strokeStyle = '#222222'; 
     mapCtx.lineWidth = 1.0;
 
@@ -263,7 +269,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      const drawShape = (points, isPolygon) => {
+      const drawShape = (points) => {
         mapCtx.beginPath();
         points.forEach((p, i) => {
           const { x, z } = latLonToXZ(p[1], p[0]);
@@ -276,17 +282,15 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           else mapCtx.lineTo(sx, sy);
         });
         
-        // ★ ここで陸地を黄土色に塗りつぶす
-        if (isPolygon) {
-          mapCtx.closePath();
-          mapCtx.fill(); 
-        }
+        // ★ 最大のポイント：枠線（LineString）であっても、強制的に線を閉じて黄土色に塗りつぶす！
+        mapCtx.closePath(); 
+        mapCtx.fill(); 
         mapCtx.stroke();
       };
 
-      if (type === 'LineString') drawShape(coords, false);
-      else if (type === 'Polygon') coords.forEach(r => drawShape(r, true));
-      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => drawShape(r, true)));
+      if (type === 'LineString') drawShape(coords);
+      else if (type === 'Polygon') coords.forEach(r => drawShape(r));
+      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => drawShape(r)));
     });
   }
 
@@ -310,12 +314,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
         drawnPositions.push({ x: sx, y: sy });
 
-        // ★文字の色もDayモード仕様に変更
         if (pt.depth <= safetyDepth) {
           mapCtx.fillStyle = '#000000'; // 浅瀬：黒の太字
           mapCtx.font = 'bold 11px Arial, sans-serif'; 
         } else {
-          mapCtx.fillStyle = '#777777'; // 安全水深以上：グレーの細字
+          mapCtx.fillStyle = '#666666'; // 安全水深以上：グレーの細字
           mapCtx.font = '10px Arial, sans-serif';
         }
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
@@ -347,7 +350,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.translate(sx, sy);
     mapCtx.rotate(s.heading);
 
-    // ★黒枠の三角形に変更
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);  
     mapCtx.lineTo(5, 5);   
@@ -369,7 +371,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.translate(cx, cy);
   mapCtx.rotate(P.heading); 
 
-  // ★黒の太い枠線に変更
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12); 
   mapCtx.lineTo(6, 8);  
@@ -390,7 +391,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.restore();
 
   // --- 左上の情報テキスト ---
-  mapCtx.fillStyle = '#000000'; // 黒文字
+  mapCtx.fillStyle = '#000000'; 
   mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
