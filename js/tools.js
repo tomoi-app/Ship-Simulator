@@ -34,8 +34,8 @@ function latLonToXZ(lat, lon) {
 // 地図ポリゴンと航路データの測地系のズレを吸収するためのオフセット値です。
 // 「風の塔」のブイが、実際の陸地ポリゴンに重なるように数値を微調整してください。
 // （0.001 で約 111m スライドします）
-const ROUTE_OFFSET_LAT = 0.000; // プラスで北、マイナスで南へ移動
-const ROUTE_OFFSET_LON = 0.000; // プラスで東、マイナスで西へ移動
+let ROUTE_OFFSET_LAT = 0.000; 
+let ROUTE_OFFSET_LON = 0.000; 
 
 // ============================================================
 // 航路データ (Fairways & Buoys) — WGS84 正確な緯度経度ベース
@@ -793,4 +793,60 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.textAlign = 'right';
   mapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
   mapCtx.fillText('[Drag] Pan / [Wheel] Zoom / [DblClick] Reset', w - 20, h - 30);
+
+  // ⑩ キャリブレーション用テスト目盛り（位置合わせが終わったら消せます）
+  const testMode = true; 
+  if (testMode) {
+    mapCtx.save();
+    
+    // 画面中央に赤い十字線
+    mapCtx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+    mapCtx.lineWidth = 1;
+    mapCtx.beginPath();
+    mapCtx.moveTo(cx, 0); mapCtx.lineTo(cx, h);
+    mapCtx.moveTo(0, cy); mapCtx.lineTo(w, cy);
+    mapCtx.stroke();
+
+    // 画面中央から100mごとの同心円
+    for (let r = 100; r <= 1000; r += 100) {
+      mapCtx.beginPath();
+      mapCtx.arc(cx, cy, r / ecdisScale, 0, Math.PI * 2);
+      mapCtx.strokeStyle = (r % 500 === 0) ? 'rgba(255, 0, 0, 0.7)' : 'rgba(255, 0, 0, 0.2)';
+      mapCtx.stroke();
+      if (r % 500 === 0) {
+        mapCtx.fillStyle = 'rgba(255, 0, 0, 0.9)';
+        mapCtx.font = '10px Arial';
+        mapCtx.fillText(r + 'm', cx + r / ecdisScale + 2, cy - 2);
+      }
+    }
+
+    // 操作ガイドと現在の値
+    mapCtx.fillStyle = 'rgba(0, 0, 20, 0.8)';
+    mapCtx.fillRect(10, h - 90, 290, 80);
+    mapCtx.fillStyle = '#00ffff';
+    mapCtx.font = 'bold 12px monospace';
+    mapCtx.textAlign = 'left';
+    mapCtx.fillText('--- キャリブレーションモード ---', 15, h - 70);
+    mapCtx.fillStyle = '#ffffff';
+    mapCtx.fillText(`LAT OFFSET: ${ROUTE_OFFSET_LAT.toFixed(5)}`, 15, h - 50);
+    mapCtx.fillText(`LON OFFSET: ${ROUTE_OFFSET_LON.toFixed(5)}`, 15, h - 35);
+    mapCtx.fillStyle = '#aaaaaa';
+    mapCtx.fillText(`操作: Shift + 矢印キー で航路全体を移動`, 15, h - 15);
+    
+    mapCtx.restore();
+  }
 }
+
+// ============================================================
+// キャリブレーション用：Shift + 矢印キーで航路を動かす
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  if (!toolOpen) return; // ECDIS画面が開いている時だけ有効
+  if (e.shiftKey) {
+    const step = 0.0001; // 1回の入力で約11m移動
+    if (e.key === 'ArrowUp')    { ROUTE_OFFSET_LAT += step; e.preventDefault(); }
+    if (e.key === 'ArrowDown')  { ROUTE_OFFSET_LAT -= step; e.preventDefault(); }
+    if (e.key === 'ArrowRight') { ROUTE_OFFSET_LON += step; e.preventDefault(); }
+    if (e.key === 'ArrowLeft')  { ROUTE_OFFSET_LON -= step; e.preventDefault(); }
+  }
+});
