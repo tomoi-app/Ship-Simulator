@@ -850,6 +850,9 @@ export async function buildLandmass(THREE, scene) {
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
+    // ローディング画面のメッセージに表示
+    const ldm = document.getElementById('ldm');
+    if (ldm) ldm.textContent = '⚠ 地図データのロードに失敗しました。リロードしてください。';
   }
 }
 
@@ -924,5 +927,7 @@ export async function buildCity(THREE, scene) {
 
   } catch (err) {
     console.error("ビルデータの読み込みエラー:", err);
+    const ldm = document.getElementById('ldm');
+    if (ldm) ldm.textContent = '⚠ ビルデータのロードに失敗しました。';
   }
 }

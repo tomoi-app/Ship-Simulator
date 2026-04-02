@@ -105,7 +105,7 @@ fetch('./tokyobay.geojson?v=' + Date.now())
   .catch(err => console.error("ECDISエラー:", err));
 
 // ============================================================
-// 2. 水深データの生成（陸地回避 ＆ 有名浅瀬の錬成）
+// 2. 水深データの生成 — Web Worker で非同期実行（メインスレッド非ブロック）
 // ============================================================
 function isPointInPolygon(px, pz, poly) {
     let inside = false;
@@ -119,70 +119,115 @@ function isPointInPolygon(px, pz, poly) {
 }
 
 function generateRealisticDepths() {
-  console.log("🌊 リアル水深データ（等深線対応・長方形拡大版）の生成を開始...");
-  
-  // ★ 中ノ瀬が海図上で広大な浅瀬として目立つように、半径と深さを微調整
+  console.log("🌊 水深データ生成をWeb Workerに委譲...");
+
+  // Web Worker のコードをBlob URLで生成（別ファイル不要）
+  const workerCode = `
+    function isPointInPolygon(px, pz, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        let xi = poly[i].x, zi = poly[i].z, xj = poly[j].x, zj = poly[j].z;
+        let intersect = ((zi > pz) != (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+    self.onmessage = function(e) {
+      const { polygons, shoals } = e.data;
+      const result = [];
+      // 乱数を決定論的シードで再現できるよう簡易LCG使用
+      let seed = 12345;
+      function rand() { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; }
+
+      for (let x = -30000; x <= 60000; x += 300) {
+        for (let z = -75000; z <= 30000; z += 300) {
+          let onLand = false;
+          for (let i = 0; i < polygons.length; i++) {
+            const { poly, bounds } = polygons[i];
+            if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) continue;
+            if (isPointInPolygon(x, z, poly)) { onLand = true; break; }
+          }
+          if (onLand) continue;
+
+          let depth = 25.0 + rand() * 5;
+          shoals.forEach(s => {
+            const d = Math.sqrt((s.pos.x - x)**2 + (s.pos.z - z)**2);
+            if (d < s.radius) {
+              const ratio = 1.0 - Math.pow(d / s.radius, 2);
+              depth = depth * (1 - ratio) + s.depth * ratio;
+            }
+          });
+          depth = Math.max(2.5, Math.min(45.0, depth));
+          const ox = (rand() - 0.5) * 150, oz = (rand() - 0.5) * 150;
+          result.push({ x: x + ox, z: z + oz, depth });
+        }
+      }
+      self.postMessage(result);
+    };
+  `;
+  const blob   = new Blob([workerCode], { type: 'application/javascript' });
+  const worker = new Worker(URL.createObjectURL(blob));
+
   const famousShoals = [
-    { name: "中ノ瀬", pos: latLonToXZ(35.4200, 139.7750), radius: 6000, depth: 9.0 },
+    { name: "中ノ瀬",   pos: latLonToXZ(35.4200, 139.7750), radius: 6000, depth: 9.0 },
     { name: "富津岬沖", pos: latLonToXZ(35.3150, 139.7900), radius: 4000, depth: 3.0 },
-    { name: "観音崎", pos: latLonToXZ(35.2600, 139.7500), radius: 2000, depth: 8.0 },
+    { name: "観音崎",   pos: latLonToXZ(35.2600, 139.7500), radius: 2000, depth: 8.0 },
     { name: "盤洲干潟", pos: latLonToXZ(35.4000, 139.9000), radius: 6000, depth: 2.0 },
-    { name: "羽田沖", pos: latLonToXZ(35.5400, 139.8000), radius: 3000, depth: 7.0 }
+    { name: "羽田沖",   pos: latLonToXZ(35.5400, 139.8000), radius: 3000, depth: 7.0 },
   ];
 
-  // ★ 房総半島の先端までカバーする非対称な長方形でループ！
-  // x(東西): -30km 〜 +60km  /  z(南北): -75km 〜 +30km
-  for (let x = -30000; x <= 60000; x += 300) { 
-    for (let z = -75000; z <= 30000; z += 300) {
-      
-      let onLand = false;
-      for (let i = 0; i < parsedPolygonsXZ.length; i++) {
-          const { poly, bounds } = parsedPolygonsXZ[i];
-          if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) continue;
-          if (isPointInPolygon(x, z, poly)) { onLand = true; break; }
-      }
-      if (onLand) continue; 
+  worker.postMessage({ polygons: parsedPolygonsXZ, shoals: famousShoals });
 
-      // ★ 修正点1：東京湾全体のベース水深を 25m〜30m に深くする
-      // これにより「20mより深い海」となり、ベース色（一番薄い青）になります。
-      let calculatedDepth = 25.0 + (Math.random() * 5); 
+  worker.onmessage = function(e) {
+    depthData.length = 0;
+    e.data.sort((a, b) => b.depth - a.depth).forEach(pt => depthData.push(pt));
+    _buildDepthGrid();  // グリッドインデックスを構築
+    console.log(`ECDIS: 水深データ（${depthData.length}地点）生成完了！`);
+    worker.terminate();
+    URL.revokeObjectURL(blob);
+  };
 
-      famousShoals.forEach(s => {
-        const dToShoal = Math.sqrt((s.pos.x - x)**2 + (s.pos.z - z)**2);
-        if (dToShoal < s.radius) {
-          // ★ 修正点2：浅瀬の範囲を広く見せるため、変化を「放物線（カーブ）」にする
-          // 中心から離れても急激に深くならず、広い範囲で浅瀬色になります！
-          const ratio = 1.0 - Math.pow(dToShoal / s.radius, 2);
-          calculatedDepth = calculatedDepth * (1 - ratio) + s.depth * ratio;
-        }
-      });
+  worker.onerror = function(err) {
+    console.error("水深Workerエラー:", err);
+    worker.terminate();
+  };
+}
 
-      calculatedDepth = Math.max(2.5, Math.min(45.0, calculatedDepth)); 
-      
-      const offsetX = (Math.random() - 0.5) * 150;
-      const offsetZ = (Math.random() - 0.5) * 150;
-      
-      depthData.push({ x: x + offsetX, z: z + offsetZ, depth: calculatedDepth });
-    }
-  }
+// ============================================================
+// グリッドインデックス（O(1)深度検索）
+// ============================================================
+const GRID_CELL = 600;   // セルサイズ（水深データの間隔300mの2倍）
+const depthGrid = new Map();
 
-  depthData.sort((a, b) => b.depth - a.depth);
-  console.log(`ECDIS: 水深データ（${depthData.length}地点）生成完了！`);
+function _gridKey(x, z) {
+  return `${Math.round(x / GRID_CELL)},${Math.round(z / GRID_CELL)}`;
+}
+
+function _buildDepthGrid() {
+  depthGrid.clear();
+  depthData.forEach(pt => {
+    const key = _gridKey(pt.x, pt.z);
+    if (!depthGrid.has(key)) depthGrid.set(key, pt.depth);
+  });
+  console.log(`ECDIS: 深度グリッド構築完了（${depthGrid.size}セル）`);
 }
 
 export function getRealDepthAt(posX, posZ) {
-  if (depthData.length === 0) return 99.9; 
-  let closestDepth = 99.9;
-  let minDistance = Infinity;
-  for (let i = 0; i < depthData.length; i++) {
-    const pt = depthData[i];
-    const distSq = (pt.x - posX) ** 2 + (pt.z - posZ) ** 2;
-    if (distSq < minDistance && distSq < 250000) { 
-      minDistance = distSq;
-      closestDepth = pt.depth;
+  if (depthGrid.size === 0) return 99.9;
+
+  const key = _gridKey(posX, posZ);
+  if (depthGrid.has(key)) return depthGrid.get(key);
+
+  // 隣接8セルも探す
+  const cx = Math.round(posX / GRID_CELL);
+  const cz = Math.round(posZ / GRID_CELL);
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      const k = `${cx + dx},${cz + dz}`;
+      if (depthGrid.has(k)) return depthGrid.get(k);
     }
   }
-  return closestDepth;
+  return 99.9;
 }
 
 // ============================================================

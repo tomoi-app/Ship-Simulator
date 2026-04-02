@@ -137,10 +137,21 @@ function initTouch() {
     const dx = Math.max(-JR, Math.min(JR, e.touches[0].clientX - jCX));
     knob.style.left = (stick.clientWidth  / 2 - 20 + dx) + 'px';
     knob.style.top  = (stick.clientHeight / 2 - 20) + 'px';
-    P.rudder = (dx / JR) * 35;
+    // P.rudder を直接書き換えず targetRudder 経由で物理に渡す（追従舵角システムと統一）
+    P.targetRudder = (dx / JR) * 35;
   }, { passive: false });
-  area.addEventListener('touchend', () => { jActive = false; knob.style.transform = `translate(-50%,-50%)`; P.targetRudder = 0; });
-  area.addEventListener('touchcancel', () => { jActive = false; knob.style.transform = `translate(-50%,-50%)`; P.targetRudder = 0; });
+  area.addEventListener('touchend', () => {
+    jActive = false;
+    knob.style.left = (stick.clientWidth  / 2 - 20) + 'px';
+    knob.style.top  = (stick.clientHeight / 2 - 20) + 'px';
+    P.targetRudder = 0;
+  });
+  area.addEventListener('touchcancel', () => {
+    jActive = false;
+    knob.style.left = (stick.clientWidth  / 2 - 20) + 'px';
+    knob.style.top  = (stick.clientHeight / 2 - 20) + 'px';
+    P.targetRudder = 0;
+  });
 }
 
 document.getElementById('time-scale-btn')?.addEventListener('click', (e) => {
@@ -303,8 +314,13 @@ window.startM = function(id) {
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
   P.speed = 0; P.rudder = 0; P.yawRate = 0; P.engineOrder = 0;
   P.driftX = 0; P.driftZ = 0; P.rollAngle = 0; P.pitchAngle = 0;
-  P.windSpeed = m.wind; P.windDir = 180 + Math.random() * 180;
-  P.currSpeed = m.curr; P.currDir  = Math.random() * 360;
+  P.windSpeed = m.wind; 
+  P.windDir   = 180 + Math.random() * 180;
+  P.currSpeed = m.curr; 
+  P.currDir   = Math.random() * 360;
+  // 動的変動の基準値を保存
+  curM.windDir0 = P.windDir;
+  curM.currDir0 = P.currDir;
   updateTelegraph(P.engineOrder);
 
   mst      = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
@@ -380,6 +396,7 @@ function triggerGO(cause) {
 }
 
 let colCd = 0;
+let _ukcWarnCd = 0; // 浅水域警告スロットルカウンタ
 function checkCol() {
   if (colCd > 0) { colCd--; return; }
 
@@ -610,6 +627,19 @@ function loop(t) {
   const scaledDt = dt * timeScale;
   simTime += scaledDt * 1000;
 
+  // ---- 天候の動的変動（風向・風速・潮流をゆっくり変化させる） ----
+  if (curM && !goActive) {
+    const t_s = simTime * 0.0001; // ゆっくりした変動周期
+    // 風速：ミッション設定値 ±30% でゆらぐ
+    P.windSpeed = curM.wind * (1.0 + Math.sin(t_s * 1.3) * 0.3);
+    // 風向：基準から ±20度 ゆっくり変動
+    P.windDir   = (curM.windDir0 || 270) + Math.sin(t_s * 0.7) * 20;
+    // 潮流速度：ミッション設定値 ±40%
+    P.currSpeed = curM.curr * (1.0 + Math.sin(t_s * 0.9) * 0.4);
+    // 潮流方向：±15度 変動
+    P.currDir   = (curM.currDir0 || 0) + Math.sin(t_s * 0.5) * 15;
+  }
+
   // timeScale が大きいほどサブステップを増やして物理発散を防ぐ
   // timeScale=1→1step, 2→2, 4→4, 8→8
   const subSteps = timeScale;
@@ -631,24 +661,26 @@ function loop(t) {
   drawRudder(P.rudder);
   
   // --- 座礁・UKC（余裕水深）監視システム ---
-  const shipDraft = 14.5; // 大型コンテナ船の喫水
+  const shipDraft = 14.5;
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
   const ukc = currentDepth - shipDraft;
 
-  // 99.9 = 水深データ未生成エリア（深海扱い）なので判定スキップ
   if (currentDepth < 99.0) {
     if (ukc <= 0) {
-      // 前後進・横流れ問わず動いていれば座礁
       if (Math.abs(P.speed) > 0.05 || Math.hypot(P.u, P.v) > 0.05) {
         console.error(`💥 GROUNDED! 水深 ${currentDepth.toFixed(1)}m / 喫水 ${shipDraft}m`);
-        // 完全停止（物理速度もリセット）
         P.u = 0; P.v = 0; P.r = 0; P.speed = 0;
         triggerGO('grounding');
       }
     } else if (ukc < 3.0 && !goActive && !mst.done) {
-      showPenaltyToast(`⚠ 浅水域！ UKC: ${ukc.toFixed(1)}m`);
+      // 浅水域警告は180フレーム（約3秒）に1回だけ表示
+      if (!_ukcWarnCd || _ukcWarnCd <= 0) {
+        showPenaltyToast(`⚠ 浅水域！ UKC: ${ukc.toFixed(1)}m`);
+        _ukcWarnCd = 180;
+      }
     }
   }
+  if (_ukcWarnCd > 0) _ukcWarnCd--;
   
   updateDashboard(P, simTime, curM, mst);
   updateNavData(P, curM);

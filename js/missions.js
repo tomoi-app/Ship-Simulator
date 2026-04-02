@@ -21,14 +21,22 @@ export const MISSIONS = [
   // ※ STORYモードのミッションは後日ここに追加していきます
 ];
 
-// データの保存・読み込みロジック（変更なし）
-export const SAVE = JSON.parse(localStorage.getItem('wacchi_ship_save') || '{}');
+// データの保存・読み込みロジック
+let _rawSave = '{}';
+try { _rawSave = localStorage.getItem('wacchi_ship_save') || '{}'; } catch(e) {}
+export const SAVE = JSON.parse(_rawSave);
 export function saveResult(id, data) {
-  if (!SAVE[id]) SAVE[id] = { plays: 0, best: 0 };
-  SAVE[id].plays++;
-  SAVE[id].stars = Math.max(SAVE[id].stars || 0, data.stars);
-  if (data.score > SAVE[id].best) SAVE[id].best = data.score;
-  localStorage.setItem('wacchi_ship_save', JSON.stringify(SAVE));
+  try {
+    if (!SAVE[id]) SAVE[id] = { plays: 0, best: 0, stars: 0 };
+    SAVE[id].plays++;
+    // stars と score を両方確実に保存
+    SAVE[id].stars = Math.max(SAVE[id].stars || 0, data.stars  || 0);
+    SAVE[id].best  = Math.max(SAVE[id].best  || 0, data.score  || 0);
+    localStorage.setItem('wacchi_ship_save', JSON.stringify(SAVE));
+  } catch (e) {
+    // プライベートブラウジング等で localStorage が使えない場合も続行
+    console.warn('セーブデータの書き込みに失敗しました:', e);
+  }
 }
 export function getStats() {
   let cleared = 0, totalStar = 0, sumScore = 0, plays = 0;
