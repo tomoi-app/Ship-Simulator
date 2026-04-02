@@ -147,11 +147,11 @@ function initMap() {
   
   Object.assign(mapCv.style, {
     position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%',
-    // ★ 変更：ネオンを消し、本物のECDIS（Duskモード）の海の色に変更
-    backgroundColor: '#0a1a2a', 
-    border: '2px solid #23374d', 
+    // ECDIS標準のDayモード（深海は白）
+    backgroundColor: '#ffffff', 
+    border: '2px solid #555555', 
     borderRadius: '4px',
-    boxShadow: '0 4px 15px rgba(0,0,0,0.5)', // グロウ効果を消して普通の影に
+    boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
     zIndex: '500', display: 'none', 
     pointerEvents: 'auto'
   });
@@ -159,7 +159,6 @@ function initMap() {
   document.body.appendChild(mapCv);
   mapCtx = mapCv.getContext('2d');
 
-  // --- マウスイベントの設定（前回と同じ） ---
   mapCv.addEventListener('mousedown', (e) => {
     isDragging = true;
     lastMouseX = e.clientX;
@@ -216,28 +215,27 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // --- グリッド線（目立たないグレーブルーに変更） ---
-  mapCtx.strokeStyle = 'rgba(100, 120, 140, 0.2)';
+  // グリッド線（薄いグレー）
+  mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
   for (let i = 0; i < w; i += 60) { mapCtx.moveTo(i, 0); mapCtx.lineTo(i, h); }
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // --- 陸地の描画（塗りつぶしを追加） ---
+  // 陸地の描画
   if (geoData) {
-    // 陸地の色（夜間・夕暮れ用のオリーブブラウン）
-    mapCtx.fillStyle = '#3b3524'; 
-    // 海岸線の色
-    mapCtx.strokeStyle = '#59523e'; 
-    mapCtx.lineWidth = 1.5;
+    // ECDIS規格の陸地色（黄土色）
+    mapCtx.fillStyle = '#dcb982'; 
+    // 海岸線（黒）
+    mapCtx.strokeStyle = '#222222'; 
+    mapCtx.lineWidth = 1.0;
 
     geoData.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      // isPolygonフラグを追加して、陸地の場合は塗りつぶす
       const drawShape = (points, isPolygon) => {
         mapCtx.beginPath();
         points.forEach((p, i) => {
@@ -253,7 +251,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
         
         if (isPolygon) {
           mapCtx.closePath();
-          mapCtx.fill(); // ★ ここで陸地を塗りつぶす！
+          mapCtx.fill(); 
         }
         mapCtx.stroke();
       };
@@ -264,7 +262,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // --- ECDIS上に水深の数値をプロット ---
+  // 水深のプロット
   if (depthData.length > 0) {
     const safetyDepth = 15.0; 
     const drawnPositions = []; 
@@ -285,10 +283,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
         drawnPositions.push({ x: sx, y: sy });
 
         if (pt.depth <= safetyDepth) {
-          mapCtx.fillStyle = '#ffcc00'; // 浅瀬：イエロー
-          mapCtx.font = 'bold 11px Arial, sans-serif'; // フォントもシステムライクに
+          // 浅瀬：黒の太字
+          mapCtx.fillStyle = '#000000'; 
+          mapCtx.font = 'bold 11px Arial, sans-serif'; 
         } else {
-          mapCtx.fillStyle = '#7a8b9c'; // 安全：落ち着いたグレーブルー
+          // 安全水深以上：グレーの細字
+          mapCtx.fillStyle = '#777777'; 
           mapCtx.font = '10px Arial, sans-serif';
         }
         mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
@@ -296,7 +296,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // --- ブイの描画 ---
+  // ブイの描画
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
@@ -307,7 +307,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
-  // --- 他船（AISターゲット）の描画 ---
+  // 他船（AISターゲット）の描画
   AIships.concat(fishBoats).forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
@@ -320,30 +320,30 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.translate(sx, sy);
     mapCtx.rotate(s.heading);
 
-    // ★ 変更：本物のAISターゲットのような「緑色の枠線」に変更
+    // AISターゲット：黒枠の三角形
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);  
     mapCtx.lineTo(5, 5);   
     mapCtx.lineTo(-5, 5);  
     mapCtx.closePath();
-    mapCtx.strokeStyle = '#00ff00'; // AISグリーン
+    mapCtx.strokeStyle = '#000000'; 
     mapCtx.lineWidth = 1.5;
-    mapCtx.stroke(); // 塗りつぶさず枠だけ
+    mapCtx.stroke(); 
 
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);
-    mapCtx.lineTo(0, -25); // スピードベクター（予測線）
+    mapCtx.lineTo(0, -25); 
     mapCtx.stroke();
 
     mapCtx.restore();
   });
 
-  // --- 自船の描画 ---
+  // 自船の描画
   mapCtx.save();
   mapCtx.translate(cx, cy);
   mapCtx.rotate(P.heading); 
 
-  // ★ 変更：自船を「白い枠線のみ」のシャープなデザインに変更
+  // 自船：黒の太い枠線
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12); 
   mapCtx.lineTo(6, 8);  
@@ -352,27 +352,27 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.closePath();
   
   mapCtx.lineWidth = 2;
-  mapCtx.strokeStyle = '#ffffff'; // 自船は白
-  mapCtx.fillStyle = 'rgba(0,0,0,0)'; // 中身は透明
+  mapCtx.strokeStyle = '#000000'; 
+  mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
   mapCtx.stroke();
   
+  // ヘディングライン
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12);
-  mapCtx.lineTo(0, -60); // ヘディングライン（長め）
-  mapCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+  mapCtx.lineTo(0, -60); 
+  mapCtx.strokeStyle = '#000000';
   mapCtx.stroke();
 
   mapCtx.restore();
 
-  // --- 左上の情報テキスト（システムライクなフォント・色に変更） ---
-  mapCtx.fillStyle = '#a6b8c7'; // テキストを落ち着いたグレーブルーに
+  // 左上の情報テキスト（Dayモード用に黒文字へ変更）
+  mapCtx.fillStyle = '#000000'; 
   mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
   mapCtx.fillText('ECDIS - TOKYO BAY SYSTEM', 20, 20);
   
   mapCtx.font = '12px Arial, sans-serif';
-  mapCtx.fillStyle = '#d0d8e0'; // 数値部分は少し明るく
   mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
   mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
   mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
@@ -385,8 +385,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
 
-  // 右下の操作ガイド
   mapCtx.textAlign = 'right';
-  mapCtx.fillStyle = 'rgba(166, 184, 199, 0.6)';
+  mapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
   mapCtx.fillText('[Drag] Pan / [Wheel] Zoom / [DblClick] Reset', w - 20, h - 30);
 }
