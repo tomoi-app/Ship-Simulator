@@ -29,49 +29,47 @@ function latLonToXZ(lat, lon) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 観音崎・第二海堡での変針完全再現版
-// ============================================================
-// ============================================================
-// 航路データ (Fairways & Buoys) — 第二海堡通過後の変針ルート
+// 航路データ (Fairways & Buoys) — 手書きの赤線（西側シフト）に完全準拠
 // ============================================================
 const FAIRWAYS = [
   {
     name: "SOUTH APPROACH",
-    leftBound:  [ { lat: 35.150, lon: 139.742 }, { lat: 35.250, lon: 139.742 } ],
-    rightBound: [ { lat: 35.150, lon: 139.758 }, { lat: 35.250, lon: 139.758 } ]
+    // 赤線通り、より西側（左）から進入
+    leftBound:  [ { lat: 35.150, lon: 139.736 }, { lat: 35.250, lon: 139.736 } ],
+    rightBound: [ { lat: 35.150, lon: 139.752 }, { lat: 35.250, lon: 139.752 } ]
   },
   {
     name: "URAGA SUIDO",
-    // 観音崎と第二海堡'のすぐ横を通過。第二海堡(35.308)を通り過ぎた 35.320 まで 352度 で直進
-    leftBound:  [ { lat: 35.250, lon: 139.742 }, { lat: 35.320, lon: 139.732 } ],
-    rightBound: [ { lat: 35.250, lon: 139.758 }, { lat: 35.320, lon: 139.748 } ]
+    // 観音崎(139.735)と第二海堡(139.725)のスレスレ右側を通過するライン
+    leftBound:  [ { lat: 35.250, lon: 139.736 }, { lat: 35.320, lon: 139.726 } ],
+    rightBound: [ { lat: 35.250, lon: 139.752 }, { lat: 35.320, lon: 139.742 } ]
   },
   {
     name: "NAKANOSE",
-    // 第二海堡通過後の 35.320 を起点に、021度(北東)へ変針
-    leftBound:  [ { lat: 35.320, lon: 139.732 }, { lat: 35.400, lon: 139.770 } ],
-    rightBound: [ { lat: 35.320, lon: 139.748 }, { lat: 35.400, lon: 139.786 } ]
+    // 第二海堡通過後、中ノ瀬の浅瀬に被らないよう西側から北東へ抜ける
+    leftBound:  [ { lat: 35.320, lon: 139.726 }, { lat: 35.400, lon: 139.756 } ],
+    rightBound: [ { lat: 35.320, lon: 139.742 }, { lat: 35.400, lon: 139.772 } ]
   }
 ];
 
 const BUOYS = [
   // 浦賀水道
-  { name: "U1", lat: 35.180, lon: 139.742, color: "#11cc11" },
-  { name: "U2", lat: 35.180, lon: 139.758, color: "#ee1111" },
-  { name: "U3", lat: 35.250, lon: 139.742, color: "#11cc11" },
-  { name: "U4", lat: 35.250, lon: 139.758, color: "#ee1111" },
-  { name: "U5", lat: 35.285, lon: 139.737, color: "#11cc11" },
-  { name: "U6", lat: 35.285, lon: 139.753, color: "#ee1111" },
-  // 第二海堡北側・変針点（021度へ）
-  { name: "U7", lat: 35.320, lon: 139.732, color: "#11cc11" },
-  { name: "U8", lat: 35.320, lon: 139.748, color: "#ee1111" },
+  { name: "U1", lat: 35.180, lon: 139.736, color: "#11cc11" },
+  { name: "U2", lat: 35.180, lon: 139.752, color: "#ee1111" },
+  { name: "U3", lat: 35.250, lon: 139.736, color: "#11cc11" },
+  { name: "U4", lat: 35.250, lon: 139.752, color: "#ee1111" },
+  { name: "U5", lat: 35.285, lon: 139.731, color: "#11cc11" },
+  { name: "U6", lat: 35.285, lon: 139.747, color: "#ee1111" },
+  // 第二海堡北側・変針点
+  { name: "U7", lat: 35.320, lon: 139.726, color: "#11cc11" },
+  { name: "U8", lat: 35.320, lon: 139.742, color: "#ee1111" },
   // 中ノ瀬
-  { name: "N1", lat: 35.340, lon: 139.741, color: "#11cc11" },
-  { name: "N2", lat: 35.340, lon: 139.757, color: "#ee1111" },
-  { name: "N3", lat: 35.370, lon: 139.756, color: "#11cc11" },
-  { name: "N4", lat: 35.370, lon: 139.772, color: "#ee1111" },
-  { name: "N7", lat: 35.400, lon: 139.770, color: "#11cc11" },
-  { name: "N8", lat: 35.400, lon: 139.786, color: "#ee1111" },
+  { name: "N1", lat: 35.340, lon: 139.733, color: "#11cc11" },
+  { name: "N2", lat: 35.340, lon: 139.749, color: "#ee1111" },
+  { name: "N3", lat: 35.370, lon: 139.745, color: "#11cc11" },
+  { name: "N4", lat: 35.370, lon: 139.761, color: "#ee1111" },
+  { name: "N7", lat: 35.400, lon: 139.756, color: "#11cc11" },
+  { name: "N8", lat: 35.400, lon: 139.772, color: "#ee1111" },
   // ランドマーク
   { name: "風の塔", lat: 35.4914, lon: 139.8347, color: "#ffffff" },
   { name: "海ほたる", lat: 35.4636, lon: 139.8753, color: "#ffffff" }
