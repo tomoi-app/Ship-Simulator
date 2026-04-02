@@ -11,7 +11,8 @@ import { buildScene, buildOcean, buildShip, buildWorld, buildAI, toggleNight, bu
 import {
   drawRudder, updateCompass, updateTelegraph,
   showPenaltyToast, flashScreen,
-  drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard
+  drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard,
+  updateNavData
 } from './hud.js';
 import { isToolOpen, toggleTool, drawAll as drawTools, getRealDepthAt } from './tools.js';
 
@@ -374,17 +375,39 @@ function triggerGO(cause) {
 let colCd = 0;
 function checkCol() {
   if (colCd > 0) { colCd--; return; }
+
+  // 自船の実寸：Lpp=350m, B=49m → 衝突半径は短辺の半分+マージン
+  const selfRadius = 30;
+
   const all = [
-    ...AIships.map(s => ({ p: s.mesh.position, sz: s.sz || 1 })),
-    ...fishBoats.map(f => ({ p: f.mesh.position, sz: 0.4 })),
+    ...AIships.map(s => ({ p: s.mesh.position, sz: s.sz || 1, isTanker: !!s.isTanker })),
+    ...fishBoats.map(f => ({ p: f.mesh ? f.mesh.position : f.position, sz: 0.4, isTanker: false })),
   ];
-  for (const { p, sz } of all) {
-    const d = Math.sqrt((p.x - P.posX)**2 + (p.z - P.posZ)**2);
-    if (d < 22 * sz) {
-      colCd = 240;
-      if (Math.abs(P.speed) > 5) { triggerGO('collision'); return; }
-      mst.colP += 10; mst.pens.push('⚠ 他船接触 −10pt');
-      showPenaltyToast('他船に接触！ −10pt'); playCrash(); flashScreen('r');
+
+  for (const { p, sz, isTanker } of all) {
+    // 相手船の衝突半径：50m×sz（タンカーはBoxの半長）
+    const otherRadius = isTanker ? 140 : 25 * sz;
+    const threshold   = selfRadius + otherRadius;
+
+    const dx = p.x - P.posX;
+    const dz = p.z - P.posZ;
+    const d  = Math.sqrt(dx * dx + dz * dz);
+
+    if (d < threshold) {
+      colCd = 240; // 約4秒間クールダウン（60fps×4）
+
+      // 相対速度（近似）が大きければゲームオーバー
+      const relSpd = Math.abs(P.speed);
+      if (relSpd > 3.0) {
+        triggerGO('collision');
+        return;
+      }
+      // 低速接触はペナルティのみ
+      mst.colP += 10;
+      mst.pens.push('⚠ 他船接触 −10pt');
+      showPenaltyToast('他船に接触！ −10pt');
+      playCrash();
+      flashScreen('r');
       return;
     }
   }
@@ -595,19 +618,23 @@ function loop(t) {
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
   const ukc = currentDepth - shipDraft;
 
-  if (currentDepth !== 999) {
+  // 99.9 = 水深データ未生成エリア（深海扱い）なので判定スキップ
+  if (currentDepth < 99.0) {
     if (ukc <= 0) {
-      if (P.speed > 0) {
+      // 前後進・横流れ問わず動いていれば座礁
+      if (Math.abs(P.speed) > 0.05 || Math.hypot(P.u, P.v) > 0.05) {
         console.error(`💥 GROUNDED! 水深 ${currentDepth.toFixed(1)}m / 喫水 ${shipDraft}m`);
-        P.speed = 0; // 強制停止
-        triggerGO('grounding'); // 2026/03/29 追加: 座礁ゲームオーバー
+        // 完全停止（物理速度もリセット）
+        P.u = 0; P.v = 0; P.r = 0; P.speed = 0;
+        triggerGO('grounding');
       }
-    } else if (ukc < 3.0) {
-      console.warn(`⚠️ SHALLOW WATER ALARM! UKC: ${ukc.toFixed(1)}m`);
+    } else if (ukc < 3.0 && !goActive && !mst.done) {
+      showPenaltyToast(`⚠ 浅水域！ UKC: ${ukc.toFixed(1)}m`);
     }
   }
   
   updateDashboard(P, simTime, curM, mst);
+  updateNavData(P, curM);
 
   if (audioReady()) updateEngineSound(P.engineOrder);
 

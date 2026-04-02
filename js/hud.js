@@ -59,32 +59,59 @@ export function drawRudder(rudder) {
 
 // ---- ナビゲーションデータ ----
 export function updateNavData(P, curM) {
-  const ids = ['td1','td2','td3','td4','td5','td6'];
-  const as = Math.abs(P.speed);
+  const as  = Math.abs(P.speed);
   const hdg = ((P.heading * 180 / Math.PI) % 360 + 360) % 360;
 
-  if (document.getElementById('td1')) {
-    document.getElementById('td1').textContent = hdg.toFixed(1) + '°';
-  }
-  if (document.getElementById('td2')) {
-    document.getElementById('td2').textContent = as.toFixed(1) + ' kt';
-  }
-  if (document.getElementById('td3')) {
-    const rotDeg = (P.yawRate * 180 / Math.PI * 60).toFixed(1);
-    document.getElementById('td3').textContent = rotDeg + '°/min';
-  }
-  if (document.getElementById('td4')) {
-    document.getElementById('td4').textContent = P.rudder.toFixed(1) + '°';
-  }
-  if (document.getElementById('td5')) {
-    document.getElementById('td5').textContent = Math.round(P.rpm) + ' RPM';
-  }
+  // td0: 船首方位
+  const td0 = document.getElementById('td0');
+  if (td0) td0.textContent = hdg.toFixed(1) + '°';
 
-  const EL = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP','DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
-  if (document.getElementById('td6')) {
-    document.getElementById('td6').textContent = EL[P.engineOrder + 4] || 'STOP';
-  }
+  // td1: 対水速力
+  const td1 = document.getElementById('td1');
+  if (td1) td1.textContent = as.toFixed(1) + ' kt';
 
+  // td2: 舵角
+  const td2 = document.getElementById('td2');
+  if (td2) td2.textContent = (P.rudder >= 0 ? '+' : '') + P.rudder.toFixed(1) + '°';
+
+  // td3: 目標方位
+  const td3 = document.getElementById('td3');
+  if (td3 && curM) {
+    const dx  = curM.tx - P.posX, dz = curM.tz - P.posZ;
+    const brg = ((Math.atan2(dx, dz) * 180 / Math.PI) + 360) % 360;
+    td3.textContent = brg.toFixed(0) + '°';
+  } else if (td3) { td3.textContent = '---°'; }
+
+  // td4: 目標距離
+  const td4 = document.getElementById('td4');
+  if (td4 && curM) {
+    const dx = curM.tx - P.posX, dz = curM.tz - P.posZ;
+    const nm = Math.sqrt(dx * dx + dz * dz) / 1852;
+    td4.textContent = nm.toFixed(2) + ' nm';
+  } else if (td4) { td4.textContent = '--- nm'; }
+
+  // td5: 潮流
+  const td5 = document.getElementById('td5');
+  if (td5) td5.textContent = P.currSpeed.toFixed(1) + ' kt / ' + Math.round(P.currDir) + '°';
+
+  // td6: 機関
+  const EL = ['FULL ASTERN','HALF ASTERN','SLOW ASTERN','DEAD SLOW ASTERN','STOP',
+              'DEAD SLOW AHEAD','SLOW AHEAD','HALF AHEAD','FULL AHEAD'];
+  const td6 = document.getElementById('td6');
+  if (td6) td6.textContent = EL[P.engineOrder + 4] || 'STOP';
+
+  // td7: ETA（目標距離と現在速力から推算）
+  const td7 = document.getElementById('td7');
+  if (td7 && curM && as > 0.1) {
+    const dx = curM.tx - P.posX, dz = curM.tz - P.posZ;
+    const nm  = Math.sqrt(dx * dx + dz * dz) / 1852;
+    const hrs = nm / as;
+    const mm  = Math.floor(hrs * 60);
+    const ss  = Math.floor((hrs * 3600) % 60);
+    td7.textContent = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+  } else if (td7) { td7.textContent = '--:--'; }
+
+  // 舵角表示（別要素）
   const rv = document.getElementById('ruv');
   if (rv) rv.textContent = (P.rudder >= 0 ? '+' : '') + P.rudder.toFixed(1) + '°';
 }
