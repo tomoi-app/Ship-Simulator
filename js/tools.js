@@ -220,6 +220,9 @@ export function toggleTool() {
 // ============================================================
 //  2. 海図の描画（水深表示オフ・陸と海を正確に分ける完全版）
 // ============================================================
+// ============================================================
+//  2. 海図の描画（陸地と海の「完璧な分離」アルゴリズム搭載版）
+// ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (!toolOpen || !mapCtx) return;
 
@@ -228,11 +231,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // 1. 画面全体を「海（青色）」で塗りつぶす
-  mapCtx.fillStyle = '#9cb8c9'; // 本物のECDISに近い落ち着いた青色
+  // 1. まず画面全体を「海（本物のECDISに近い落ち着いた青色）」で塗りつぶす
+  mapCtx.fillStyle = '#a6c9db'; 
   mapCtx.fillRect(0, 0, w, h);
 
-  // グリッド線
+  // 2. グリッド線
   mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
   mapCtx.lineWidth = 1;
   mapCtx.beginPath();
@@ -240,130 +243,219 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   for (let i = 0; i < h; i += 60) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
   mapCtx.stroke();
 
-  // 2. 陸地データの正確な描画（バグの原因を完全排除）
+  // 3. 陸地と海の完全分離アルゴリズム
   if (geoData) {
+    const rawLines = [];
+    const polygons = [];
+
+    // データを「線（海岸線）」と「面（島）」に分ける
     geoData.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
+      if (type === 'LineString') rawLines.push(coords);
+      else if (type === 'Polygon') coords.forEach(r => polygons.push(r));
+      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(r => polygons.push(r)));
+    });
 
-      const drawShape = (points, isPolygon) => {
+    // ★ ステッチング処理：途切れた海岸線を1本の長い線に縫い合わせる
+    let stitched = true;
+    while(stitched) {
+      stitched = false;
+      for (let i = 0; i < rawLines.length; i++) {
+        for (let j = 0; j < rawLines.length; j++) {
+          if (i === j) continue;
+          const lineA = rawLines[i];
+          const lineB = rawLines[j];
+          // Aの終点とBの始点が同じなら繋げる
+          if (lineA[lineA.length - 1][0] === lineB[0][0] && lineA[lineA.length - 1][1] === lineB[0][1]) {
+            rawLines[i] = lineA.concat(lineB.slice(1));
+            rawLines.splice(j, 1);
+            stitched = true;
+            break;
+          }
+        }
+        if (stitched) break;
+      }
+    }
+
+    // --- 面データ（島など）の描画 ---
+    mapCtx.fillStyle = '#dcb982'; // 陸地の黄土色
+    polygons.forEach(coords => {
         mapCtx.beginPath();
-        points.forEach((p, i) => {
-          const { x, z } = latLonToXZ(p[1], p[0]);
-          const dx = x - P.posX;
-          const dz = z - P.posZ;
-          const sx = cx + dx / ecdisScale;
-          const sy = cy - dz / ecdisScale;
+        coords.forEach((p, i) => {
+           const { x, z } = latLonToXZ(p[1], p[0]);
+           const sx = cx + (x - P.posX) / ecdisScale;
+           const sy = cy - (z - P.posZ) / ecdisScale;
+           if (i === 0) mapCtx.moveTo(sx, sy);
+           else mapCtx.lineTo(sx, sy);
+        });
+        mapCtx.closePath();
+        mapCtx.fill(); // 島を塗る
+        mapCtx.strokeStyle = '#222222';
+        mapCtx.lineWidth = 1.0;
+        mapCtx.stroke();
+    });
 
-          if (i === 0) mapCtx.moveTo(sx, sy);
-          else mapCtx.lineTo(sx, sy);
+    // --- 線データ（本州・千葉などの海岸線）の描画 ---
+    rawLines.forEach(coords => {
+        mapCtx.beginPath();
+        coords.forEach((p, i) => {
+           const { x, z } = latLonToXZ(p[1], p[0]);
+           const sx = cx + (x - P.posX) / ecdisScale;
+           const sy = cy - (z - P.posZ) / ecdisScale;
+           if (i === 0) mapCtx.moveTo(sx, sy);
+           else mapCtx.lineTo(sx, sy);
         });
 
-        // 面データ（Polygon）の場合のみ、内側を黄土色に塗る
-        if (isPolygon) {
-          mapCtx.closePath();
-          mapCtx.fillStyle = '#dcb982'; // 陸地（黄土色）
-          mapCtx.fill();
+        // ★ 最重要：ただの線だった海岸線を、強引に「面」にして陸地を塗る処理
+        if (coords.length > 5) {
+           const start = coords[0];
+           const end = coords[coords.length - 1];
+           
+           // 始点と終点が繋がっていない（開いた線である）場合、関東平野側（北）を大きく囲い込む
+           if (start[0] !== end[0] || start[1] !== end[1]) {
+               const sY = cy - (latLonToXZ(start[1], start[0]).z - P.posZ) / ecdisScale;
+               const eY = cy - (latLonToXZ(end[1], end[0]).z - P.posZ) / ecdisScale;
+               
+               const FAR_NORTH = -99999;
+               const FAR_WEST = -99999;
+               const FAR_EAST = 99999;
+
+               // 千葉の端から遥か東 → 遥か北 → 遥か西 → 横須賀の端へと四角く結んで閉じる！
+               mapCtx.lineTo(FAR_EAST, eY); 
+               mapCtx.lineTo(FAR_EAST, FAR_NORTH); 
+               mapCtx.lineTo(FAR_WEST, FAR_NORTH); 
+               mapCtx.lineTo(FAR_WEST, sY); 
+           }
+           mapCtx.closePath();
+           
+           mapCtx.fillStyle = '#dcb982';
+           mapCtx.fill(); // これで本州・千葉・神奈川がすべて黄土色に塗られる！
         }
 
-        // 線を描く（海岸線）
-        mapCtx.lineWidth = 1.0;
+        // 最後に黒い枠線を引く
         mapCtx.strokeStyle = '#222222';
+        mapCtx.lineWidth = 1.0;
         mapCtx.stroke();
-      };
+    });
+  }
 
-      // データ型に忠実に描画する（強引な塗りつぶしを絶対にしない）
-      if (type === 'Polygon') {
-        coords.forEach(r => drawShape(r, true));
-      } else if (type === 'MultiPolygon') {
-        coords.forEach(poly => poly.forEach(r => drawShape(r, true)));
-      } else if (type === 'LineString') {
-        drawShape(coords, false); // ★線データは絶対に塗りつぶさない！
+  // 4. 水深の数字プロット（余計な色はつけず、数字だけをシンプルに表示）
+  if (depthData.length > 0) {
+    const safetyDepth = 15.0; 
+    const drawnPositions = []; 
+    mapCtx.textAlign = 'center';
+    
+    depthData.forEach((pt) => {
+      if (pt.depth >= 50.0) return;
+
+      const dx = pt.x - P.posX;
+      const dz = pt.z - P.posZ; 
+      const sx = cx + dx / ecdisScale; 
+      const sy = cy - dz / ecdisScale; 
+      
+      if (sx > 0 && sx < w && sy > 0 && sy < h) {
+        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < 25 && Math.abs(p.y - sy) < 15);
+        if (isOverlapping) return;
+
+        drawnPositions.push({ x: sx, y: sy });
+
+        if (pt.depth <= safetyDepth) {
+          mapCtx.fillStyle = '#000000'; // 浅瀬：黒の太字
+          mapCtx.font = 'bold 11px Arial, sans-serif'; 
+        } else {
+          mapCtx.fillStyle = '#555555'; // 安全：グレーの細字
+          mapCtx.font = '10px Arial, sans-serif';
+        }
+        mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
       }
     });
   }
 
-  // 3. ブイの描画
+  // 5. ブイの描画
   buoys.forEach(b => {
     if(!b.position) return;
     const dx = b.position.x - P.posX;
     const dz = b.position.z - P.posZ;
-    const sx = cx + dx / ecdisScale;
-    const sy = cy - dz / ecdisScale;
+    const sx = cx + dx / ecdisScale; 
+    const sy = cy - dz / ecdisScale; 
     mapCtx.fillStyle = b.material.color.getHexString() === 'ff2222' ? '#ff3333' : '#33ff33';
     mapCtx.beginPath(); mapCtx.arc(sx, sy, 3, 0, Math.PI * 2); mapCtx.fill();
   });
 
-  // 4. 他船（AISターゲット）の描画
+  // 6. 他船（AISターゲット）の描画
   AIships.concat(fishBoats).forEach(s => {
-    const pos = s.mesh ? s.mesh.position : s.position;
+    const pos = s.mesh ? s.mesh.position : s.position; 
     if (!pos) return;
     const dx = pos.x - P.posX;
     const dz = pos.z - P.posZ;
-    const sx = cx + dx / ecdisScale;
-    const sy = cy - dz / ecdisScale;
-
+    const sx = cx + dx / ecdisScale; 
+    const sy = cy - dz / ecdisScale; 
+    
     mapCtx.save();
     mapCtx.translate(sx, sy);
     mapCtx.rotate(s.heading);
 
     mapCtx.beginPath();
-    mapCtx.moveTo(0, -8);
-    mapCtx.lineTo(5, 5);
-    mapCtx.lineTo(-5, 5);
+    mapCtx.moveTo(0, -8);  
+    mapCtx.lineTo(5, 5);   
+    mapCtx.lineTo(-5, 5);  
     mapCtx.closePath();
-    mapCtx.strokeStyle = '#000000';
+    mapCtx.strokeStyle = '#000000'; 
     mapCtx.lineWidth = 1.5;
-    mapCtx.stroke();
+    mapCtx.stroke(); 
 
     mapCtx.beginPath();
     mapCtx.moveTo(0, -8);
-    mapCtx.lineTo(0, -25);
+    mapCtx.lineTo(0, -25); 
     mapCtx.stroke();
     mapCtx.restore();
   });
 
-  // 5. 自船の描画
+  // 7. 自船の描画
   mapCtx.save();
   mapCtx.translate(cx, cy);
-  mapCtx.rotate(P.heading);
+  mapCtx.rotate(P.heading); 
 
   mapCtx.beginPath();
-  mapCtx.moveTo(0, -12);
-  mapCtx.lineTo(6, 8);
-  mapCtx.lineTo(0, 4);
-  mapCtx.lineTo(-6, 8);
+  mapCtx.moveTo(0, -12); 
+  mapCtx.lineTo(6, 8);  
+  mapCtx.lineTo(0, 4);   
+  mapCtx.lineTo(-6, 8); 
   mapCtx.closePath();
-
+  
   mapCtx.lineWidth = 2;
-  mapCtx.strokeStyle = '#000000';
-  mapCtx.fillStyle = 'rgba(0,0,0,0)';
+  mapCtx.strokeStyle = '#000000'; 
+  mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
   mapCtx.stroke();
-
+  
   mapCtx.beginPath();
   mapCtx.moveTo(0, -12);
-  mapCtx.lineTo(0, -60);
+  mapCtx.lineTo(0, -60); 
   mapCtx.strokeStyle = '#000000';
   mapCtx.stroke();
   mapCtx.restore();
 
-  // 6. テキスト情報の描画
-  mapCtx.fillStyle = '#000000';
+  // 8. 左上の情報テキスト
+  mapCtx.fillStyle = '#000000'; 
   mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
   mapCtx.fillText('ECDIS - TOKYO BAY SYSTEM', 20, 20);
-
+  
   mapCtx.font = '12px Arial, sans-serif';
   mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
   mapCtx.fillText(`POS X : ${Math.round(P.posX)} m`, 20, 65);
   mapCtx.fillText(`POS Z : ${Math.round(P.posZ)} m`, 20, 80);
-
+  
   let deg = (P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
   mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
   mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);
+
+  const currentDepth = getRealDepthAt(P.posX, P.posZ);
+  mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
 
   mapCtx.textAlign = 'right';
   mapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
