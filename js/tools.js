@@ -398,10 +398,15 @@ function initMap() {
   mapCv.id = 'ecdis-monitor';
   
   Object.assign(mapCv.style, {
-    position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%',
+    position: 'absolute', 
+    bottom: '2%',                  // ★ 画面の下端から2%の位置に配置
+    left: '50%',                   // ★ 画面の水平中央
+    transform: 'translateX(-50%)', // ★ ズレを補正してぴったりど真ん中に
+    width: '65%',                  // ★ 横幅を少しスリムに
+    height: '50%',                 // ★ 高さを画面の半分に
     backgroundColor: '#c6dbef', 
     border: '4px solid #4a5b6c',
-    borderRadius: '2px',
+    borderRadius: '8px',           // ★ 角を少し丸くしてモニターっぽく
     boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
     zIndex: '500', display: 'none', 
     pointerEvents: 'auto'
