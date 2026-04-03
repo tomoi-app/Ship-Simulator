@@ -42,20 +42,20 @@ function formatLatLon(deg, isLat) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 000右寄せ・325急角度版
+// 航路データ (Fairways & Buoys) — 観音崎ジャスト変針・000右寄せ版
 // ============================================================
 const FAIRWAYS = [
   {
     name: "SOUTH APPROACH",
-    // 進入路を大きく右（東）へスライド。変針点も早めの緯度35.230に設定
-    leftBound:  [ { lat: 35.150, lon: 139.760 }, { lat: 35.230, lon: 139.760 } ],
-    rightBound: [ { lat: 35.150, lon: 139.776 }, { lat: 35.230, lon: 139.776 } ]
+    // 少し右に移動し、変針点を観音崎の真横(35.250)まで延長
+    leftBound:  [ { lat: 35.150, lon: 139.765 }, { lat: 35.250, lon: 139.765 } ],
+    rightBound: [ { lat: 35.150, lon: 139.781 }, { lat: 35.250, lon: 139.781 } ]
   },
   {
     name: "URAGA SUIDO",
-    // 139.760から139.718へ、より角度をつけて斜めに横断するルート
-    leftBound:  [ { lat: 35.230, lon: 139.760 }, { lat: 35.320, lon: 139.718 } ],
-    rightBound: [ { lat: 35.230, lon: 139.776 }, { lat: 35.320, lon: 139.734 } ]
+    // 観音崎(35.250)から第二海堡(35.320)へ斜めに横断
+    leftBound:  [ { lat: 35.250, lon: 139.765 }, { lat: 35.320, lon: 139.718 } ],
+    rightBound: [ { lat: 35.250, lon: 139.781 }, { lat: 35.320, lon: 139.734 } ]
   },
   {
     name: "NAKANOSE",
@@ -67,14 +67,14 @@ const FAIRWAYS = [
 
 const BUOYS = [
   // 浦賀水道 南口
-  { name: "U1", lat: 35.180, lon: 139.760, color: "#11cc11" },
-  { name: "U2", lat: 35.180, lon: 139.776, color: "#ee1111" },
+  { name: "U1", lat: 35.180, lon: 139.765, color: "#11cc11" },
+  { name: "U2", lat: 35.180, lon: 139.781, color: "#ee1111" },
   // 観音崎沖の変針点 (000 -> 325)
-  { name: "U3", lat: 35.230, lon: 139.760, color: "#11cc11" },
-  { name: "U4", lat: 35.230, lon: 139.776, color: "#ee1111" },
+  { name: "U3", lat: 35.250, lon: 139.765, color: "#11cc11" },
+  { name: "U4", lat: 35.250, lon: 139.781, color: "#ee1111" },
   // 浦賀水道 中間
-  { name: "U5", lat: 35.275, lon: 139.739, color: "#11cc11" },
-  { name: "U6", lat: 35.275, lon: 139.755, color: "#ee1111" },
+  { name: "U5", lat: 35.285, lon: 139.741, color: "#11cc11" },
+  { name: "U6", lat: 35.285, lon: 139.757, color: "#ee1111" },
   // 第二海堡北側の変針点 (325 -> 021)
   { name: "U7", lat: 35.320, lon: 139.718, color: "#11cc11" },
   { name: "U8", lat: 35.320, lon: 139.734, color: "#ee1111" },
