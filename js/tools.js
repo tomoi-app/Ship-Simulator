@@ -20,6 +20,7 @@ let lastMouseY = 0;
 let hoverX = 0;
 let hoverY = 0;
 
+// ★ データ読み込み中かどうかを判定するフラグ
 export let isDepthLoading = true; 
 
 const ORIGIN_LAT = 35.45;
@@ -91,6 +92,7 @@ function startEcdisAnim() {
   cancelAnimationFrame(ecdisAnimFrame);
   function loop() {
     if (!toolOpen) return;
+    // ローディング中またはプランニング中はアニメーションを続ける
     if (freeModeStep > 0 || isDepthLoading) {
       drawAll(shipRef);
       ecdisAnimFrame = requestAnimationFrame(loop);
@@ -431,6 +433,7 @@ function initMap() {
   let downX = 0, downY = 0;
 
   mapCv.addEventListener('mousedown', (e) => {
+    // ローディング中は操作させない
     if (isDepthLoading) return;
     e.stopPropagation(); 
     isDragging = true;
@@ -441,6 +444,7 @@ function initMap() {
   });
 
   mapCv.addEventListener('mousemove', (e) => {
+    // ローディング中は操作させない
     if (isDepthLoading) return;
     e.stopPropagation();
     
@@ -461,6 +465,7 @@ function initMap() {
   });
 
   mapCv.addEventListener('mouseup', (e) => { 
+    // ローディング中は操作させない
     if (isDepthLoading) return;
     e.stopPropagation(); 
     isDragging = false; 
@@ -473,27 +478,32 @@ function initMap() {
   mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
 
   mapCv.addEventListener('wheel', (e) => {
+    // ローディング中は操作させない
     if (isDepthLoading) return;
     e.stopPropagation(); 
     e.preventDefault(); 
     
-    // マウスカーソル位置でズームするための補正計算
+    // ★ 改善点：マウスカーソル位置でズームするための補正計算
     const rect = mapCv.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const w = mapCv.width, h = mapCv.height;
     
+    // マウスカーソル位置の世界座標（ panX, panY, ecdisScale 適用前 ）を求める
     const wx = (mx - (w / 2 + panX)) * ecdisScale;
     const wy = (my - (h / 2 + panY)) * ecdisScale;
     
+    // スケールを変更
     if (e.deltaY < 0) ecdisScale = Math.max(3, ecdisScale * 0.8); 
     else ecdisScale = Math.min(150, ecdisScale * 1.25); 
     
+    // 新しいスケールに合わせて panX, panY を補正
     panX = mx - w / 2 - wx / ecdisScale;
     panY = my - h / 2 - wy / ecdisScale;
   });
 
   mapCv.addEventListener('dblclick', (e) => {
+    // ローディング中は操作させない
     if (isDepthLoading) return;
     e.stopPropagation();
     panX = 0; panY = 0; ecdisScale = 25;
@@ -519,7 +529,7 @@ function handleMapClick(e) {
     const compBox = { x: 130, y: h - 70, w: 100, h: 40 };
 
     if (mouseX >= undoBox.x && mouseX <= undoBox.x + undoBox.w && mouseY >= undoBox.y && mouseY <= undoBox.y + undoBox.h) {
-      if (routeWaypoints.length > 1) routeWaypoints.pop(); 
+      if (routeWaypoints.length > 1) routeWaypoints.pop(); // 最初の地点は残す
       return;
     }
     
@@ -527,13 +537,14 @@ function handleMapClick(e) {
       if (routeWaypoints.length > 1 && shipRef) {
          const p1 = routeWaypoints[0];
          const p2 = routeWaypoints[1];
+         // ルートの最初の方向を船の初期方位に設定
          let hdg = Math.atan2(p2.x - p1.x, p2.z - p1.z);
          shipRef.heading = hdg; 
       }
       
       freeModeStep = 0;
       selectedStartKey = null;
-      toggleTool(); 
+      toggleTool(); // ゲーム画面に切り替える
       
       if (onStartVoyageCallback) {
         onStartVoyageCallback(currentStartLoc, currentGoalLoc, routeWaypoints);
@@ -577,6 +588,7 @@ function handleMapClick(e) {
         currentGoalLoc = goalLoc;
         trackHistory = [];
         
+        // ステープ3：コースライン作成モードへ移行
         routeWaypoints = [{ x: startXZ.x, z: startXZ.z }];
         freeModeStep = 3;
       }
@@ -591,7 +603,7 @@ export function toggleTool() {
   toolOpen = !toolOpen;
   
   if (toolOpen) {
-    // ゲームプレイ時の開閉設定（80%）
+    // ★ 改善点：ゲームプレイ時の開閉設定を height 80%, 下寄せに維持
     Object.assign(mapCv.style, {
       bottom: '0%', left: '10%', width: '80%', height: '80%', borderRadius: '2px'
     });
@@ -620,26 +632,33 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   const w = mapCv.width, h = mapCv.height;
 
-  // ローディング画面
+  // ★ 改善点：ローディング中の描画処理。背景なしで海を出しつつテキスト表示。
   if (isDepthLoading) {
+    // 画面全体を海図（水色）にする。image_6.pngの背景をこれに置き換える。
     mapCtx.save();
-    mapCtx.fillStyle = '#e4f1fc';
+    mapCtx.fillStyle = '#e4f1fc'; // image_0.pngのような海図のベース色
     mapCtx.fillRect(0, 0, w, h);
 
+    // テキストのみを中央に表示
     const cxLoad = w / 2;
     const cyLoad = h / 2;
+
     mapCtx.textAlign = 'center';
     mapCtx.textBaseline = 'middle';
-    mapCtx.fillStyle = '#4a5b6c'; 
-    mapCtx.font = 'bold 18px sans-serif';
+
+    // 背景が濃い青（海）になるため、テキストの色を白に変更
+    mapCtx.fillStyle = '#ffffff'; 
+    mapCtx.font = 'bold 24px sans-serif'; // 少し大きく、おしゃれに
     
+    // 動くドット
     const dots = ".".repeat(Math.floor(Date.now() / 400) % 4);
     mapCtx.fillText("地形データを読み込み中" + dots, cxLoad, cyLoad);
 
     mapCtx.restore();
-    return; 
+    return; // 読み込み中はここで処理を終了し、下の通常の海図は描画しない
   }
 
+  // 以降は通常時（読み込み完了後）の描画処理
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
@@ -928,7 +947,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (routeWaypoints.length > 0) {
     mapCtx.save();
     mapCtx.lineWidth = 2.5;
-    mapCtx.strokeStyle = '#ff00ff'; 
+    mapCtx.strokeStyle = '#ff00ff'; //ECDISMAGENTA
     mapCtx.fillStyle = '#ff00ff';
     mapCtx.font = 'bold 13px Arial, sans-serif';
 
@@ -955,6 +974,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       let hdg = Math.atan2(dx, dz) * 180 / Math.PI;
       if (hdg < 0) hdg += 360;
       
+      // ★ 改善点：船首方向は整数三桁で表して。<000><010>のように。
       let hdgInt = Math.round(hdg) % 360;
       let hdgStr = "<" + String(hdgInt).padStart(3, '0') + ">";
       
@@ -989,6 +1009,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       let hdg = Math.atan2(dx, dz) * 180 / Math.PI;
       if (hdg < 0) hdg += 360;
 
+      // ★ 改善点：プランニング中も整数三桁。<000>
       let hdgInt = Math.round(hdg) % 360;
       let hdgStr = "<" + String(hdgInt).padStart(3, '0') + ">";
 
@@ -1029,6 +1050,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
+  // スタート・ゴールの赤丸を常時表示
   if ((freeModeStep === 0 || freeModeStep === 3) && (currentStartLoc || currentGoalLoc)) {
     [currentStartLoc, currentGoalLoc].forEach(loc => {
       if (!loc) return;
@@ -1140,6 +1162,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const currentDepth = getRealDepthAt(safeP.posX, safeP.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 105);
 
+  // ステップ1, 2のUI
   if (freeModeStep === 1 || freeModeStep === 2) {
     mapCtx.save();
     
@@ -1208,6 +1231,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.restore();
   }
 
+  // ステップ3（コース作成）のUI
   if (freeModeStep === 3) {
     mapCtx.save();
     const boxW = 320;
