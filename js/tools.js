@@ -1,6 +1,6 @@
 'use strict';
 // ============================================================
-//  tools.js — 電子海図モニター (ECDIS) 【航路完成＆海図選択UI版】
+//  tools.js — 電子海図モニター (ECDIS) 【完全版】
 // ============================================================
 
 let toolOpen = false;
@@ -42,11 +42,12 @@ function formatLatLon(deg, isLat) {
 }
 
 // ============================================================
-// フリーモードのルートプランナー用データ
+// フリーモードのルートプランナー用データと専用ループ
 // ============================================================
-export let freeModeStep = 0; // 0: 通常ECDIS, 1: 出発地選択, 2: 目的地選択
+export let freeModeStep = 0; 
 export let selectedStartKey = null;
 let shipRef = null;
+let menuAnimFrame = null;
 
 const VOYAGE_LOCATIONS = {
   uraga: { name: "浦賀水道（航路南口 / 入港）", lat: 35.150, lon: 139.773, heading: 0 },
@@ -54,25 +55,41 @@ const VOYAGE_LOCATIONS = {
   tokyo: { name: "東京港（大井ふ頭 / 出港）", lat: 35.600, lon: 139.765, heading: 180 }
 };
 
+// メインループが停止していても海図を描画し続けるための専用ループ
+function renderMenuLoop() {
+  if (freeModeStep > 0 && toolOpen) {
+    drawAll(shipRef);
+    menuAnimFrame = requestAnimationFrame(renderMenuLoop);
+  }
+}
+
 export function startFreeModeSelection(p) {
-  shipRef = p;
+  shipRef = p || {}; // Pが未定義でもエラーにならないようにする
   toolOpen = true;
   freeModeStep = 1;
   selectedStartKey = null;
   
   if (!mapCv) initMap();
   mapCv.style.display = 'block';
-  mapCv.width = mapCv.clientWidth;
-  mapCv.height = mapCv.clientHeight;
+  
+  // 表示直後のサイズ0バグを防ぐ
+  setTimeout(() => {
+    mapCv.width = mapCv.clientWidth || 800;
+    mapCv.height = mapCv.clientHeight || 600;
+  }, 10);
   
   // 東京湾全体が見渡せるようにズームアウトして初期化
   panX = 0; 
   panY = 0; 
   ecdisScale = 60; 
+
+  // 専用描画ループをスタート
+  cancelAnimationFrame(menuAnimFrame);
+  renderMenuLoop();
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 観音崎ジャスト変針・右寄せ版
+// 航路データ (Fairways & Buoys)
 // ============================================================
 const FAIRWAYS = [
   {
@@ -448,7 +465,7 @@ function initMap() {
 
 // クリックされた位置から港を選択するロジック
 function handleMapClick(e) {
-  if (freeModeStep === 0 || !shipRef) return;
+  if (freeModeStep === 0) return;
   const rect = mapCv.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
@@ -456,14 +473,19 @@ function handleMapClick(e) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
+  // 船の座標がない場合はダミー（東京湾中心）を使う
+  const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
+    ? shipRef
+    : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z };
+
   let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
              (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
 
   for (let key of keys) {
     const loc = VOYAGE_LOCATIONS[key];
     const xz = latLonToXZ(loc.lat, loc.lon);
-    const sx = cx + (xz.x - shipRef.posX) / ecdisScale;
-    const sy = cy - (xz.z - shipRef.posZ) / ecdisScale;
+    const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+    const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
     
     // マウスとマーカーの距離判定（半径30px以内）
     const dist = Math.sqrt((mouseX - sx)**2 + (mouseY - sy)**2);
@@ -476,10 +498,12 @@ function handleMapClick(e) {
         const startLoc = VOYAGE_LOCATIONS[selectedStartKey];
         const startXZ = latLonToXZ(startLoc.lat, startLoc.lon);
         
-        shipRef.posX = startXZ.x;
-        shipRef.posZ = startXZ.z;
-        shipRef.heading = startLoc.heading * Math.PI / 180;
-        shipRef.speed = 0; // 停船状態からスタート
+        if (shipRef) {
+          shipRef.posX = startXZ.x;
+          shipRef.posZ = startXZ.z;
+          shipRef.heading = startLoc.heading * Math.PI / 180;
+          shipRef.speed = 0; // 停船状態からスタート
+        }
         
         console.log(`🚀 出航: ${startLoc.name} -> ${VOYAGE_LOCATIONS[key].name}`);
         
@@ -503,6 +527,7 @@ export function toggleTool() {
     mapCv.height = mapCv.clientHeight;
   } else {
     freeModeStep = 0; 
+    cancelAnimationFrame(menuAnimFrame);
   }
 }
 
@@ -510,8 +535,20 @@ export function toggleTool() {
 // 4. 海図の描画
 // ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
-  shipRef = P;
+  shipRef = P || shipRef || {};
   if (!toolOpen || !mapCtx || !geoData) return;
+
+  // キャンバスのサイズが0になるバグ対策（自動リサイズ）
+  if (mapCv.width === 0 || mapCv.height === 0 || mapCv.width !== mapCv.clientWidth || mapCv.height !== mapCv.clientHeight) {
+      mapCv.width = mapCv.clientWidth || 800;
+      mapCv.height = mapCv.clientHeight || 600;
+  }
+
+  // Pが未定義の場合（ゲーム開始前など）は東京湾の中心をダミーとして扱う
+  const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
+    ? shipRef
+    : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
+
   const w = mapCv.width, h = mapCv.height;
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
@@ -521,10 +558,10 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   mapCtx.fillRect(0, 0, w, h);
 
   if (renderGrid) {
-    const worldMinX = P.posX - cx * ecdisScale;
-    const worldMaxX = P.posX + (w - cx) * ecdisScale;
-    const worldMaxZ = P.posZ + cy * ecdisScale; 
-    const worldMinZ = P.posZ - (h - cy) * ecdisScale;
+    const worldMinX = safeP.posX - cx * ecdisScale;
+    const worldMaxX = safeP.posX + (w - cx) * ecdisScale;
+    const worldMaxZ = safeP.posZ + cy * ecdisScale; 
+    const worldMinZ = safeP.posZ - (h - cy) * ecdisScale;
 
     const startC = Math.max(0, Math.floor((worldMinX - GRID_START_X) / RENDER_STEP) - 4);
     const endC   = Math.min(gridCols - 1, Math.ceil((worldMaxX - GRID_START_X) / RENDER_STEP) + 4);
@@ -547,10 +584,10 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
           const idx = (b0 ? 1 : 0) | (b1 ? 2 : 0) | (b2 ? 4 : 0) | (b3 ? 8 : 0);
           if (idx === 0) continue;
 
-          const p0 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale,       y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
-          const p1 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale,   y: cy - (GRID_START_Z + r * RENDER_STEP - P.posZ)/ecdisScale };
-          const p2 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - P.posX)/ecdisScale,   y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
-          const p3 = { x: cx + (GRID_START_X + c * RENDER_STEP - P.posX)/ecdisScale,       y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - P.posZ)/ecdisScale };
+          const p0 = { x: cx + (GRID_START_X + c * RENDER_STEP - safeP.posX)/ecdisScale,       y: cy - (GRID_START_Z + r * RENDER_STEP - safeP.posZ)/ecdisScale };
+          const p1 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - safeP.posX)/ecdisScale,   y: cy - (GRID_START_Z + r * RENDER_STEP - safeP.posZ)/ecdisScale };
+          const p2 = { x: cx + (GRID_START_X + (c+1) * RENDER_STEP - safeP.posX)/ecdisScale,   y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - safeP.posZ)/ecdisScale };
+          const p3 = { x: cx + (GRID_START_X + c * RENDER_STEP - safeP.posX)/ecdisScale,       y: cy - (GRID_START_Z + (r+1) * RENDER_STEP - safeP.posZ)/ecdisScale };
 
           if (idx === 15) {
              mapCtx.beginPath();
@@ -634,12 +671,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
           if (points.length >= 2) {
             mapCtx.beginPath();
-            const sp1 = { x: cx + (points[0].x - P.posX) / ecdisScale, y: cy - (points[0].z - P.posZ) / ecdisScale };
-            const sp2 = { x: cx + (points[1].x - P.posX) / ecdisScale, y: cy - (points[1].z - P.posZ) / ecdisScale };
+            const sp1 = { x: cx + (points[0].x - safeP.posX) / ecdisScale, y: cy - (points[0].z - safeP.posZ) / ecdisScale };
+            const sp2 = { x: cx + (points[1].x - safeP.posX) / ecdisScale, y: cy - (points[1].z - safeP.posZ) / ecdisScale };
             mapCtx.moveTo(sp1.x, sp1.y); mapCtx.lineTo(sp2.x, sp2.y);
             if (points.length === 4) {
-              const sp3 = { x: cx + (points[2].x - P.posX) / ecdisScale, y: cy - (points[2].z - P.posZ) / ecdisScale };
-              const sp4 = { x: cx + (points[3].x - P.posX) / ecdisScale, y: cy - (points[3].z - P.posZ) / ecdisScale };
+              const sp3 = { x: cx + (points[2].x - safeP.posX) / ecdisScale, y: cy - (points[2].z - safeP.posZ) / ecdisScale };
+              const sp4 = { x: cx + (points[3].x - safeP.posX) / ecdisScale, y: cy - (points[3].z - safeP.posZ) / ecdisScale };
               mapCtx.moveTo(sp3.x, sp3.y); mapCtx.lineTo(sp4.x, sp4.y);
             }
             mapCtx.stroke();
@@ -666,8 +703,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   parsedPolygonsXZ.forEach(item => {
       mapCtx.beginPath();
       item.poly.forEach((pt, i) => {
-         const sx = cx + (pt.x - P.posX) / ecdisScale;
-         const sy = cy - (pt.z - P.posZ) / ecdisScale;
+         const sx = cx + (pt.x - safeP.posX) / ecdisScale;
+         const sy = cy - (pt.z - safeP.posZ) / ecdisScale;
          if (i === 0) mapCtx.moveTo(sx, sy);
          else mapCtx.lineTo(sx, sy);
       });
@@ -685,8 +722,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.beginPath();
     fw.leftBound.forEach((pt, i) => {
       const xz = latLonToXZ(pt.lat, pt.lon);
-      const sx = cx + (xz.x - P.posX) / ecdisScale;
-      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+      const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
       if (i === 0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy);
     });
     mapCtx.stroke();
@@ -694,8 +731,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.beginPath();
     fw.rightBound.forEach((pt, i) => {
       const xz = latLonToXZ(pt.lat, pt.lon);
-      const sx = cx + (xz.x - P.posX) / ecdisScale;
-      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+      const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
       if (i === 0) mapCtx.moveTo(sx, sy); else mapCtx.lineTo(sx, sy);
     });
     mapCtx.stroke();
@@ -704,8 +741,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   BUOYS.forEach(b => {
     const xz = latLonToXZ(b.lat, b.lon);
-    const sx = cx + (xz.x - P.posX) / ecdisScale;
-    const sy = cy - (xz.z - P.posZ) / ecdisScale;
+    const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+    const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
 
     if (sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
       mapCtx.beginPath();
@@ -732,8 +769,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     depthData.forEach((pt) => {
       if (pt.depth === 0.0) return;
       
-      const sx = cx + (pt.x - P.posX) / ecdisScale; 
-      const sy = cy - (pt.z - P.posZ) / ecdisScale; 
+      const sx = cx + (pt.x - safeP.posX) / ecdisScale; 
+      const sy = cy - (pt.z - safeP.posZ) / ecdisScale; 
       
       if (sx > 0 && sx < w && sy > 0 && sy < h) {
         const overlapRadius = pt.depth >= 20.0 ? 60 : 35;
@@ -758,8 +795,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     AIships.concat(fishBoats || []).forEach(s => {
       const pos = s.mesh ? s.mesh.position : s.position; 
       if (!pos) return;
-      const sx = cx + (pos.x - P.posX) / ecdisScale; 
-      const sy = cy - (pos.z - P.posZ) / ecdisScale; 
+      const sx = cx + (pos.x - safeP.posX) / ecdisScale; 
+      const sy = cy - (pos.z - safeP.posZ) / ecdisScale; 
       
       mapCtx.save();
       mapCtx.translate(sx, sy);
@@ -779,29 +816,32 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  mapCtx.save();
-  mapCtx.translate(cx, cy);
-  mapCtx.rotate(P.heading); 
-  mapCtx.beginPath();
-  mapCtx.moveTo(0, -12); mapCtx.lineTo(6, 8); mapCtx.lineTo(0, 4); mapCtx.lineTo(-6, 8); 
-  mapCtx.closePath();
-  mapCtx.lineWidth = 2;
-  mapCtx.strokeStyle = '#000000'; 
-  mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
-  mapCtx.stroke();
-  mapCtx.beginPath();
-  mapCtx.moveTo(0, -12); mapCtx.lineTo(0, -60); 
-  mapCtx.strokeStyle = '#000000';
-  mapCtx.stroke();
-  mapCtx.restore();
+  // 自船の描画（実際の座標を持っている時だけ描画）
+  if (P && typeof P.posX === 'number' && !isNaN(P.posX)) {
+    mapCtx.save();
+    mapCtx.translate(cx, cy);
+    mapCtx.rotate(P.heading); 
+    mapCtx.beginPath();
+    mapCtx.moveTo(0, -12); mapCtx.lineTo(6, 8); mapCtx.lineTo(0, 4); mapCtx.lineTo(-6, 8); 
+    mapCtx.closePath();
+    mapCtx.lineWidth = 2;
+    mapCtx.strokeStyle = '#000000'; 
+    mapCtx.fillStyle = 'rgba(0,0,0,0)'; 
+    mapCtx.stroke();
+    mapCtx.beginPath();
+    mapCtx.moveTo(0, -12); mapCtx.lineTo(0, -60); 
+    mapCtx.strokeStyle = '#000000';
+    mapCtx.stroke();
+    mapCtx.restore();
+  }
 
   mapCtx.save();
   const baseFont = "sans-serif";
 
   BUOYS.forEach(b => {
     const xz = latLonToXZ(b.lat, b.lon);
-    const sx = cx + (xz.x - P.posX) / ecdisScale;
-    const sy = cy - (xz.z - P.posZ) / ecdisScale;
+    const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+    const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
     if (sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
       mapCtx.font = `bold 10px ${baseFont}`;
       mapCtx.textAlign = 'left';
@@ -816,8 +856,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (typeof LANDMARKS !== 'undefined') {
     LANDMARKS.forEach(lm => {
       const xz = latLonToXZ(lm.lat, lm.lon);
-      const sx = cx + (xz.x - P.posX) / ecdisScale;
-      const sy = cy - (xz.z - P.posZ) / ecdisScale;
+      const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+      const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
       if (sx < -100 || sx > w + 100 || sy < -100 || sy > h + 100) return;
 
       const size = lm.size || 11;
@@ -837,7 +877,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   }
   mapCtx.restore();
 
-  // ★ 左上の情報テキスト
+  // 左上の情報テキスト
   mapCtx.fillStyle = '#000000'; 
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
@@ -845,22 +885,22 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   
   mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 20);
   
-  const ll = xzToLatLon(P.posX, P.posZ);
+  const ll = xzToLatLon(safeP.posX, safeP.posZ);
   if (ll) {
     mapCtx.fillText(`LAT   : ${formatLatLon(ll.lat, true)}`, 20, 40);
     mapCtx.fillText(`LON   : ${formatLatLon(ll.lon, false)}`, 20, 55);
   }
 
-  let deg = (P.heading * 180 / Math.PI + 360) % 360;
+  let deg = ((safeP.heading || 0) * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
   mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 75);
-  mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 90);
+  mapCtx.fillText(`SPD   : ${(safeP.speed || 0).toFixed(1)} kt`, 20, 90);
 
-  const currentDepth = getRealDepthAt(P.posX, P.posZ);
+  const currentDepth = getRealDepthAt(safeP.posX, safeP.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 105);
 
   // ★ フリーモード選択用 UI の描画（アニメーションする波紋ピン）
-  if (freeModeStep > 0 && shipRef) {
+  if (freeModeStep > 0) {
     mapCtx.save();
     
     // 画面上部へのメッセージ
@@ -877,17 +917,15 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.fillText('🏁 どこへ向かいますか？（ゴール位置を選択）', w/2, 45);
     }
 
-    // 選択可能な場所を判定
     let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
                (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
 
     keys.forEach(key => {
       const loc = VOYAGE_LOCATIONS[key];
       const xz = latLonToXZ(loc.lat, loc.lon);
-      const sx = cx + (xz.x - shipRef.posX) / ecdisScale;
-      const sy = cy - (xz.z - shipRef.posZ) / ecdisScale;
+      const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+      const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
       
-      // 波紋アニメーション
       const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
       const radius = 12 + pulse * 8;
 
@@ -896,7 +934,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.fillStyle = 'rgba(255, 100, 0, 0.4)';
       mapCtx.fill();
 
-      // 中心のピン
       mapCtx.beginPath();
       mapCtx.arc(sx, sy, 6, 0, Math.PI * 2);
       mapCtx.fillStyle = '#ff4400';
@@ -905,7 +942,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.lineWidth = 2;
       mapCtx.stroke();
 
-      // ラベル
       mapCtx.fillStyle = '#111111';
       mapCtx.font = 'bold 14px sans-serif';
       mapCtx.textAlign = 'center';
