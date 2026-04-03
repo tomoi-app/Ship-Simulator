@@ -558,7 +558,7 @@ export function buildWorld(THREE, scene) {
 
   positions.forEach(p => {
     const b = new THREE.Mesh(buoyGeo, p.m);
-    b.position.set(p.x, 0, p.z);
+    b.position.set(-p.x, 0, p.z); // ★反転
     scene.add(b);
     buoys.push(b);
   });
@@ -661,7 +661,7 @@ export function buildAI(THREE, scene) {
     wakeMesh.position.set(0, 0.2, 25 * sz + wakeLen / 2 - 5 * sz);
     g.add(wakeMesh);
 
-    g.position.set(x, 0, z); g.rotation.y = -h; scene.add(g);
+    g.position.set(-x, 0, z); g.rotation.y = -h; scene.add(g); // ★位置Xを反転
     return { mesh: g, heading: h, speed: spd, avoidTimer: 0, sz };
   };
 
@@ -684,7 +684,7 @@ export function buildAI(THREE, scene) {
     wakeMesh.position.set(0, 0.3, 140 + wakeLen / 2 - 10);
     g.add(wakeMesh);
 
-    g.position.set(x, 0, z); g.rotation.y = -h; scene.add(g);
+    g.position.set(-x, 0, z); g.rotation.y = -h; scene.add(g); // ★位置Xを反転
     return { mesh: g, heading: h, speed: 4, avoidTimer: 0, sz: 5, isTanker: true };
   };
 
@@ -717,7 +717,8 @@ export function buildAI(THREE, scene) {
     g.add(wakeMesh);
 
     const a = Math.random() * Math.PI * 2;
-    g.position.set(Math.cos(a) * 800 + Math.random() * 300 - 150, 0, Math.sin(a) * 800 + Math.random() * 300 - 150);
+    // ★位置Xを反転
+    g.position.set(-(Math.cos(a) * 800 + Math.random() * 300 - 150), 0, Math.sin(a) * 800 + Math.random() * 300 - 150);
     scene.add(g);
     fishBoats.push({ mesh: g, heading: a, speed: spd, drift: Math.random() * 0.003 - 0.0015 });
   }
@@ -733,7 +734,7 @@ export function buildAI(THREE, scene) {
     const fn = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 10, 8), new THREE.MeshStandardMaterial({ color: 0xff5500 }));
     fn.position.set(0, 18, 0); g.add(fn);
 
-    g.position.set(x, 0, z); scene.add(g);
+    g.position.set(-x, 0, z); scene.add(g); // ★位置Xを反転
     return { mesh: g, active: false, ox, oz };
   };
   tugs.push(mkTug(-2100 + 100, 3200 - 200,  65, -90));
@@ -781,8 +782,8 @@ export async function buildLandmass(THREE, scene) {
     const ORIGIN_LON = 139.75;
 
     function latLonToXZ(lat, lon) {
-      // ★ 修正：先頭のマイナスを削除！（東 = +X に統一）
-      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★ 修正：X座標を反転！（東 = -X に統一）
+      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
     }
@@ -886,8 +887,8 @@ export async function buildCity(THREE, scene) {
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
-      // ★ ここもマイナスを削除！
-      const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+      // ★ ここも反転！
+      const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
     }

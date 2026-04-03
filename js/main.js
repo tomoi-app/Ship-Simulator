@@ -451,17 +451,17 @@ function updAI(dt) {
     }
     if (s.avoidTimer > 0) s.avoidTimer--;
     const spd = s.speed * 0.514;
-    s.mesh.position.x += -Math.sin(s.heading) * spd * dt;
+    s.mesh.position.x += Math.sin(s.heading) * spd * dt; // ★反転: -sin から sin へ
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
     if (s.mesh.position.z >  8000) s.mesh.position.z = -2500;
     if (s.mesh.position.z < -2500) s.mesh.position.z =  8000;
-    if (s.mesh.position.x >  5000) s.mesh.position.x = -3500;
-    if (s.mesh.position.x < -3500) s.mesh.position.x =  5000;
+    if (s.mesh.position.x >  3500) s.mesh.position.x = -5000; // ★反転に伴う境界チェック修正
+    if (s.mesh.position.x < -5000) s.mesh.position.x =  3500;
   });
   fishBoats.forEach(f => {
     f.heading += f.drift;
-    f.mesh.position.x += -Math.sin(f.heading) * f.speed * 0.514 * dt;
+    f.mesh.position.x += Math.sin(f.heading) * f.speed * 0.514 * dt; // ★反転: -sin から sin へ
     f.mesh.position.z += Math.cos(f.heading) * f.speed * 0.514 * dt;
     f.mesh.rotation.y = -f.heading;
     if (Math.sqrt(f.mesh.position.x**2 + f.mesh.position.z**2) > 2500)
@@ -474,9 +474,9 @@ function updTugs(dt) {
     if (!tg.active) return;
     const tx = P.posX + Math.cos(P.heading)*tg.ox - Math.sin(P.heading)*tg.oz;
     const tz = P.posZ + Math.sin(P.heading)*tg.ox + Math.cos(P.heading)*tg.oz;
-    tg.mesh.position.x += (tx - tg.mesh.position.x) * 0.035;
+    tg.mesh.position.x += (-tx - tg.mesh.position.x) * 0.035; // ★反転: -tx に追従
     tg.mesh.position.z += (tz - tg.mesh.position.z) * 0.035;
-    tg.mesh.rotation.y = -Math.atan2(P.posX - tg.mesh.position.x, P.posZ - tg.mesh.position.z);
+    tg.mesh.rotation.y = -Math.atan2(-P.posX - tg.mesh.position.x, P.posZ - tg.mesh.position.z); // ★atan2のXも反転
   });
 }
 
@@ -494,11 +494,12 @@ function checkSpdPen() {
 //  3D シーン更新
 // ============================================================
 function upd3D(t) {
-  ocean.position.x = P.posX; ocean.position.z = P.posZ;
+  ocean.position.x = -P.posX; // ★反転
+  ocean.position.z = P.posZ;
   wu.uOffset.value.set(P.posX, P.posZ); 
   const wa = curM ? curM.waves : 1;
 
-  shipGroup.position.set(P.posX, 0, P.posZ);
+  shipGroup.position.set(-P.posX, 0, P.posZ); // ★反転
   shipGroup.rotation.z = P.rollAngle;
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
@@ -519,7 +520,7 @@ function upd3D(t) {
 
   prop.rotation.x += P.speed * 0.06;
   buoys.forEach((b, i) => b.position.y = Math.sin(t * 0.0012 + i * 0.8) * 0.35);
-  sky.position.set(P.posX, 0, P.posZ);
+  sky.position.set(-P.posX, 0, P.posZ); // ★反転
 }
 
 // ============================================================
