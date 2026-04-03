@@ -68,6 +68,10 @@ export function getRealDepthAt(posX, posZ) {
 // ============================================================
 export let freeModeStep = 0; 
 export let selectedStartKey = null;
+export let currentStartLoc = null; // ★ 決定したスタート地点を保存
+export let currentGoalLoc = null;  // ★ 決定したゴール地点を保存
+export let trackHistory = [];      // ★ 船の航跡を保存する配列
+
 let shipRef = null;
 let menuAnimFrame = null;
 let onStartVoyageCallback = null; 
@@ -75,7 +79,7 @@ let onStartVoyageCallback = null;
 const VOYAGE_LOCATIONS = {
   uraga: { name: "浦賀水道", lat: 35.150, lon: 139.773, heading: 0 },
   yokohama: { name: "横浜港", lat: 35.452, lon: 139.648, heading: 110 },
-  tokyo: { name: "東京港", lat: 35.600, lon: 139.765, heading: 180 }
+  tokyo: { name: "東京港", lat: 35.590, lon: 139.780, heading: 180 }
 };
 
 function renderMenuLoop() {
@@ -109,7 +113,7 @@ export function startFreeModeSelection(p, callback) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 021度直線復旧
+// 航路データ (Fairways & Buoys)
 // ============================================================
 const FAIRWAYS = [
   {
@@ -124,7 +128,6 @@ const FAIRWAYS = [
   },
   {
     name: "NAKANOSE",
-    // 021度の直線ルートに復旧
     leftBound:  [ { lat: 35.320, lon: 139.718 }, { lat: 35.400, lon: 139.748 } ],
     rightBound: [ { lat: 35.320, lon: 139.734 }, { lat: 35.400, lon: 139.764 } ]
   }
@@ -154,10 +157,9 @@ const LANDMARKS = [
   { name: "第二海堡",   lat: 35.308, lon: 139.710, align: "right" },
   { name: "浦賀灯台",   lat: 35.210, lon: 139.715, align: "right" },
   { name: "富津灯台",   lat: 35.310, lon: 139.780, align: "left" },
-  { name: "中ノ瀬灯標", lat: 35.375, lon: 139.715, align: "right" }, // 位置を北上
   { name: "東 京 湾",   lat: 35.450, lon: 139.850, size: 24, weight: "bold", color: "rgba(0,0,0,0.4)" }, 
   { name: "浦賀水道",   lat: 35.270, lon: 139.700, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" },
-  { name: "中 ノ 瀬",   lat: 35.380, lon: 139.710, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" }, // 位置を北上
+  { name: "中 ノ 瀬",   lat: 35.380, lon: 139.710, size: 16, weight: "bold", color: "rgba(0,0,0,0.6)", align: "right" }, 
   { name: "木更津港",   lat: 35.370, lon: 139.900, align: "left" },
   { name: "横須賀港",   lat: 35.290, lon: 139.670, align: "right" },
   { name: "横浜港",     lat: 35.450, lon: 139.670, align: "right" },
@@ -253,12 +255,12 @@ function generateRealisticDepthsFast() {
   });
 
   const deepAreas = [
-    { pos: latLonToXZ(35.452, 139.648), radius: 2000, depth: 16.0 }, 
-    { pos: latLonToXZ(35.445, 139.680), radius: 3500, depth: 18.0 }, 
+    { pos: latLonToXZ(35.452, 139.648), radius: 2500, depth: 20.0 }, 
+    { pos: latLonToXZ(35.445, 139.680), radius: 3500, depth: 20.0 }, 
     { pos: latLonToXZ(35.430, 139.720), radius: 4500, depth: 20.0 }, 
-    { pos: latLonToXZ(35.600, 139.765), radius: 2500, depth: 16.0 }, 
-    { pos: latLonToXZ(35.550, 139.765), radius: 4000, depth: 18.0 }, 
-    { pos: latLonToXZ(35.480, 139.765), radius: 5500, depth: 20.0 }
+    { pos: latLonToXZ(35.590, 139.780), radius: 3000, depth: 20.0 }, 
+    { pos: latLonToXZ(35.550, 139.780), radius: 4000, depth: 20.0 }, 
+    { pos: latLonToXZ(35.480, 139.770), radius: 5500, depth: 20.0 }
   ];
 
   const workerCode = `
@@ -308,7 +310,6 @@ function generateRealisticDepthsFast() {
             }
           }
 
-          // ★ 修正：陸地の場合は絶対に水深を0.0にする。これ以外の処理はさせない。
           let finalDepth = 0.0;
           
           if (!onLand) {
@@ -338,7 +339,6 @@ function generateRealisticDepthsFast() {
 
             finalDepth = Math.max(2.0, Math.min(45.0, depth));
 
-            // ★ 修正：陸地でない水の部分にのみ、深い港の処理を適用する
             deepAreas.forEach(area => {
               const dSq = (area.pos.x - x)**2 + (area.pos.z - z)**2;
               if (dSq < area.radius**2) {
@@ -362,7 +362,6 @@ function generateRealisticDepthsFast() {
   const worker = new Worker(URL.createObjectURL(blob));
 
   const famousShoals = [
-    // ★ 中ノ瀬を北に移動し、直線の航路を邪魔しないように配置
     { name: "中ノ瀬", pos: latLonToXZ(35.3750, 139.7150), radius: 5000, depth: 7.0 },
     { name: "富津岬沖", pos: latLonToXZ(35.3150, 139.7900), radius: 4000, depth: 3.0 },
     { name: "観音崎",   pos: latLonToXZ(35.2600, 139.7500), radius: 2000, depth: 8.0 },
@@ -383,7 +382,7 @@ function generateRealisticDepthsFast() {
 
   worker.onmessage = function(e) {
     renderGrid = e.data; 
-    console.log("ECDIS: 水深データ生成完了 (海岸線復元版)");
+    console.log("ECDIS: 水深データ生成完了");
     worker.terminate();
     URL.revokeObjectURL(blob);
   };
@@ -398,15 +397,10 @@ function initMap() {
   mapCv.id = 'ecdis-monitor';
   
   Object.assign(mapCv.style, {
-    position: 'absolute', 
-    bottom: '2%',                  // ★ 画面の下端から2%の位置に配置
-    left: '50%',                   // ★ 画面の水平中央
-    transform: 'translateX(-50%)', // ★ ズレを補正してぴったりど真ん中に
-    width: '65%',                  // ★ 横幅を少しスリムに
-    height: '50%',                 // ★ 高さを画面の半分に
+    position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%',
     backgroundColor: '#c6dbef', 
     border: '4px solid #4a5b6c',
-    borderRadius: '8px',           // ★ 角を少し丸くしてモニターっぽく
+    borderRadius: '2px',
     boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
     zIndex: '500', display: 'none', 
     pointerEvents: 'auto'
@@ -502,6 +496,11 @@ function handleMapClick(e) {
           shipRef.heading = startLoc.heading * Math.PI / 180;
           shipRef.speed = 0; 
         }
+        
+        // ★ スタートとゴールを保存し、航跡履歴をリセットする
+        currentStartLoc = startLoc;
+        currentGoalLoc = goalLoc;
+        trackHistory = [];
         
         console.log(`🚀 出航: ${startLoc.name} -> ${goalLoc.name}`);
         
@@ -640,7 +639,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     fillContourBand(20.0, '#9ecae1');
     fillContourBand(10.0, '#6baed6');
     fillContourBand(5.0,  '#4292c6');
-    fillContourBand(0.5, '#dcb982'); // 陸地の等深線
+    fillContourBand(0.5, '#dcb982'); 
 
     const drawContour = (threshold, color, width) => {
       mapCtx.strokeStyle = color;
@@ -796,6 +795,42 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     }
   });
 
+  // ★ 航跡 (Track) の保存と描画
+  if (P && typeof P.posX === 'number' && !isNaN(P.posX) && freeModeStep === 0) {
+    if (trackHistory.length === 0) {
+      trackHistory.push({ x: P.posX, z: P.posZ });
+    } else {
+      const lastP = trackHistory[trackHistory.length - 1];
+      const distSq = (lastP.x - P.posX)**2 + (lastP.z - P.posZ)**2;
+      // 30m移動するごとに座標を記録 (900 = 30^2)
+      if (distSq > 900) { 
+        trackHistory.push({ x: P.posX, z: P.posZ });
+      }
+    }
+  }
+
+  if (trackHistory.length > 0 && freeModeStep === 0) {
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.strokeStyle = 'rgba(30, 30, 30, 0.8)'; // 黒っぽい実線（ECDISの航跡風）
+    mapCtx.lineWidth = 2;
+    
+    for (let i = 0; i < trackHistory.length; i++) {
+      const pt = trackHistory[i];
+      const sx = cx + (pt.x - safeP.posX) / ecdisScale;
+      const sy = cy - (pt.z - safeP.posZ) / ecdisScale;
+      if (i === 0) mapCtx.moveTo(sx, sy);
+      else mapCtx.lineTo(sx, sy);
+    }
+    // 最新の位置（船体）まで線を引く
+    const currSx = cx + (safeP.posX - safeP.posX) / ecdisScale;
+    const currSy = cy - (safeP.posZ - safeP.posZ) / ecdisScale;
+    mapCtx.lineTo(currSx, currSy);
+    
+    mapCtx.stroke();
+    mapCtx.restore();
+  }
+
   if (AIships) {
     AIships.concat(fishBoats || []).forEach(s => {
       const pos = s.mesh ? s.mesh.position : s.position; 
@@ -817,6 +852,34 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.beginPath();
       mapCtx.moveTo(0, -8); mapCtx.lineTo(0, -25); 
       mapCtx.stroke();
+      mapCtx.restore();
+    });
+  }
+
+  // ★ 航海開始後の「スタート」と「ゴール」の赤丸表示
+  if (freeModeStep === 0 && (currentStartLoc || currentGoalLoc)) {
+    [currentStartLoc, currentGoalLoc].forEach(loc => {
+      if (!loc) return;
+      const xz = latLonToXZ(loc.lat, loc.lon);
+      const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+      const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
+      
+      mapCtx.save();
+      mapCtx.beginPath();
+      mapCtx.arc(sx, sy, 8, 0, Math.PI * 2);
+      mapCtx.fillStyle = 'rgba(255, 30, 30, 0.9)'; 
+      mapCtx.fill();
+      mapCtx.lineWidth = 2;
+      mapCtx.strokeStyle = '#ffffff';
+      mapCtx.stroke();
+      
+      mapCtx.fillStyle = '#000000';
+      mapCtx.font = 'bold 12px sans-serif';
+      mapCtx.textAlign = 'center';
+      
+      mapCtx.lineWidth = 3;
+      mapCtx.strokeText(loc.name, sx, sy - 15);
+      mapCtx.fillText(loc.name, sx, sy - 15);
       mapCtx.restore();
     });
   }
