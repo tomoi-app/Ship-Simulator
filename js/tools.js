@@ -17,8 +17,8 @@ let panY = 0;
 let isDragging = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
-
-export let isDepthLoading = true; 
+let hoverX = 0;
+let hoverY = 0;
 
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
@@ -73,9 +73,10 @@ export let selectedStartKey = null;
 export let currentStartLoc = null; 
 export let currentGoalLoc = null;  
 export let trackHistory = [];      
+export let routeWaypoints = [];    // 作成したコースラインの座標を保存
 
 let shipRef = null;
-let ecdisAnimFrame = null;
+let menuAnimFrame = null;
 let onStartVoyageCallback = null; 
 
 const VOYAGE_LOCATIONS = {
@@ -84,16 +85,11 @@ const VOYAGE_LOCATIONS = {
   tokyo: { name: "東京港", lat: 35.590, lon: 139.780, heading: 180 }
 };
 
-function startEcdisAnim() {
-  cancelAnimationFrame(ecdisAnimFrame);
-  function loop() {
-    if (!toolOpen) return;
-    if (freeModeStep > 0 || isDepthLoading) {
-      drawAll(shipRef);
-      ecdisAnimFrame = requestAnimationFrame(loop);
-    }
+function renderMenuLoop() {
+  if (freeModeStep > 0 && toolOpen) {
+    drawAll(shipRef);
+    menuAnimFrame = requestAnimationFrame(renderMenuLoop);
   }
-  loop();
 }
 
 export function startFreeModeSelection(p, callback) {
@@ -102,6 +98,7 @@ export function startFreeModeSelection(p, callback) {
   toolOpen = true;
   freeModeStep = 1;
   selectedStartKey = null;
+  routeWaypoints = [];
   
   if (!mapCv) initMap();
   mapCv.style.display = 'block';
@@ -115,7 +112,8 @@ export function startFreeModeSelection(p, callback) {
   panY = 0; 
   ecdisScale = 60; 
 
-  startEcdisAnim();
+  cancelAnimationFrame(menuAnimFrame);
+  renderMenuLoop();
 }
 
 // ============================================================
@@ -251,8 +249,6 @@ fetch('./tokyobay.geojson?v=' + Date.now())
 // 2. 水深データの生成 (超高速 Web Worker)
 // ============================================================
 function generateRealisticDepthsFast() {
-  console.log("水深データ生成処理を開始...");
-
   const fairwayLines = FAIRWAYS.map(fw => {
     return fw.leftBound.map((lb, i) => {
       const rb = fw.rightBound[i];
@@ -388,9 +384,6 @@ function generateRealisticDepthsFast() {
 
   worker.onmessage = function(e) {
     renderGrid = e.data; 
-    isDepthLoading = false; 
-    console.log("ECDIS: 水深データ生成完了");
-    if (toolOpen) drawAll(shipRef); 
     worker.terminate();
     URL.revokeObjectURL(blob);
   };
@@ -406,10 +399,10 @@ function initMap() {
   
   Object.assign(mapCv.style, {
     position: 'absolute', 
-    bottom: '0%',          // ★ 画面の一番下（底）に配置
-    left: '10%',           // 横位置は中央（幅80%なので左10%）
-    width: '80%',          // 横幅はそのまま大きく
-    height: '80%',         // ★ 高さを少し抑えて、上部の計器スペースを確保
+    bottom: '0%', 
+    left: '10%', 
+    width: '80%', 
+    height: '78%',
     backgroundColor: '#c6dbef', 
     border: '4px solid #4a5b6c',
     borderRadius: '2px',
@@ -424,7 +417,6 @@ function initMap() {
   let downX = 0, downY = 0;
 
   mapCv.addEventListener('mousedown', (e) => {
-    if (isDepthLoading) return;
     e.stopPropagation(); 
     isDragging = true;
     downX = e.clientX;
@@ -434,8 +426,12 @@ function initMap() {
   });
 
   mapCv.addEventListener('mousemove', (e) => {
-    if (isDepthLoading) return;
     e.stopPropagation();
+    
+    const rect = mapCv.getBoundingClientRect();
+    hoverX = e.clientX - rect.left;
+    hoverY = e.clientY - rect.top;
+
     if (!isDragging) return;
     panX += e.clientX - lastMouseX;
     panY += e.clientY - lastMouseY;
@@ -449,7 +445,6 @@ function initMap() {
   });
 
   mapCv.addEventListener('mouseup', (e) => { 
-    if (isDepthLoading) return;
     e.stopPropagation(); 
     isDragging = false; 
 
@@ -461,7 +456,6 @@ function initMap() {
   mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
 
   mapCv.addEventListener('wheel', (e) => {
-    if (isDepthLoading) return;
     e.stopPropagation(); 
     e.preventDefault(); 
     if (e.deltaY < 0) ecdisScale = Math.max(5, ecdisScale * 0.8); 
@@ -469,14 +463,13 @@ function initMap() {
   });
 
   mapCv.addEventListener('dblclick', (e) => {
-    if (isDepthLoading) return;
     e.stopPropagation();
     panX = 0; panY = 0; ecdisScale = 25;
   });
 }
 
 function handleMapClick(e) {
-  if (freeModeStep === 0 || isDepthLoading) return;
+  if (freeModeStep === 0) return;
   const rect = mapCv.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
@@ -487,6 +480,41 @@ function handleMapClick(e) {
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z };
+
+  // ★ コースライン作成モードのクリック処理
+  if (freeModeStep === 3) {
+    const undoBox = { x: 20, y: h - 70, w: 100, h: 40 };
+    const compBox = { x: 130, y: h - 70, w: 100, h: 40 };
+
+    if (mouseX >= undoBox.x && mouseX <= undoBox.x + undoBox.w && mouseY >= undoBox.y && mouseY <= undoBox.y + undoBox.h) {
+      if (routeWaypoints.length > 1) routeWaypoints.pop(); // 最初の地点は残す
+      return;
+    }
+    
+    if (mouseX >= compBox.x && mouseX <= compBox.x + compBox.w && mouseY >= compBox.y && mouseY <= compBox.y + compBox.h) {
+      if (routeWaypoints.length > 1 && shipRef) {
+         const p1 = routeWaypoints[0];
+         const p2 = routeWaypoints[1];
+         // ルートの最初の方向を船の初期方位に設定
+         let hdg = Math.atan2(p2.x - p1.x, p2.z - p1.z);
+         shipRef.heading = hdg; 
+      }
+      
+      freeModeStep = 0;
+      selectedStartKey = null;
+      toggleTool(); 
+      
+      if (onStartVoyageCallback) {
+        onStartVoyageCallback(currentStartLoc, currentGoalLoc, routeWaypoints);
+      }
+      return;
+    }
+
+    const targetX = safeP.posX + (mouseX - cx) * ecdisScale;
+    const targetZ = safeP.posZ - (mouseY - cy) * ecdisScale;
+    routeWaypoints.push({ x: targetX, z: targetZ });
+    return;
+  }
 
   let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
              (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
@@ -518,15 +546,9 @@ function handleMapClick(e) {
         currentGoalLoc = goalLoc;
         trackHistory = [];
         
-        console.log("[START] " + startLoc.name + " -> " + goalLoc.name);
-        
-        freeModeStep = 0;
-        selectedStartKey = null;
-        toggleTool(); 
-        
-        if (onStartVoyageCallback) {
-          onStartVoyageCallback(startLoc, goalLoc);
-        }
+        // ★ ステープ3：コースライン作成モードへ移行
+        routeWaypoints = [{ x: startXZ.x, z: startXZ.z }];
+        freeModeStep = 3;
       }
       return;
     }
@@ -544,7 +566,7 @@ export function toggleTool() {
     startEcdisAnim(); 
   } else {
     freeModeStep = 0; 
-    cancelAnimationFrame(ecdisAnimFrame);
+    cancelAnimationFrame(menuAnimFrame);
   }
 }
 
@@ -560,39 +582,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCv.height = mapCv.clientHeight || 600;
   }
 
-  const w = mapCv.width, h = mapCv.height;
-
-  // ★ シンプル化されたローディング画面
-  if (isDepthLoading) {
-    mapCtx.save();
-    
-    // 背景を海の色（水色）にする
-    mapCtx.fillStyle = '#e4f1fc';
-    mapCtx.fillRect(0, 0, w, h);
-
-    // テキストのみを中央に表示
-    const cxLoad = w / 2;
-    const cyLoad = h / 2;
-
-    mapCtx.textAlign = 'center';
-    mapCtx.textBaseline = 'middle';
-
-    mapCtx.fillStyle = '#4a5b6c'; 
-    mapCtx.font = 'bold 18px sans-serif';
-    
-    // 動くドット
-    const dots = ".".repeat(Math.floor(Date.now() / 400) % 4);
-    mapCtx.fillText("地形データを読み込み中" + dots, cxLoad, cyLoad);
-
-    mapCtx.restore();
-    return; 
-  }
-
-  // 以降は通常時の海図描画処理
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
 
+  const w = mapCv.width, h = mapCv.height;
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
@@ -873,6 +867,81 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.restore();
   }
 
+  // ★ コースライン（プランニング中および作成後）の描画
+  if (routeWaypoints.length > 0) {
+    mapCtx.save();
+    mapCtx.lineWidth = 2.5;
+    mapCtx.strokeStyle = '#ff00ff'; // ECDISでよく使われるマゼンタ色
+    mapCtx.fillStyle = '#ff00ff';
+    mapCtx.font = 'bold 13px Arial, sans-serif';
+
+    // 確定したラインと船首方位
+    for (let i = 0; i < routeWaypoints.length - 1; i++) {
+      const p1 = routeWaypoints[i];
+      const p2 = routeWaypoints[i+1];
+      const sx1 = cx + (p1.x - safeP.posX) / ecdisScale;
+      const sy1 = cy - (p1.z - safeP.posZ) / ecdisScale;
+      const sx2 = cx + (p2.x - safeP.posX) / ecdisScale;
+      const sy2 = cy - (p2.z - safeP.posZ) / ecdisScale;
+
+      mapCtx.beginPath();
+      mapCtx.moveTo(sx1, sy1);
+      mapCtx.lineTo(sx2, sy2);
+      mapCtx.stroke();
+
+      mapCtx.beginPath();
+      mapCtx.arc(sx2, sy2, 4, 0, Math.PI * 2);
+      mapCtx.fill();
+
+      let dx = p2.x - p1.x;
+      let dz = p2.z - p1.z;
+      let hdg = Math.atan2(dx, dz) * 180 / Math.PI;
+      if (hdg < 0) hdg += 360;
+      
+      const midX = (sx1 + sx2) / 2;
+      const midY = (sy1 + sy2) / 2;
+      
+      // 文字の背景を白くして見やすくする
+      mapCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      mapCtx.fillRect(midX + 6, midY - 6, 45, 14);
+      mapCtx.fillStyle = '#ff00ff';
+      mapCtx.textAlign = 'left';
+      mapCtx.textBaseline = 'middle';
+      mapCtx.fillText(hdg.toFixed(1) + '°', midX + 8, midY);
+    }
+
+    // プランニング中のマウスカーソルまでの点線
+    if (freeModeStep === 3) {
+      const lastP = routeWaypoints[routeWaypoints.length - 1];
+      const sx1 = cx + (lastP.x - safeP.posX) / ecdisScale;
+      const sy1 = cy - (lastP.z - safeP.posZ) / ecdisScale;
+
+      mapCtx.setLineDash([5, 5]);
+      mapCtx.beginPath();
+      mapCtx.moveTo(sx1, sy1);
+      mapCtx.lineTo(hoverX, hoverY);
+      mapCtx.stroke();
+      mapCtx.setLineDash([]);
+
+      const targetX = safeP.posX + (hoverX - cx) * ecdisScale;
+      const targetZ = safeP.posZ - (hoverY - cy) * ecdisScale;
+      let dx = targetX - lastP.x;
+      let dz = targetZ - lastP.z;
+      let hdg = Math.atan2(dx, dz) * 180 / Math.PI;
+      if (hdg < 0) hdg += 360;
+
+      const midX = (sx1 + hoverX) / 2;
+      const midY = (sy1 + hoverY) / 2;
+
+      mapCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      mapCtx.fillRect(midX + 6, midY - 6, 45, 14);
+      mapCtx.fillStyle = '#ff00ff';
+      mapCtx.fillText(hdg.toFixed(1) + '°', midX + 8, midY);
+    }
+
+    mapCtx.restore();
+  }
+
   if (AIships) {
     AIships.concat(fishBoats || []).forEach(s => {
       const pos = s.mesh ? s.mesh.position : s.position; 
@@ -898,7 +967,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  if (freeModeStep === 0 && (currentStartLoc || currentGoalLoc)) {
+  // スタート・ゴールの赤丸を常に表示する
+  if ((freeModeStep === 0 || freeModeStep === 3) && (currentStartLoc || currentGoalLoc)) {
     [currentStartLoc, currentGoalLoc].forEach(loc => {
       if (!loc) return;
       const xz = latLonToXZ(loc.lat, loc.lon);
@@ -917,10 +987,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.fillStyle = '#000000';
       mapCtx.font = 'bold 12px sans-serif';
       mapCtx.textAlign = 'center';
+      mapCtx.textBaseline = 'bottom';
       
       mapCtx.lineWidth = 3;
-      mapCtx.strokeText(loc.name, sx, sy - 15);
-      mapCtx.fillText(loc.name, sx, sy - 15);
+      mapCtx.strokeText(loc.name, sx, sy - 12);
+      mapCtx.fillText(loc.name, sx, sy - 12);
       mapCtx.restore();
     });
   }
@@ -953,6 +1024,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     if (sx > -20 && sx < w + 20 && sy > -20 && sy < h + 20) {
       mapCtx.font = `bold 10px ${baseFont}`;
       mapCtx.textAlign = 'left';
+      mapCtx.textBaseline = 'alphabetic';
       mapCtx.lineWidth = 2.5;
       mapCtx.strokeStyle = '#ffffff';
       mapCtx.strokeText(b.name, sx + 7, sy + 4);
@@ -972,6 +1044,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       const weight = lm.weight || "normal";
       mapCtx.font = `${weight} ${size}px ${baseFont}`;
       mapCtx.textAlign = lm.align || "center";
+      mapCtx.textBaseline = 'alphabetic';
       const offset = lm.offset || 0;
 
       if (!lm.color || lm.color.indexOf('rgba(0,0,0,') === -1) {
@@ -1006,7 +1079,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const currentDepth = getRealDepthAt(safeP.posX, safeP.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 105);
 
-  if (freeModeStep > 0) {
+  // ★ 1. 目的地選択中のUI
+  if (freeModeStep === 1 || freeModeStep === 2) {
     mapCtx.save();
     
     const uiText = freeModeStep === 1 ? "スタート位置を選択してください" : "目的地を選択してください";
@@ -1070,6 +1144,58 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.strokeText("[ " + loc.name + " ]", sx, sy - 25);
       mapCtx.fillText("[ " + loc.name + " ]", sx, sy - 25);
     });
+
+    mapCtx.restore();
+  }
+
+  // ★ 2. コースライン作成中のUI（完了ボタン、戻るボタン）
+  if (freeModeStep === 3) {
+    mapCtx.save();
+    const boxW = 320;
+    const boxH = 55;
+    const boxX = w - boxW - 20;
+    const boxY = 20;
+
+    mapCtx.fillStyle = 'rgba(10, 20, 30, 0.85)';
+    mapCtx.strokeStyle = '#ff00ff';
+    mapCtx.lineWidth = 1;
+    mapCtx.fillRect(boxX, boxY, boxW, boxH);
+    mapCtx.strokeRect(boxX, boxY, boxW, boxH);
+
+    mapCtx.fillStyle = '#ff00ff';
+    mapCtx.fillRect(boxX, boxY, 6, boxH);
+
+    mapCtx.textAlign = 'right';
+    mapCtx.textBaseline = 'top';
+    
+    mapCtx.fillStyle = '#ff00ff';
+    mapCtx.font = '10px Arial, sans-serif';
+    mapCtx.fillText("DRAW COURSE LINE (Click to add waypoint)", boxX + boxW - 15, boxY + 12);
+    
+    mapCtx.fillStyle = '#ffffff';
+    mapCtx.font = 'bold 15px Arial, sans-serif';
+    mapCtx.fillText("コースラインを作成してください", boxX + boxW - 15, boxY + 30);
+
+    // UNDO（戻る）ボタン
+    const undoBox = { x: 20, y: h - 70, w: 100, h: 40 };
+    mapCtx.fillStyle = 'rgba(10, 20, 30, 0.85)';
+    mapCtx.fillRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
+    mapCtx.strokeStyle = '#ff4444';
+    mapCtx.strokeRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
+    mapCtx.fillStyle = '#ff4444';
+    mapCtx.textAlign = 'center';
+    mapCtx.textBaseline = 'middle';
+    mapCtx.font = 'bold 14px sans-serif';
+    mapCtx.fillText("戻る", undoBox.x + undoBox.w / 2, undoBox.y + undoBox.h / 2);
+
+    // 完了ボタン
+    const compBox = { x: 130, y: h - 70, w: 100, h: 40 };
+    mapCtx.fillStyle = 'rgba(10, 20, 30, 0.85)';
+    mapCtx.fillRect(compBox.x, compBox.y, compBox.w, compBox.h);
+    mapCtx.strokeStyle = '#11cc11';
+    mapCtx.strokeRect(compBox.x, compBox.y, compBox.w, compBox.h);
+    mapCtx.fillStyle = '#11cc11';
+    mapCtx.fillText("完了", compBox.x + compBox.w / 2, compBox.y + compBox.h / 2);
 
     mapCtx.restore();
   }
