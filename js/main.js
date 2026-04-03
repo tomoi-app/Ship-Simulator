@@ -719,8 +719,8 @@ window.openFreeModeMenu = function() {
   document.getElementById('ms-sel')?.classList.add('h');
   
   // startFreeModeSelection(P, callback)
-  startFreeModeSelection(P, (startLoc, goalLoc) => {
-    // 1. ミッション情報の設定 (FREE-1 をベースに目的地を上書き)
+  startFreeModeSelection(P, (startLoc, goalLoc, waypoints) => {
+    // 1. ミッション情報の設定 (FREE-1 をベースに目的地などを上書き)
     const m = MISSIONS.find(x => x.id === 'FREE-1');
     if (m) {
       curM = JSON.parse(JSON.stringify(m)); // ミッションデータをコピー
@@ -728,6 +728,8 @@ window.openFreeModeMenu = function() {
       const goalXZ = latLonToXZ(goalLoc.lat, goalLoc.lon);
       curM.tx = goalXZ.x;
       curM.tz = goalXZ.z;
+      // 作成したコースライン（経由地）をミッションデータに紐付け
+      curM.waypoints = waypoints;
     }
 
     // 2. UIの表示切り替え（HUD表示）
@@ -738,7 +740,7 @@ window.openFreeModeMenu = function() {
     document.getElementById('time-scale-btn')?.classList.remove('h');
 
     // 3. 船の3Dモデルとカメラを強制移動（snapping）
-    // P の座標は tools.js 内で既にセットされている
+    // P の座標と方位は tools.js 内でコースに合わせて既にセットされている
     shipGroup.position.x = -P.posX;
     shipGroup.position.z = P.posZ;
     shipGroup.rotation.y = -P.heading;
