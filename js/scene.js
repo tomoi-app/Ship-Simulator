@@ -7,7 +7,8 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 // ↓ GLTFLoader のインポートを追加します
 import { GLTFLoader } from 'https://unpkg.com/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
-import { P } from './physics.js'; // ★ 倍率を P.shipScale として main.js に共有するために追加
+import { P } from './physics.js'; 
+import { BUOYS, latLonToXZ as latLonToXZ_tool } from './tools.js'; // ★ tools.js からインポート
 
 // ============================================================
 //  Procedural テクスチャ生成
@@ -542,25 +543,30 @@ export function toggleNight(scene, night) {
 export function buildWorld(THREE, scene) {
   const buoys = [];
 
-  // ★以前ここにあった「巨大な緑の床（PlaneGeometry）」や「ダミーのビル群」の生成コードはすべて削除しました！
+  // --- tools.js の BUOYS データから 3D ブイを生成 ---
+  BUOYS.forEach(b => {
+    // 緯度経度を3D空間の X, Z 座標（メートル）に変換
+    const xz = latLonToXZ_tool(b.lat, b.lon);
 
-  // --- ブイ（航路標識）だけはゲームシステム上必要なので残す ---
-  const buoyGeo = new THREE.CylinderGeometry(1.5, 1.5, 4, 16);
-  const rMat = new THREE.MeshStandardMaterial({ color: 0xff2222, roughness: 0.4 });
-  const gMat = new THREE.MeshStandardMaterial({ color: 0x22ff22, roughness: 0.4 });
+    // ブイの形を作成（直径10m、高さ15mのシンプルな円柱）
+    const geometry = new THREE.CylinderGeometry(5, 5, 15, 16);
+    
+    // 海図と同じ色（緑か赤）をそのまま適用
+    const material = new THREE.MeshStandardMaterial({ 
+      color: b.color,
+      roughness: 0.3, 
+      metalness: 0.2
+    });
+    
+    const buoyMesh = new THREE.Mesh(geometry, material);
 
-  // 仮のブイ配置（必要に応じて座標を変えてください）
-  const positions = [
-    { x: 500, z: -1000, m: rMat },
-    { x: -500, z: -1000, m: gMat },
-    { x: 1000, z: 2000, m: rMat }
-  ];
+    // ★重要: X座標にはマイナスを付ける
+    buoyMesh.position.x = -xz.x;
+    buoyMesh.position.y = 7.5; 
+    buoyMesh.position.z = xz.z;
 
-  positions.forEach(p => {
-    const b = new THREE.Mesh(buoyGeo, p.m);
-    b.position.set(-p.x, 0, p.z); // ★反転
-    scene.add(b);
-    buoys.push(b);
+    scene.add(buoyMesh);
+    buoys.push(buoyMesh);
   });
 
   return { buoys };

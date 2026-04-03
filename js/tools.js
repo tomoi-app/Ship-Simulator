@@ -1,6 +1,6 @@
 'use strict';
 // ============================================================
-//  tools.js — 電子海図モニター (ECDIS) 【等深線＆陸地判定 究極版】
+//  tools.js — 電子海図モニター (ECDIS) 【航路完成＆海図選択UI版】
 // ============================================================
 
 let toolOpen = false;
@@ -21,7 +21,7 @@ let lastMouseY = 0;
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
 
-function latLonToXZ(lat, lon) {
+export function latLonToXZ(lat, lon) {
   const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
   const z = (lat - ORIGIN_LAT) * 111320; 
   return { x, z };
@@ -49,7 +49,7 @@ export let selectedStartKey = null;
 let shipRef = null;
 
 const VOYAGE_LOCATIONS = {
-  uraga: { name: "浦賀水道（航路南口 / 入港）", lat: 35.150, lon: 139.765, heading: 0 },
+  uraga: { name: "浦賀水道（航路南口 / 入港）", lat: 35.150, lon: 139.773, heading: 0 },
   yokohama: { name: "横浜港（大さん橋 / 出港）", lat: 35.452, lon: 139.648, heading: 110 },
   tokyo: { name: "東京港（大井ふ頭 / 出港）", lat: 35.600, lon: 139.765, heading: 180 }
 };
@@ -72,7 +72,7 @@ export function startFreeModeSelection(p) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys)
+// 航路データ (Fairways & Buoys) — 観音崎ジャスト変針・右寄せ版
 // ============================================================
 const FAIRWAYS = [
   {
@@ -92,7 +92,7 @@ const FAIRWAYS = [
   }
 ];
 
-const BUOYS = [
+export const BUOYS = [
   { name: "U1", lat: 35.180, lon: 139.765, color: "#11cc11" },
   { name: "U2", lat: 35.180, lon: 139.781, color: "#ee1111" },
   { name: "U3", lat: 35.250, lon: 139.765, color: "#11cc11" },
@@ -502,7 +502,6 @@ export function toggleTool() {
     mapCv.width = mapCv.clientWidth;
     mapCv.height = mapCv.clientHeight;
   } else {
-    // 閉じられたらフリーモード選択をキャンセル
     freeModeStep = 0; 
   }
 }
@@ -511,7 +510,7 @@ export function toggleTool() {
 // 4. 海図の描画
 // ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
-  shipRef = P; // 自船の参照を更新
+  shipRef = P;
   if (!toolOpen || !mapCtx || !geoData) return;
   const w = mapCv.width, h = mapCv.height;
   const cx = (w / 2) + panX;
@@ -838,7 +837,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   }
   mapCtx.restore();
 
-  // ★ 左上の情報テキスト（不要なものを削除済）
+  // ★ 左上の情報テキスト
   mapCtx.fillStyle = '#000000'; 
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
