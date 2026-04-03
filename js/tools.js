@@ -18,7 +18,6 @@ let isDragging = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
-// ★ データ読み込み中かどうかを判定するフラグ
 export let isDepthLoading = true; 
 
 const ORIGIN_LAT = 35.45;
@@ -85,7 +84,6 @@ const VOYAGE_LOCATIONS = {
   tokyo: { name: "東京港", lat: 35.590, lon: 139.780, heading: 180 }
 };
 
-// ★ アニメーションループ（ローディング画面やメニュー用）
 function startEcdisAnim() {
   cancelAnimationFrame(ecdisAnimFrame);
   function loop() {
@@ -390,9 +388,9 @@ function generateRealisticDepthsFast() {
 
   worker.onmessage = function(e) {
     renderGrid = e.data; 
-    isDepthLoading = false; // ★ 読み込み完了
+    isDepthLoading = false; 
     console.log("ECDIS: 水深データ生成完了");
-    if (toolOpen) drawAll(shipRef); // 完了したら一度描画を更新
+    if (toolOpen) drawAll(shipRef); 
     worker.terminate();
     URL.revokeObjectURL(blob);
   };
@@ -407,7 +405,11 @@ function initMap() {
   mapCv.id = 'ecdis-monitor';
   
   Object.assign(mapCv.style, {
-    position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%',
+    position: 'absolute', 
+    bottom: '0%',          // ★ 画面の一番下（底）に配置
+    left: '10%',           // 横位置は中央（幅80%なので左10%）
+    width: '80%',          // 横幅はそのまま大きく
+    height: '80%',         // ★ 高さを少し抑えて、上部の計器スペースを確保
     backgroundColor: '#c6dbef', 
     border: '4px solid #4a5b6c',
     borderRadius: '2px',
@@ -560,64 +562,29 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   const w = mapCv.width, h = mapCv.height;
 
-  // ★ ローディング画面の描画処理
+  // ★ シンプル化されたローディング画面
   if (isDepthLoading) {
     mapCtx.save();
     
-    // 背景
-    mapCtx.fillStyle = '#0a141e';
+    // 背景を海の色（水色）にする
+    mapCtx.fillStyle = '#e4f1fc';
     mapCtx.fillRect(0, 0, w, h);
 
-    // グリッド線
-    mapCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    mapCtx.lineWidth = 1;
-    mapCtx.beginPath();
-    for (let i = 0; i < w; i += 40) { mapCtx.moveTo(i, 0); mapCtx.lineTo(i, h); }
-    for (let i = 0; i < h; i += 40) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
-    mapCtx.stroke();
-
+    // テキストのみを中央に表示
     const cxLoad = w / 2;
     const cyLoad = h / 2;
-    const time = Date.now() / 800;
 
-    // スピナーアニメーション
-    mapCtx.translate(cxLoad, cyLoad - 20);
-
-    mapCtx.beginPath();
-    mapCtx.arc(0, 0, 30, 0, Math.PI * 2);
-    mapCtx.strokeStyle = 'rgba(107, 174, 214, 0.2)';
-    mapCtx.lineWidth = 4;
-    mapCtx.stroke();
-
-    mapCtx.beginPath();
-    mapCtx.arc(0, 0, 30, time, time + Math.PI * 1.2);
-    mapCtx.strokeStyle = '#6baed6';
-    mapCtx.lineCap = 'round';
-    mapCtx.lineWidth = 4;
-    mapCtx.stroke();
-    
-    mapCtx.restore();
-
-    // テキスト
-    mapCtx.save();
     mapCtx.textAlign = 'center';
     mapCtx.textBaseline = 'middle';
 
-    mapCtx.fillStyle = '#6baed6';
-    mapCtx.font = '12px "Courier New", monospace';
-    mapCtx.fillText("BATHYMETRY SYSTEM INITIALIZING", cxLoad, cyLoad + 30);
+    mapCtx.fillStyle = '#4a5b6c'; 
+    mapCtx.font = 'bold 18px sans-serif';
+    
+    // 動くドット
+    const dots = ".".repeat(Math.floor(Date.now() / 400) % 4);
+    mapCtx.fillText("地形データを読み込み中" + dots, cxLoad, cyLoad);
 
-    mapCtx.fillStyle = '#ffffff';
-    mapCtx.font = 'bold 16px sans-serif';
-    const dots = ".".repeat(Math.floor(Date.now() / 300) % 4);
-    mapCtx.fillText("海底地形データを解析中" + dots, cxLoad, cyLoad + 55);
-
-    mapCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    mapCtx.font = '11px sans-serif';
-    mapCtx.fillText("広範囲の等深線を生成しています。しばらくお待ちください。", cxLoad, cyLoad + 80);
     mapCtx.restore();
-
-    // 読み込み中はここで処理を終了し、下の海図は描画しない
     return; 
   }
 
