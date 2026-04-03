@@ -1,13 +1,12 @@
 'use strict';
 // ============================================================
-//  tools.js — 電子海図モニター (ECDIS) 【完全版】
+//  tools.js — 電子海図モニター (ECDIS) 【超軽量・爆速化版】
 // ============================================================
 
 let toolOpen = false;
 let mapCv = null;
 let mapCtx = null;
 let geoData = null;
-let depthData = []; 
 
 let parsedPolygonsXZ = []; 
 
@@ -42,12 +41,35 @@ function formatLatLon(deg, isLat) {
 }
 
 // ============================================================
+// グリッドインデックス（超高速 Float32Array 方式）
+// ============================================================
+const GRID_START_X = -30000, GRID_END_X = 60000;
+const GRID_START_Z = -75000, GRID_END_Z = 30000;
+const RENDER_STEP = 300; 
+const gridCols = Math.ceil((GRID_END_X - GRID_START_X) / RENDER_STEP) + 1;
+const gridRows = Math.ceil((GRID_END_Z - GRID_START_Z) / RENDER_STEP) + 1;
+
+let renderGrid = null; // 爆速化のためMapを廃止し、配列を直接保持
+
+export function getRealDepthAt(posX, posZ) {
+  if (!renderGrid) return 99.9;
+  const c = Math.round((posX - GRID_START_X) / RENDER_STEP);
+  const r = Math.round((posZ - GRID_START_Z) / RENDER_STEP);
+  if (c >= 0 && c < gridCols && r >= 0 && r < gridRows) {
+    const d = renderGrid[r * gridCols + c];
+    return (d === undefined || isNaN(d)) ? 99.9 : d;
+  }
+  return 99.9;
+}
+
+// ============================================================
 // フリーモードのルートプランナー用データと専用ループ
 // ============================================================
 export let freeModeStep = 0; 
 export let selectedStartKey = null;
 let shipRef = null;
 let menuAnimFrame = null;
+let onStartVoyageCallback = null; 
 
 const VOYAGE_LOCATIONS = {
   uraga: { name: "浦賀水道（航路南口 / 入港）", lat: 35.150, lon: 139.773, heading: 0 },
@@ -55,7 +77,6 @@ const VOYAGE_LOCATIONS = {
   tokyo: { name: "東京港（大井ふ頭 / 出港）", lat: 35.600, lon: 139.765, heading: 180 }
 };
 
-// メインループが停止していても海図を描画し続けるための専用ループ
 function renderMenuLoop() {
   if (freeModeStep > 0 && toolOpen) {
     drawAll(shipRef);
@@ -63,8 +84,9 @@ function renderMenuLoop() {
   }
 }
 
-export function startFreeModeSelection(p) {
-  shipRef = p || {}; // Pが未定義でもエラーにならないようにする
+export function startFreeModeSelection(p, callback) {
+  shipRef = p || {}; 
+  onStartVoyageCallback = callback; 
   toolOpen = true;
   freeModeStep = 1;
   selectedStartKey = null;
@@ -72,18 +94,15 @@ export function startFreeModeSelection(p) {
   if (!mapCv) initMap();
   mapCv.style.display = 'block';
   
-  // 表示直後のサイズ0バグを防ぐ
   setTimeout(() => {
     mapCv.width = mapCv.clientWidth || 800;
     mapCv.height = mapCv.clientHeight || 600;
   }, 10);
   
-  // 東京湾全体が見渡せるようにズームアウトして初期化
   panX = 0; 
   panY = 0; 
   ecdisScale = 60; 
 
-  // 専用描画ループをスタート
   cancelAnimationFrame(menuAnimFrame);
   renderMenuLoop();
 }
@@ -214,15 +233,15 @@ fetch('./tokyobay.geojson?v=' + Date.now())
        item.bounds = { minX, maxX, minZ, maxZ };
     });
 
-    generateRealisticDepths(); 
+    generateRealisticDepthsFast(); 
   })
   .catch(err => console.error("ECDISエラー:", err));
 
 // ============================================================
-// 2. 水深データの生成 (Web Worker)
+// 2. 水深データの生成 (超高速 Web Worker)
 // ============================================================
-function generateRealisticDepths() {
-  console.log("🌊 水深データ生成をWeb Workerに委譲...");
+function generateRealisticDepthsFast() {
+  console.log("水深データ生成処理を開始（超高速版）...");
 
   const fairwayLines = FAIRWAYS.map(fw => {
     return fw.leftBound.map((lb, i) => {
@@ -251,31 +270,38 @@ function generateRealisticDepths() {
     }
 
     self.onmessage = function(e) {
-      const { polygons, shoals, fairways } = e.data;
-      const result = [];
+      const { polygons, shoals, fairways, startX, endX, startZ, endZ, step, cols, rows } = e.data;
+      const depths = new Float32Array(cols * rows);
       let seed = 12345;
       function rand() { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; }
 
-      for (let x = -30000; x <= 60000; x += 300) {
-        for (let z = -75000; z <= 30000; z += 300) {
+      for (let r = 0; r < rows; r++) {
+        const z = startZ + r * step;
+        for (let c = 0; c < cols; c++) {
+          const x = startX + c * step;
           let onLand = false;
-          let minDistSq = Infinity;
+          let minDistSq = 4000000; // 最長2kmまでしか探索しない（これが爆速化の要）
 
           for (let i = 0; i < polygons.length; i++) {
             const { poly, bounds } = polygons[i];
             
+            // 現在の最短距離より遠いポリゴンは計算を完全にスキップ
             const dx = Math.max(bounds.minX - x, 0, x - bounds.maxX);
             const dz = Math.max(bounds.minZ - z, 0, z - bounds.maxZ);
-            if (dx*dx + dz*dz > 25000000) continue;
+            if (dx*dx + dz*dz > minDistSq) continue; 
 
             if (isPointInPolygon(x, z, poly)) { onLand = true; break; }
 
             for (let j = 0, k = poly.length - 1; j < poly.length; k = j++) {
               const dSq = distToSegmentSq(x, z, poly[k].x, poly[k].z, poly[j].x, poly[j].z);
-              if (dSq < minDistSq) minDistSq = dSq;
+              if (dSq < minDistSq) minDistSq = dSq; // 限界距離をどんどん縮める
             }
           }
-          if (onLand) continue;
+
+          if (onLand) {
+            depths[r * cols + c] = 0.0;
+            continue;
+          }
 
           const distToCoast = Math.sqrt(minDistSq);
           let depth = 2.0 + (distToCoast / 1000) * 11.0 + rand() * 3;
@@ -301,12 +327,11 @@ function generateRealisticDepths() {
 
           if (inFairway) depth = Math.max(depth, 22.0 + rand() * 2);
 
-          depth = Math.max(2.0, Math.min(45.0, depth));
-          const ox = (rand() - 0.5) * 100, oz = (rand() - 0.5) * 100;
-          result.push({ x: x + ox, z: z + oz, depth });
+          depths[r * cols + c] = Math.max(2.0, Math.min(45.0, depth));
         }
       }
-      self.postMessage(result);
+      // 配列の所有権をメインスレッドに一瞬で移動させるゼロコピー転送
+      self.postMessage(depths, [depths.buffer]); 
     };
   `;
   const blob   = new Blob([workerCode], { type: 'application/javascript' });
@@ -320,76 +345,22 @@ function generateRealisticDepths() {
     { name: "羽田沖",   pos: latLonToXZ(35.5400, 139.8000), radius: 3000, depth: 7.0 },
   ];
 
-  worker.postMessage({ polygons: parsedPolygonsXZ, shoals: famousShoals, fairways: fairwayLines });
+  worker.postMessage({ 
+    polygons: parsedPolygonsXZ, 
+    shoals: famousShoals, 
+    fairways: fairwayLines,
+    startX: GRID_START_X, endX: GRID_END_X,
+    startZ: GRID_START_Z, endZ: GRID_END_Z,
+    step: RENDER_STEP,
+    cols: gridCols, rows: gridRows
+  });
 
   worker.onmessage = function(e) {
-    depthData.length = 0;
-    e.data.sort((a, b) => b.depth - a.depth).forEach(pt => depthData.push(pt));
-    _buildDepthGrid();  
-    console.log(`ECDIS: 水深データ（${depthData.length}地点）生成完了！`);
+    renderGrid = e.data; 
+    console.log("ECDIS: 水深データ生成完了 (超高速転送)");
     worker.terminate();
     URL.revokeObjectURL(blob);
   };
-}
-
-// ============================================================
-// グリッドインデックス
-// ============================================================
-const GRID_CELL = 600;   
-const depthGrid = new Map();
-const GRID_START_X = -30000, GRID_END_X = 60000;
-const GRID_START_Z = -75000, GRID_END_Z = 30000;
-const RENDER_STEP = 300; 
-let renderGrid = null;
-let gridCols = 0;
-let gridRows = 0;
-let hasAddedCoastlineDepth = false; 
-
-function _gridKey(x, z) { return `${Math.round(x / GRID_CELL)},${Math.round(z / GRID_CELL)}`; }
-
-function _buildDepthGrid() {
-  if (!hasAddedCoastlineDepth && parsedPolygonsXZ.length > 0) {
-    parsedPolygonsXZ.forEach(item => {
-      item.poly.forEach(pt => {
-        depthData.push({ x: pt.x, z: pt.z, depth: 0.0 });
-      });
-    });
-    hasAddedCoastlineDepth = true;
-  }
-
-  depthGrid.clear();
-  depthData.forEach(pt => {
-    const key = _gridKey(pt.x, pt.z);
-    if (!depthGrid.has(key)) depthGrid.set(key, pt.depth);
-  });
-
-  gridCols = Math.ceil((GRID_END_X - GRID_START_X) / RENDER_STEP) + 1;
-  gridRows = Math.ceil((GRID_END_Z - GRID_START_Z) / RENDER_STEP) + 1;
-  renderGrid = new Float32Array(gridCols * gridRows);
-  
-  for(let r = 0; r < gridRows; r++) {
-    for(let c = 0; c < gridCols; c++) {
-      const gx = GRID_START_X + c * RENDER_STEP;
-      const gz = GRID_START_Z + r * RENDER_STEP;
-      renderGrid[r * gridCols + c] = getRealDepthAt(gx, gz);
-    }
-  }
-}
-
-export function getRealDepthAt(posX, posZ) {
-  if (depthGrid.size === 0) return 99.9;
-  const key = _gridKey(posX, posZ);
-  if (depthGrid.has(key)) return depthGrid.get(key);
-
-  const cx = Math.round(posX / GRID_CELL);
-  const cz = Math.round(posZ / GRID_CELL);
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dz = -1; dz <= 1; dz++) {
-      const k = `${cx + dx},${cz + dz}`;
-      if (depthGrid.has(k)) return depthGrid.get(k);
-    }
-  }
-  return 99.9;
 }
 
 // ============================================================
@@ -442,7 +413,6 @@ function initMap() {
     e.stopPropagation(); 
     isDragging = false; 
 
-    // ドラッグではなく「クリック」だった場合の処理（フリーモード選択）
     if (Math.abs(e.clientX - downX) < 5 && Math.abs(e.clientY - downY) < 5) {
       handleMapClick(e);
     }
@@ -463,7 +433,6 @@ function initMap() {
   });
 }
 
-// クリックされた位置から港を選択するロジック
 function handleMapClick(e) {
   if (freeModeStep === 0) return;
   const rect = mapCv.getBoundingClientRect();
@@ -473,7 +442,6 @@ function handleMapClick(e) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // 船の座標がない場合はダミー（東京湾中心）を使う
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z };
@@ -487,30 +455,32 @@ function handleMapClick(e) {
     const sx = cx + (xz.x - safeP.posX) / ecdisScale;
     const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
     
-    // マウスとマーカーの距離判定（半径30px以内）
     const dist = Math.sqrt((mouseX - sx)**2 + (mouseY - sy)**2);
     if (dist < 30) { 
       if (freeModeStep === 1) {
         selectedStartKey = key;
-        freeModeStep = 2; // 次は目的地選択へ
+        freeModeStep = 2;
       } else if (freeModeStep === 2) {
-        // 出航処理
         const startLoc = VOYAGE_LOCATIONS[selectedStartKey];
+        const goalLoc = VOYAGE_LOCATIONS[key];
         const startXZ = latLonToXZ(startLoc.lat, startLoc.lon);
         
         if (shipRef) {
           shipRef.posX = startXZ.x;
           shipRef.posZ = startXZ.z;
           shipRef.heading = startLoc.heading * Math.PI / 180;
-          shipRef.speed = 0; // 停船状態からスタート
+          shipRef.speed = 0; 
         }
         
-        console.log(`🚀 出航: ${startLoc.name} -> ${VOYAGE_LOCATIONS[key].name}`);
+        console.log("出航: " + startLoc.name + " -> " + goalLoc.name);
         
-        // ECDISを閉じてゲーム開始
         freeModeStep = 0;
         selectedStartKey = null;
         toggleTool(); 
+        
+        if (onStartVoyageCallback) {
+          onStartVoyageCallback(startLoc, goalLoc);
+        }
       }
       return;
     }
@@ -538,13 +508,11 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   shipRef = P || shipRef || {};
   if (!toolOpen || !mapCtx || !geoData) return;
 
-  // キャンバスのサイズが0になるバグ対策（自動リサイズ）
   if (mapCv.width === 0 || mapCv.height === 0 || mapCv.width !== mapCv.clientWidth || mapCv.height !== mapCv.clientHeight) {
       mapCv.width = mapCv.clientWidth || 800;
       mapCv.height = mapCv.clientHeight || 600;
   }
 
-  // Pが未定義の場合（ゲーム開始前など）は東京湾の中心をダミーとして扱う
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
@@ -569,6 +537,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     const endR   = Math.min(gridRows - 1, Math.ceil((worldMaxZ - GRID_START_Z) / RENDER_STEP) + 4);
 
     const getV = (r, c) => {
+      if (r < 0 || r >= gridRows || c < 0 || c >= gridCols) return 50.0;
       const v = renderGrid[r * gridCols + c];
       return (v === undefined || isNaN(v)) ? 50.0 : v;
     };
@@ -688,6 +657,38 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     drawContour(5.0, '#1c5a8a', 1.8);
     drawContour(10.0, '#327ba8', 1.2);
     drawContour(20.0, '#5a9dc4', 1.0);
+
+    const drawnPositions = []; 
+    mapCtx.textAlign = 'center';
+    
+    for(let r = startR; r < endR; r++) {
+      for(let c = startC; c < endC; c++) {
+        const depth = getV(r, c);
+        if (depth === 0.0 || depth >= 50.0) continue;
+        
+        if ((r * 17 + c * 23) % 7 !== 0) continue; 
+        
+        const sx = cx + (GRID_START_X + c * RENDER_STEP - safeP.posX) / ecdisScale; 
+        const sy = cy - (GRID_START_Z + r * RENDER_STEP - safeP.posZ) / ecdisScale; 
+        
+        if (sx > 0 && sx < w && sy > 0 && sy < h) {
+          const overlapRadius = depth >= 20.0 ? 60 : 35;
+          const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < overlapRadius && Math.abs(p.y - sy) < overlapRadius * 0.6);
+          if (isOverlapping) continue;
+
+          drawnPositions.push({ x: sx, y: sy });
+
+          if (depth <= 15.0) {
+            mapCtx.fillStyle = '#000000'; 
+            mapCtx.font = 'bold 11px Arial, sans-serif'; 
+          } else {
+            mapCtx.fillStyle = '#5a6b7c'; 
+            mapCtx.font = '10px Arial, sans-serif';
+          }
+          mapCtx.fillText(depth.toFixed(1), sx, sy);
+        }
+      }
+    }
   }
 
   mapCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
@@ -762,35 +763,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     }
   });
 
-  if (depthData.length > 0) {
-    const drawnPositions = []; 
-    mapCtx.textAlign = 'center';
-    
-    depthData.forEach((pt) => {
-      if (pt.depth === 0.0) return;
-      
-      const sx = cx + (pt.x - safeP.posX) / ecdisScale; 
-      const sy = cy - (pt.z - safeP.posZ) / ecdisScale; 
-      
-      if (sx > 0 && sx < w && sy > 0 && sy < h) {
-        const overlapRadius = pt.depth >= 20.0 ? 60 : 35;
-        const isOverlapping = drawnPositions.some(p => Math.abs(p.x - sx) < overlapRadius && Math.abs(p.y - sy) < overlapRadius * 0.6);
-        if (isOverlapping) return;
-
-        drawnPositions.push({ x: sx, y: sy });
-
-        if (pt.depth <= 15.0) {
-          mapCtx.fillStyle = '#000000'; 
-          mapCtx.font = 'bold 11px Arial, sans-serif'; 
-        } else {
-          mapCtx.fillStyle = '#5a6b7c'; 
-          mapCtx.font = '10px Arial, sans-serif';
-        }
-        mapCtx.fillText(pt.depth.toFixed(1), sx, sy);
-      }
-    });
-  }
-
   if (AIships) {
     AIships.concat(fishBoats || []).forEach(s => {
       const pos = s.mesh ? s.mesh.position : s.position; 
@@ -816,7 +788,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // 自船の描画（実際の座標を持っている時だけ描画）
   if (P && typeof P.posX === 'number' && !isNaN(P.posX)) {
     mapCtx.save();
     mapCtx.translate(cx, cy);
@@ -877,7 +848,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   }
   mapCtx.restore();
 
-  // 左上の情報テキスト
   mapCtx.fillStyle = '#000000'; 
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
@@ -899,23 +869,36 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const currentDepth = getRealDepthAt(safeP.posX, safeP.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 105);
 
-  // ★ フリーモード選択用 UI の描画（アニメーションする波紋ピン）
   if (freeModeStep > 0) {
     mapCtx.save();
     
-    // 画面上部へのメッセージ
-    mapCtx.fillStyle = 'rgba(20, 40, 60, 0.85)';
-    mapCtx.fillRect(w/2 - 220, 20, 440, 50);
+    const uiText = freeModeStep === 1 ? "スタート位置を選択してください" : "目的地を選択してください";
+    const uiSub = freeModeStep === 1 ? "SELECT DEPARTURE POINT" : "SELECT DESTINATION POINT";
+
+    const boxW = 280;
+    const boxH = 55;
+    const boxX = w - boxW - 20;
+    const boxY = 20;
+
+    mapCtx.fillStyle = 'rgba(10, 20, 30, 0.85)';
+    mapCtx.strokeStyle = '#4292c6';
+    mapCtx.lineWidth = 1;
+    mapCtx.fillRect(boxX, boxY, boxW, boxH);
+    mapCtx.strokeRect(boxX, boxY, boxW, boxH);
+
     mapCtx.fillStyle = '#6baed6';
-    mapCtx.font = 'bold 18px sans-serif';
-    mapCtx.textAlign = 'center';
-    mapCtx.textBaseline = 'middle';
+    mapCtx.fillRect(boxX, boxY, 6, boxH);
+
+    mapCtx.textAlign = 'right';
+    mapCtx.textBaseline = 'top';
     
-    if (freeModeStep === 1) {
-      mapCtx.fillText('📌 どこから出航しますか？（スタート位置を選択）', w/2, 45);
-    } else {
-      mapCtx.fillText('🏁 どこへ向かいますか？（ゴール位置を選択）', w/2, 45);
-    }
+    mapCtx.fillStyle = '#6baed6';
+    mapCtx.font = '10px Arial, sans-serif';
+    mapCtx.fillText(uiSub, boxX + boxW - 15, boxY + 12);
+    
+    mapCtx.fillStyle = '#ffffff';
+    mapCtx.font = 'bold 15px Arial, sans-serif';
+    mapCtx.fillText(uiText, boxX + boxW - 15, boxY + 30);
 
     let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
                (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
