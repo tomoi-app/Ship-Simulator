@@ -14,7 +14,7 @@ import {
   drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard,
   updateNavData
 } from './hud.js';
-import { isToolOpen, toggleTool, drawAll as drawTools, getRealDepthAt, startFreeModeSelection } from './tools.js';
+import { isToolOpen, toggleTool, drawAll as drawTools, getRealDepthAt, startFreeModeSelection, latLonToXZ } from './tools.js';
 
 // ============================================================
 //  Three.js セットアップ
@@ -717,7 +717,48 @@ window.addEventListener('resize', () => {
 // ============================================================
 window.openFreeModeMenu = function() {
   document.getElementById('ms-sel')?.classList.add('h');
-  startFreeModeSelection(P);
+  
+  // startFreeModeSelection(P, callback)
+  startFreeModeSelection(P, (startLoc, goalLoc) => {
+    // 1. ミッション情報の設定 (FREE-1 をベースに目的地を上書き)
+    const m = MISSIONS.find(x => x.id === 'FREE-1');
+    if (m) {
+      curM = JSON.parse(JSON.stringify(m)); // ミッションデータをコピー
+      // 目的地を海図で選んだ場所に設定
+      const goalXZ = latLonToXZ(goalLoc.lat, goalLoc.lon);
+      curM.tx = goalXZ.x;
+      curM.tz = goalXZ.z;
+    }
+
+    // 2. UIの表示切り替え（HUD表示）
+    setMenuState(false);
+    document.getElementById('gauges-container')?.classList.remove('h');
+    document.getElementById('comp-c')?.classList.remove('h');
+    document.getElementById('telegraph-panel')?.classList.remove('h');
+    document.getElementById('time-scale-btn')?.classList.remove('h');
+
+    // 3. 船の3Dモデルとカメラを強制移動（snapping）
+    // P の座標は tools.js 内で既にセットされている
+    shipGroup.position.x = -P.posX;
+    shipGroup.position.z = P.posZ;
+    shipGroup.rotation.y = -P.heading;
+
+    camera.position.x = -P.posX;
+    camera.position.z = P.posZ;
+
+    // 4. ゲーム状態のリセットと開始
+    mst = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
+    isMenu = false;
+
+    // 天候を適用
+    if (curM) {
+      applyWeatherScene(curM);
+      applyWeatherOverlay(curM);
+      toggleNight(scene, curM.wx === 'ngt');
+    }
+    
+    console.log(`FREE MODE START: FROM ${startLoc.name} TO ${goalLoc.name}`);
+  });
 };
 
 // ============================================================
