@@ -42,50 +42,71 @@ function formatLatLon(deg, isLat) {
 }
 
 // ============================================================
-// 航路データ (Fairways & Buoys) — 観音崎ジャスト変針・000右寄せ版
+// フリーモードのルートプランナー用データ
+// ============================================================
+export let freeModeStep = 0; // 0: 通常ECDIS, 1: 出発地選択, 2: 目的地選択
+export let selectedStartKey = null;
+let shipRef = null;
+
+const VOYAGE_LOCATIONS = {
+  uraga: { name: "浦賀水道（航路南口 / 入港）", lat: 35.150, lon: 139.765, heading: 0 },
+  yokohama: { name: "横浜港（大さん橋 / 出港）", lat: 35.452, lon: 139.648, heading: 110 },
+  tokyo: { name: "東京港（大井ふ頭 / 出港）", lat: 35.600, lon: 139.765, heading: 180 }
+};
+
+export function startFreeModeSelection(p) {
+  shipRef = p;
+  toolOpen = true;
+  freeModeStep = 1;
+  selectedStartKey = null;
+  
+  if (!mapCv) initMap();
+  mapCv.style.display = 'block';
+  mapCv.width = mapCv.clientWidth;
+  mapCv.height = mapCv.clientHeight;
+  
+  // 東京湾全体が見渡せるようにズームアウトして初期化
+  panX = 0; 
+  panY = 0; 
+  ecdisScale = 60; 
+}
+
+// ============================================================
+// 航路データ (Fairways & Buoys)
 // ============================================================
 const FAIRWAYS = [
   {
     name: "SOUTH APPROACH",
-    // 少し右に移動し、変針点を観音崎の真横(35.250)まで延長
     leftBound:  [ { lat: 35.150, lon: 139.765 }, { lat: 35.250, lon: 139.765 } ],
     rightBound: [ { lat: 35.150, lon: 139.781 }, { lat: 35.250, lon: 139.781 } ]
   },
   {
     name: "URAGA SUIDO",
-    // 観音崎(35.250)から第二海堡(35.320)へ斜めに横断
     leftBound:  [ { lat: 35.250, lon: 139.765 }, { lat: 35.320, lon: 139.718 } ],
     rightBound: [ { lat: 35.250, lon: 139.781 }, { lat: 35.320, lon: 139.734 } ]
   },
   {
     name: "NAKANOSE",
-    // 中ノ瀬は位置を完全固定
     leftBound:  [ { lat: 35.320, lon: 139.718 }, { lat: 35.400, lon: 139.748 } ],
     rightBound: [ { lat: 35.320, lon: 139.734 }, { lat: 35.400, lon: 139.764 } ]
   }
 ];
 
 const BUOYS = [
-  // 浦賀水道 南口
   { name: "U1", lat: 35.180, lon: 139.765, color: "#11cc11" },
   { name: "U2", lat: 35.180, lon: 139.781, color: "#ee1111" },
-  // 観音崎沖の変針点 (000 -> 325)
   { name: "U3", lat: 35.250, lon: 139.765, color: "#11cc11" },
   { name: "U4", lat: 35.250, lon: 139.781, color: "#ee1111" },
-  // 浦賀水道 中間
   { name: "U5", lat: 35.285, lon: 139.741, color: "#11cc11" },
   { name: "U6", lat: 35.285, lon: 139.757, color: "#ee1111" },
-  // 第二海堡北側の変針点 (325 -> 021)
   { name: "U7", lat: 35.320, lon: 139.718, color: "#11cc11" },
   { name: "U8", lat: 35.320, lon: 139.734, color: "#ee1111" },
-  // 中ノ瀬
   { name: "N1", lat: 35.340, lon: 139.726, color: "#11cc11" },
   { name: "N2", lat: 35.340, lon: 139.742, color: "#ee1111" },
   { name: "N3", lat: 35.370, lon: 139.737, color: "#11cc11" },
   { name: "N4", lat: 35.370, lon: 139.753, color: "#ee1111" },
   { name: "N7", lat: 35.400, lon: 139.748, color: "#11cc11" },
   { name: "N8", lat: 35.400, lon: 139.764, color: "#ee1111" },
-  // ランドマーク
   { name: "風の塔", lat: 35.4914, lon: 139.8347, color: "#ffffff" },
   { name: "海ほたる", lat: 35.4636, lon: 139.8753, color: "#ffffff" }
 ];
@@ -375,9 +396,13 @@ function initMap() {
   document.body.appendChild(mapCv);
   mapCtx = mapCv.getContext('2d');
 
+  let downX = 0, downY = 0;
+
   mapCv.addEventListener('mousedown', (e) => {
     e.stopPropagation(); 
     isDragging = true;
+    downX = e.clientX;
+    downY = e.clientY;
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   });
@@ -396,7 +421,16 @@ function initMap() {
     lastMouseY = e.clientY;
   });
 
-  mapCv.addEventListener('mouseup', (e) => { e.stopPropagation(); isDragging = false; });
+  mapCv.addEventListener('mouseup', (e) => { 
+    e.stopPropagation(); 
+    isDragging = false; 
+
+    // ドラッグではなく「クリック」だった場合の処理（フリーモード選択）
+    if (Math.abs(e.clientX - downX) < 5 && Math.abs(e.clientY - downY) < 5) {
+      handleMapClick(e);
+    }
+  });
+  
   mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
 
   mapCv.addEventListener('wheel', (e) => {
@@ -412,6 +446,53 @@ function initMap() {
   });
 }
 
+// クリックされた位置から港を選択するロジック
+function handleMapClick(e) {
+  if (freeModeStep === 0 || !shipRef) return;
+  const rect = mapCv.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  const w = mapCv.width, h = mapCv.height;
+  const cx = (w / 2) + panX;
+  const cy = (h / 2) + panY;
+
+  let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
+             (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
+
+  for (let key of keys) {
+    const loc = VOYAGE_LOCATIONS[key];
+    const xz = latLonToXZ(loc.lat, loc.lon);
+    const sx = cx + (xz.x - shipRef.posX) / ecdisScale;
+    const sy = cy - (xz.z - shipRef.posZ) / ecdisScale;
+    
+    // マウスとマーカーの距離判定（半径30px以内）
+    const dist = Math.sqrt((mouseX - sx)**2 + (mouseY - sy)**2);
+    if (dist < 30) { 
+      if (freeModeStep === 1) {
+        selectedStartKey = key;
+        freeModeStep = 2; // 次は目的地選択へ
+      } else if (freeModeStep === 2) {
+        // 出航処理
+        const startLoc = VOYAGE_LOCATIONS[selectedStartKey];
+        const startXZ = latLonToXZ(startLoc.lat, startLoc.lon);
+        
+        shipRef.posX = startXZ.x;
+        shipRef.posZ = startXZ.z;
+        shipRef.heading = startLoc.heading * Math.PI / 180;
+        shipRef.speed = 0; // 停船状態からスタート
+        
+        console.log(`🚀 出航: ${startLoc.name} -> ${VOYAGE_LOCATIONS[key].name}`);
+        
+        // ECDISを閉じてゲーム開始
+        freeModeStep = 0;
+        selectedStartKey = null;
+        toggleTool(); 
+      }
+      return;
+    }
+  }
+}
+
 export function isToolOpen() { return toolOpen; }
 export function toggleTool() {
   initMap();
@@ -420,6 +501,9 @@ export function toggleTool() {
   if (toolOpen) {
     mapCv.width = mapCv.clientWidth;
     mapCv.height = mapCv.clientHeight;
+  } else {
+    // 閉じられたらフリーモード選択をキャンセル
+    freeModeStep = 0; 
   }
 }
 
@@ -427,6 +511,7 @@ export function toggleTool() {
 // 4. 海図の描画
 // ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
+  shipRef = P; // 自船の参照を更新
   if (!toolOpen || !mapCtx || !geoData) return;
   const w = mapCv.width, h = mapCv.height;
   const cx = (w / 2) + panX;
@@ -753,25 +838,84 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   }
   mapCtx.restore();
 
-  // ⑪ 左上の情報テキスト（タイトルと右下の操作ガイドを削除）
+  // ★ 左上の情報テキスト（不要なものを削除済）
   mapCtx.fillStyle = '#000000'; 
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
   mapCtx.font = '12px Arial, sans-serif';
   
-  mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
+  mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 20);
   
   const ll = xzToLatLon(P.posX, P.posZ);
   if (ll) {
-    mapCtx.fillText(`LAT   : ${formatLatLon(ll.lat, true)}`, 20, 65);
-    mapCtx.fillText(`LON   : ${formatLatLon(ll.lon, false)}`, 20, 80);
+    mapCtx.fillText(`LAT   : ${formatLatLon(ll.lat, true)}`, 20, 40);
+    mapCtx.fillText(`LON   : ${formatLatLon(ll.lon, false)}`, 20, 55);
   }
 
   let deg = (P.heading * 180 / Math.PI + 360) % 360;
   if (deg < 0) deg += 360;
-  mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 100);
-  mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 115);
+  mapCtx.fillText(`HDG   : ${deg.toFixed(1)}°`, 20, 75);
+  mapCtx.fillText(`SPD   : ${(P.speed).toFixed(1)} kt`, 20, 90);
 
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
-  mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
+  mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 105);
+
+  // ★ フリーモード選択用 UI の描画（アニメーションする波紋ピン）
+  if (freeModeStep > 0 && shipRef) {
+    mapCtx.save();
+    
+    // 画面上部へのメッセージ
+    mapCtx.fillStyle = 'rgba(20, 40, 60, 0.85)';
+    mapCtx.fillRect(w/2 - 220, 20, 440, 50);
+    mapCtx.fillStyle = '#6baed6';
+    mapCtx.font = 'bold 18px sans-serif';
+    mapCtx.textAlign = 'center';
+    mapCtx.textBaseline = 'middle';
+    
+    if (freeModeStep === 1) {
+      mapCtx.fillText('📌 どこから出航しますか？（スタート位置を選択）', w/2, 45);
+    } else {
+      mapCtx.fillText('🏁 どこへ向かいますか？（ゴール位置を選択）', w/2, 45);
+    }
+
+    // 選択可能な場所を判定
+    let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
+               (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
+
+    keys.forEach(key => {
+      const loc = VOYAGE_LOCATIONS[key];
+      const xz = latLonToXZ(loc.lat, loc.lon);
+      const sx = cx + (xz.x - shipRef.posX) / ecdisScale;
+      const sy = cy - (xz.z - shipRef.posZ) / ecdisScale;
+      
+      // 波紋アニメーション
+      const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
+      const radius = 12 + pulse * 8;
+
+      mapCtx.beginPath();
+      mapCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+      mapCtx.fillStyle = 'rgba(255, 100, 0, 0.4)';
+      mapCtx.fill();
+
+      // 中心のピン
+      mapCtx.beginPath();
+      mapCtx.arc(sx, sy, 6, 0, Math.PI * 2);
+      mapCtx.fillStyle = '#ff4400';
+      mapCtx.fill();
+      mapCtx.strokeStyle = '#ffffff';
+      mapCtx.lineWidth = 2;
+      mapCtx.stroke();
+
+      // ラベル
+      mapCtx.fillStyle = '#111111';
+      mapCtx.font = 'bold 14px sans-serif';
+      mapCtx.textAlign = 'center';
+      mapCtx.lineWidth = 3;
+      mapCtx.strokeStyle = '#ffffff';
+      mapCtx.strokeText(loc.name, sx, sy - 25);
+      mapCtx.fillText(loc.name, sx, sy - 25);
+    });
+
+    mapCtx.restore();
+  }
 }
