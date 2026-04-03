@@ -54,6 +54,31 @@
   </div>
 </div>
 
+<!-- フリーモード設定メニュー -->
+<div id="freeModeMenu" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20, 30, 40, 0.9); padding: 30px; border-radius: 8px; border: 2px solid #4a5b6c; color: white; font-family: sans-serif; z-index: 1000; text-align: center; width: 350px;">
+  <h2 style="margin-top: 0; color: #6baed6;">フリーモード設定</h2>
+  
+  <div style="margin-bottom: 20px; text-align: left;">
+    <label style="display: block; margin-bottom: 8px;">スタート位置（出港 / 入港）:</label>
+    <select id="startLocation" style="width: 100%; padding: 8px; font-size: 16px; background: #2a3b4c; color: white; border: 1px solid #6baed6;">
+      <option value="">選択してください</option>
+      <option value="test_flip">【テスト】第二海堡の西（北向き）</option>
+      <option value="uraga">浦賀水道（入港）</option>
+      <option value="yokohama">横浜港（出港）</option>
+      <option value="tokyo">東京港（出港）</option>
+    </select>
+  </div>
+
+  <div style="margin-bottom: 30px; text-align: left;">
+    <label style="display: block; margin-bottom: 8px;">ゴール位置:</label>
+    <select id="goalLocation" disabled style="width: 100%; padding: 8px; font-size: 16px; background: #2a3b4c; color: gray; border: 1px solid #4a5b6c;">
+      <option value="">スタート位置を選んでください</option>
+    </select>
+  </div>
+
+  <button id="startVoyageBtn" style="width: 100%; padding: 12px; font-size: 18px; font-weight: bold; background: #4292c6; color: white; border: none; border-radius: 4px; cursor: pointer;">出 航</button>
+  <button id="cancelVoyageBtn" style="margin-top: 10px; background: none; border: none; color: #aaaaaa; cursor: pointer; text-decoration: underline;">キャンセル</button>
+</div>
 
 <!-- HUD -->
 <div id="hud">
