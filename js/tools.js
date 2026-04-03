@@ -18,6 +18,9 @@ let isDragging = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// ★ データ読み込み中かどうかを判定するフラグ
+export let isDepthLoading = true; 
+
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
 
@@ -68,12 +71,12 @@ export function getRealDepthAt(posX, posZ) {
 // ============================================================
 export let freeModeStep = 0; 
 export let selectedStartKey = null;
-export let currentStartLoc = null; // ★ 決定したスタート地点を保存
-export let currentGoalLoc = null;  // ★ 決定したゴール地点を保存
-export let trackHistory = [];      // ★ 船の航跡を保存する配列
+export let currentStartLoc = null; 
+export let currentGoalLoc = null;  
+export let trackHistory = [];      
 
 let shipRef = null;
-let menuAnimFrame = null;
+let ecdisAnimFrame = null;
 let onStartVoyageCallback = null; 
 
 const VOYAGE_LOCATIONS = {
@@ -82,11 +85,17 @@ const VOYAGE_LOCATIONS = {
   tokyo: { name: "東京港", lat: 35.590, lon: 139.780, heading: 180 }
 };
 
-function renderMenuLoop() {
-  if (freeModeStep > 0 && toolOpen) {
-    drawAll(shipRef);
-    menuAnimFrame = requestAnimationFrame(renderMenuLoop);
+// ★ アニメーションループ（ローディング画面やメニュー用）
+function startEcdisAnim() {
+  cancelAnimationFrame(ecdisAnimFrame);
+  function loop() {
+    if (!toolOpen) return;
+    if (freeModeStep > 0 || isDepthLoading) {
+      drawAll(shipRef);
+      ecdisAnimFrame = requestAnimationFrame(loop);
+    }
   }
+  loop();
 }
 
 export function startFreeModeSelection(p, callback) {
@@ -108,8 +117,7 @@ export function startFreeModeSelection(p, callback) {
   panY = 0; 
   ecdisScale = 60; 
 
-  cancelAnimationFrame(menuAnimFrame);
-  renderMenuLoop();
+  startEcdisAnim();
 }
 
 // ============================================================
@@ -382,7 +390,9 @@ function generateRealisticDepthsFast() {
 
   worker.onmessage = function(e) {
     renderGrid = e.data; 
+    isDepthLoading = false; // ★ 読み込み完了
     console.log("ECDIS: 水深データ生成完了");
+    if (toolOpen) drawAll(shipRef); // 完了したら一度描画を更新
     worker.terminate();
     URL.revokeObjectURL(blob);
   };
@@ -412,6 +422,7 @@ function initMap() {
   let downX = 0, downY = 0;
 
   mapCv.addEventListener('mousedown', (e) => {
+    if (isDepthLoading) return;
     e.stopPropagation(); 
     isDragging = true;
     downX = e.clientX;
@@ -421,6 +432,7 @@ function initMap() {
   });
 
   mapCv.addEventListener('mousemove', (e) => {
+    if (isDepthLoading) return;
     e.stopPropagation();
     if (!isDragging) return;
     panX += e.clientX - lastMouseX;
@@ -435,6 +447,7 @@ function initMap() {
   });
 
   mapCv.addEventListener('mouseup', (e) => { 
+    if (isDepthLoading) return;
     e.stopPropagation(); 
     isDragging = false; 
 
@@ -446,6 +459,7 @@ function initMap() {
   mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
 
   mapCv.addEventListener('wheel', (e) => {
+    if (isDepthLoading) return;
     e.stopPropagation(); 
     e.preventDefault(); 
     if (e.deltaY < 0) ecdisScale = Math.max(5, ecdisScale * 0.8); 
@@ -453,13 +467,14 @@ function initMap() {
   });
 
   mapCv.addEventListener('dblclick', (e) => {
+    if (isDepthLoading) return;
     e.stopPropagation();
     panX = 0; panY = 0; ecdisScale = 25;
   });
 }
 
 function handleMapClick(e) {
-  if (freeModeStep === 0) return;
+  if (freeModeStep === 0 || isDepthLoading) return;
   const rect = mapCv.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
@@ -497,12 +512,11 @@ function handleMapClick(e) {
           shipRef.speed = 0; 
         }
         
-        // ★ スタートとゴールを保存し、航跡履歴をリセットする
         currentStartLoc = startLoc;
         currentGoalLoc = goalLoc;
         trackHistory = [];
         
-        console.log(`🚀 出航: ${startLoc.name} -> ${goalLoc.name}`);
+        console.log("[START] " + startLoc.name + " -> " + goalLoc.name);
         
         freeModeStep = 0;
         selectedStartKey = null;
@@ -525,9 +539,10 @@ export function toggleTool() {
   if (toolOpen) {
     mapCv.width = mapCv.clientWidth;
     mapCv.height = mapCv.clientHeight;
+    startEcdisAnim(); 
   } else {
     freeModeStep = 0; 
-    cancelAnimationFrame(menuAnimFrame);
+    cancelAnimationFrame(ecdisAnimFrame);
   }
 }
 
@@ -543,11 +558,74 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCv.height = mapCv.clientHeight || 600;
   }
 
+  const w = mapCv.width, h = mapCv.height;
+
+  // ★ ローディング画面の描画処理
+  if (isDepthLoading) {
+    mapCtx.save();
+    
+    // 背景
+    mapCtx.fillStyle = '#0a141e';
+    mapCtx.fillRect(0, 0, w, h);
+
+    // グリッド線
+    mapCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    mapCtx.lineWidth = 1;
+    mapCtx.beginPath();
+    for (let i = 0; i < w; i += 40) { mapCtx.moveTo(i, 0); mapCtx.lineTo(i, h); }
+    for (let i = 0; i < h; i += 40) { mapCtx.moveTo(0, i); mapCtx.lineTo(w, i); }
+    mapCtx.stroke();
+
+    const cxLoad = w / 2;
+    const cyLoad = h / 2;
+    const time = Date.now() / 800;
+
+    // スピナーアニメーション
+    mapCtx.translate(cxLoad, cyLoad - 20);
+
+    mapCtx.beginPath();
+    mapCtx.arc(0, 0, 30, 0, Math.PI * 2);
+    mapCtx.strokeStyle = 'rgba(107, 174, 214, 0.2)';
+    mapCtx.lineWidth = 4;
+    mapCtx.stroke();
+
+    mapCtx.beginPath();
+    mapCtx.arc(0, 0, 30, time, time + Math.PI * 1.2);
+    mapCtx.strokeStyle = '#6baed6';
+    mapCtx.lineCap = 'round';
+    mapCtx.lineWidth = 4;
+    mapCtx.stroke();
+    
+    mapCtx.restore();
+
+    // テキスト
+    mapCtx.save();
+    mapCtx.textAlign = 'center';
+    mapCtx.textBaseline = 'middle';
+
+    mapCtx.fillStyle = '#6baed6';
+    mapCtx.font = '12px "Courier New", monospace';
+    mapCtx.fillText("BATHYMETRY SYSTEM INITIALIZING", cxLoad, cyLoad + 30);
+
+    mapCtx.fillStyle = '#ffffff';
+    mapCtx.font = 'bold 16px sans-serif';
+    const dots = ".".repeat(Math.floor(Date.now() / 300) % 4);
+    mapCtx.fillText("海底地形データを解析中" + dots, cxLoad, cyLoad + 55);
+
+    mapCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    mapCtx.font = '11px sans-serif';
+    mapCtx.fillText("広範囲の等深線を生成しています。しばらくお待ちください。", cxLoad, cyLoad + 80);
+    mapCtx.restore();
+
+    // 読み込み中はここで処理を終了し、下の海図は描画しない
+    return; 
+  }
+
+  // 以降は通常時の海図描画処理
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
 
-  const w = mapCv.width, h = mapCv.height;
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
@@ -795,14 +873,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     }
   });
 
-  // ★ 航跡 (Track) の保存と描画
   if (P && typeof P.posX === 'number' && !isNaN(P.posX) && freeModeStep === 0) {
     if (trackHistory.length === 0) {
       trackHistory.push({ x: P.posX, z: P.posZ });
     } else {
       const lastP = trackHistory[trackHistory.length - 1];
       const distSq = (lastP.x - P.posX)**2 + (lastP.z - P.posZ)**2;
-      // 30m移動するごとに座標を記録 (900 = 30^2)
       if (distSq > 900) { 
         trackHistory.push({ x: P.posX, z: P.posZ });
       }
@@ -812,7 +888,7 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   if (trackHistory.length > 0 && freeModeStep === 0) {
     mapCtx.save();
     mapCtx.beginPath();
-    mapCtx.strokeStyle = 'rgba(30, 30, 30, 0.8)'; // 黒っぽい実線（ECDISの航跡風）
+    mapCtx.strokeStyle = 'rgba(30, 30, 30, 0.8)'; 
     mapCtx.lineWidth = 2;
     
     for (let i = 0; i < trackHistory.length; i++) {
@@ -822,7 +898,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       if (i === 0) mapCtx.moveTo(sx, sy);
       else mapCtx.lineTo(sx, sy);
     }
-    // 最新の位置（船体）まで線を引く
     const currSx = cx + (safeP.posX - safeP.posX) / ecdisScale;
     const currSy = cy - (safeP.posZ - safeP.posZ) / ecdisScale;
     mapCtx.lineTo(currSx, currSy);
@@ -856,7 +931,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     });
   }
 
-  // ★ 航海開始後の「スタート」と「ゴール」の赤丸表示
   if (freeModeStep === 0 && (currentStartLoc || currentGoalLoc)) {
     [currentStartLoc, currentGoalLoc].forEach(loc => {
       if (!loc) return;
@@ -1026,8 +1100,8 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
       mapCtx.textAlign = 'center';
       mapCtx.lineWidth = 3;
       mapCtx.strokeStyle = '#ffffff';
-      mapCtx.strokeText(loc.name, sx, sy - 25);
-      mapCtx.fillText(loc.name, sx, sy - 25);
+      mapCtx.strokeText("[ " + loc.name + " ]", sx, sy - 25);
+      mapCtx.fillText("[ " + loc.name + " ]", sx, sy - 25);
     });
 
     mapCtx.restore();
