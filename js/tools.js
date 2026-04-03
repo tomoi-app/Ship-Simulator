@@ -753,12 +753,12 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   }
   mapCtx.restore();
 
+  // ⑪ 左上の情報テキスト（タイトルと右下の操作ガイドを削除）
   mapCtx.fillStyle = '#000000'; 
-  mapCtx.font = 'bold 14px Arial, sans-serif';
   mapCtx.textAlign = 'left';
   mapCtx.textBaseline = 'top';
-  mapCtx.fillText('ECDIS - TOKYO BAY SYSTEM', 20, 20);
   mapCtx.font = '12px Arial, sans-serif';
+  
   mapCtx.fillText(`SCALE : 1:${Math.round(ecdisScale * 100)}`, 20, 45);
   
   const ll = xzToLatLon(P.posX, P.posZ);
@@ -774,8 +774,4 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
 
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
   mapCtx.fillText(`DEPTH : ${currentDepth === 99.9 ? '---' : currentDepth.toFixed(1)} m`, 20, 130);
-
-  mapCtx.textAlign = 'right';
-  mapCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  mapCtx.fillText('[Drag] Pan / [Wheel] Zoom / [DblClick] Reset', w - 20, h - 30);
 }

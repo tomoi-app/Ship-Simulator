@@ -709,6 +709,119 @@ window.addEventListener('resize', () => {
 });
 
 // ============================================================
+// フリーモードのルート設定ロジック
+// ============================================================
+
+// 海図の座標系に合わせるための変換関数（tools.jsと同じ基準値）
+function calcXZ(lat, lon) {
+  const ORIGIN_LAT = 35.45;
+  const ORIGIN_LON = 139.75;
+  const x = (lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+  const z = (lat - ORIGIN_LAT) * 111320; 
+  return { x, z };
+}
+
+// 各地点の初期座標と初期船首方位（heading）
+const VOYAGE_LOCATIONS = {
+  uraga: { 
+    name: "浦賀水道", 
+    lat: 35.150, lon: 139.736, // 南口の航路中央
+    heading: 0                 // 真北（000度）へ進入
+  },
+  yokohama: { 
+    name: "横浜港", 
+    lat: 35.450, lon: 139.670, // 本牧ふ頭沖
+    heading: 120               // 南東（120度）へ出港し中ノ瀬へ向かう
+  },
+  tokyo: { 
+    name: "東京港", 
+    lat: 35.600, lon: 139.770, // 東京港内
+    heading: 180               // 真南（180度）へ出港
+  }
+};
+
+const freeModeMenu = document.getElementById('freeModeMenu');
+const startLocation = document.getElementById('startLocation');
+const goalLocation = document.getElementById('goalLocation');
+const startVoyageBtn = document.getElementById('startVoyageBtn');
+const cancelVoyageBtn = document.getElementById('cancelVoyageBtn');
+
+// メニューを表示する関数（フリーモード開始ボタンのイベントに紐づけてください）
+window.openFreeModeMenu = function() {
+  freeModeMenu.style.display = 'block';
+  startLocation.value = "";
+  goalLocation.innerHTML = '<option value="">スタート位置を選んでください</option>';
+  goalLocation.disabled = true;
+  goalLocation.style.color = "gray";
+};
+
+// スタート位置が選ばれたら、ゴール位置の選択肢を自動生成する
+startLocation?.addEventListener('change', (e) => {
+  const val = e.target.value;
+  goalLocation.innerHTML = '';
+  
+  if (val === 'uraga') {
+    // 浦賀（入港）の場合、行き先は横浜か東京
+    goalLocation.disabled = false;
+    goalLocation.style.color = "white";
+    goalLocation.innerHTML = `
+      <option value="">目的地を選択</option>
+      <option value="yokohama">横浜港</option>
+      <option value="tokyo">東京港</option>
+    `;
+  } else if (val === 'yokohama' || val === 'tokyo') {
+    // 横浜・東京（出港）の場合、行き先は自動的に浦賀水道（外洋）になる
+    goalLocation.disabled = false;
+    goalLocation.style.color = "white";
+    goalLocation.innerHTML = `<option value="uraga">浦賀水道（外洋へ）</option>`;
+  } else {
+    goalLocation.disabled = true;
+    goalLocation.style.color = "gray";
+    goalLocation.innerHTML = `<option value="">スタート位置を選んでください</option>`;
+  }
+});
+
+// 「出航」ボタンを押したときの処理
+startVoyageBtn?.addEventListener('click', () => {
+  const startKey = startLocation.value;
+  const goalKey = goalLocation.value;
+
+  if (!startKey || !goalKey) {
+    alert("スタート位置とゴール位置を両方選択してください。");
+    return;
+  }
+
+  // UIを非表示
+  freeModeMenu.style.display = 'none';
+
+  // 選択されたスタート位置のデータを取得
+  const startData = VOYAGE_LOCATIONS[startKey];
+  const startPos = calcXZ(startData.lat, startData.lon);
+
+  // まず FREE-1 ミッションとして開始（HUD表示やUI遷移のため）
+  startM('FREE-1');
+
+  // 自船（P）の座標と向きをセット（startMの値を上書き）
+  P.posX = startPos.x;
+  P.posZ = startPos.z;
+  P.heading = startData.heading * (Math.PI / 180); // 度をラジアンに変換
+  P.speed = 0; // 出航時は停止状態からスタート
+  P.engineOrder = 0;
+  updateTelegraph(0);
+  
+  // スロットルや舵角のUIもリセット
+  P.targetRudder = 0;
+  P.rudder = 0;
+
+  console.log(`航海開始: ${startData.name} -> ${VOYAGE_LOCATIONS[goalKey].name}`);
+});
+
+// キャンセルボタン
+cancelVoyageBtn?.addEventListener('click', () => {
+  freeModeMenu.style.display = 'none';
+});
+
+// ============================================================
 //  起動シーケンス
 // ============================================================
 (function boot() {
