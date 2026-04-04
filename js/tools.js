@@ -21,6 +21,8 @@ let hoverX = 0;
 let hoverY = 0;
 
 export let isDepthLoading = true; 
+export let isGlobalLoading = false;
+export let globalLoadingText = "";
 
 const ORIGIN_LAT = 35.45;
 const ORIGIN_LON = 139.75;
@@ -90,13 +92,42 @@ const VOYAGE_LOCATIONS = {
 function startEcdisAnim() {
   cancelAnimationFrame(ecdisAnimFrame);
   function loop() {
-    if (!toolOpen) return;
-    if (freeModeStep > 0 || isDepthLoading) {
+    if (!toolOpen && !isGlobalLoading && !isDepthLoading) return;
+    if (freeModeStep > 0 || isDepthLoading || isGlobalLoading) {
       drawAll(shipRef);
       ecdisAnimFrame = requestAnimationFrame(loop);
     }
   }
   loop();
+}
+
+export function showLoadingScreen(text = "読み込み中") {
+  isGlobalLoading = true;
+  globalLoadingText = text;
+  
+  if (!mapCv) initMap();
+  
+  Object.assign(mapCv.style, {
+    bottom: '0%', left: '0%', width: '100%', height: '100%', borderRadius: '0px',
+    backgroundColor: 'transparent', border: 'none', boxShadow: 'none'
+  });
+  
+  mapCv.style.display = 'block';
+  
+  setTimeout(() => {
+    mapCv.width = mapCv.clientWidth || window.innerWidth;
+    mapCv.height = mapCv.clientHeight || window.innerHeight;
+  }, 10);
+  
+  startEcdisAnim();
+}
+
+export function hideLoadingScreen() {
+  isGlobalLoading = false;
+  if (!toolOpen && !isDepthLoading) {
+    mapCv.style.display = 'none';
+    cancelAnimationFrame(ecdisAnimFrame);
+  }
 }
 
 export function startFreeModeSelection(p, callback) {
@@ -109,11 +140,9 @@ export function startFreeModeSelection(p, callback) {
   
   if (!mapCv) initMap();
   
-  // ★ 修正：画面全体に表示しつつ、背景を完全に透明（transparent）にする
   Object.assign(mapCv.style, {
     bottom: '0%', left: '0%', width: '100%', height: '100%', borderRadius: '0px',
-    backgroundColor: 'transparent',
-    border: 'none', boxShadow: 'none'
+    backgroundColor: 'transparent', border: 'none', boxShadow: 'none'
   });
   
   mapCv.style.display = 'block';
@@ -402,6 +431,12 @@ function generateRealisticDepthsFast() {
     console.log("ECDIS: 水深データ生成完了");
     worker.terminate();
     URL.revokeObjectURL(blob);
+    
+    // ★ 読み込みが完了し、ツール画面が開かれていなければCanvasを隠す
+    if (!toolOpen && !isGlobalLoading) {
+      mapCv.style.display = 'none';
+      cancelAnimationFrame(ecdisAnimFrame);
+    }
   };
 }
 
@@ -413,14 +448,13 @@ function initMap() {
   mapCv = document.createElement('canvas');
   mapCv.id = 'ecdis-monitor';
   
-  // ★ 修正：CSSの背景色をtransparentにして透過させる
   Object.assign(mapCv.style, {
     position: 'absolute', 
     bottom: '0%', 
     left: '10%', 
     width: '80%', 
     height: '78%', 
-    backgroundColor: 'transparent', // 透明化
+    backgroundColor: 'transparent',
     border: '4px solid #4a5b6c',
     borderRadius: '2px',
     boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
@@ -434,7 +468,7 @@ function initMap() {
   let downX = 0, downY = 0;
 
   mapCv.addEventListener('mousedown', (e) => {
-    if (isDepthLoading) return;
+    if (isDepthLoading || isGlobalLoading) return;
     e.stopPropagation(); 
     isDragging = true;
     downX = e.clientX;
@@ -444,7 +478,7 @@ function initMap() {
   });
 
   mapCv.addEventListener('mousemove', (e) => {
-    if (isDepthLoading) return;
+    if (isDepthLoading || isGlobalLoading) return;
     e.stopPropagation();
     
     const rect = mapCv.getBoundingClientRect();
@@ -464,7 +498,7 @@ function initMap() {
   });
 
   mapCv.addEventListener('mouseup', (e) => { 
-    if (isDepthLoading) return;
+    if (isDepthLoading || isGlobalLoading) return;
     e.stopPropagation(); 
     isDragging = false; 
 
@@ -476,7 +510,7 @@ function initMap() {
   mapCv.addEventListener('mouseleave', (e) => { e.stopPropagation(); isDragging = false; });
 
   mapCv.addEventListener('wheel', (e) => {
-    if (isDepthLoading) return;
+    if (isDepthLoading || isGlobalLoading) return;
     e.stopPropagation(); 
     e.preventDefault(); 
     
@@ -496,14 +530,14 @@ function initMap() {
   });
 
   mapCv.addEventListener('dblclick', (e) => {
-    if (isDepthLoading) return;
+    if (isDepthLoading || isGlobalLoading) return;
     e.stopPropagation();
     panX = 0; panY = 0; ecdisScale = 25;
   });
 }
 
 function handleMapClick(e) {
-  if (freeModeStep === 0 || isDepthLoading) return;
+  if (freeModeStep === 0 || isDepthLoading || isGlobalLoading) return;
   const rect = mapCv.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
@@ -586,7 +620,6 @@ function handleMapClick(e) {
   }
 }
 
-export function isToolOpen() { return toolOpen; }
 export function toggleTool() {
   initMap();
   toolOpen = !toolOpen;
@@ -594,7 +627,7 @@ export function toggleTool() {
   if (toolOpen) {
     Object.assign(mapCv.style, {
       bottom: '0%', left: '10%', width: '80%', height: '78%', borderRadius: '2px',
-      backgroundColor: 'transparent', // ★ ここも透明にする
+      backgroundColor: 'transparent',
       border: '4px solid #4a5b6c', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
     });
     mapCv.style.display = 'block';
@@ -613,20 +646,18 @@ export function toggleTool() {
 // ============================================================
 export function drawAll(P, AIships, fishBoats, buoys, curM) {
   shipRef = P || shipRef || {};
-  if (!toolOpen || !mapCtx || !geoData) return;
+  if (!toolOpen && !isGlobalLoading && !isDepthLoading) return;
 
+  if (!mapCv) return;
   if (mapCv.width === 0 || mapCv.height === 0 || mapCv.width !== mapCv.clientWidth || mapCv.height !== mapCv.clientHeight) {
-      mapCv.width = mapCv.clientWidth || 800;
-      mapCv.height = mapCv.clientHeight || 600;
+      mapCv.width = mapCv.clientWidth || window.innerWidth;
+      mapCv.height = mapCv.clientHeight || window.innerHeight;
   }
 
   const w = mapCv.width, h = mapCv.height;
 
-  // ★ 修正：ローディング中は海図背景も描画せず、完全に透かしてテキストだけ表示
-  if (isDepthLoading) {
+  if (isDepthLoading || isGlobalLoading) {
     mapCtx.save();
-    
-    // Canvasをクリアして透明にする（後ろの3D海が見えるようになる）
     mapCtx.clearRect(0, 0, w, h);
 
     const cxLoad = w / 2;
@@ -635,7 +666,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.textAlign = 'center';
     mapCtx.textBaseline = 'middle';
 
-    // 3Dの海に文字が被っても見やすいようにドロップシャドウをかける
     mapCtx.shadowColor = "rgba(0, 0, 0, 0.8)";
     mapCtx.shadowBlur = 5;
     mapCtx.shadowOffsetX = 2;
@@ -645,13 +675,13 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.font = 'bold 24px sans-serif'; 
     
     const dots = ".".repeat(Math.floor(Date.now() / 400) % 4);
-    mapCtx.fillText("地形データを読み込み中" + dots, cxLoad, cyLoad);
+    const dispText = isGlobalLoading ? globalLoadingText : "地形データを読み込み中";
+    mapCtx.fillText(dispText + dots, cxLoad, cyLoad);
 
     mapCtx.restore();
     return; 
   }
 
-  // 以降は通常時（読み込み完了後）の海図描画処理
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
@@ -659,7 +689,6 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
 
-  // 通常時は水色で背景を塗りつぶす
   mapCtx.clearRect(0, 0, w, h);
   mapCtx.fillStyle = '#e4f1fc';
   mapCtx.fillRect(0, 0, w, h);
@@ -1267,3 +1296,20 @@ export function drawAll(P, AIships, fishBoats, buoys, curM) {
     mapCtx.restore();
   }
 }
+
+// ============================================================
+// 5. 初期化処理（ページ読み込み時の自動起動）
+// ============================================================
+initMap();
+Object.assign(mapCv.style, {
+  bottom: '0%', left: '0%', width: '100%', height: '100%', borderRadius: '0px',
+  backgroundColor: 'transparent', border: 'none', boxShadow: 'none'
+});
+mapCv.style.display = 'block';
+setTimeout(() => {
+  if (mapCv) {
+    mapCv.width = window.innerWidth;
+    mapCv.height = window.innerHeight;
+  }
+}, 10);
+startEcdisAnim();
