@@ -14,7 +14,7 @@ import {
   drawResultRadar, animScore, showDockResult, applyWeatherOverlay, updateDashboard,
   updateNavData
 } from './hud.js';
-import { isToolOpen, toggleTool, drawAll as drawTools, getRealDepthAt, startFreeModeSelection, latLonToXZ } from './tools.js';
+import { initTools, isToolOpen, toggleTool, drawAll as drawTools, getRealDepthAt, startFreeModeSelection, latLonToXZ } from './tools.js';
 
 // ============================================================
 //  Three.js セットアップ
@@ -795,6 +795,11 @@ window.openFreeModeMenu = function() {
         
         isMenu = true; 
         requestAnimationFrame(loop);
+        
+        // ECDISツールの初期化（地理データ・水深データの非同期読み込み開始）
+        initTools(() => {
+          console.log('ECDIS 水深データ準備完了');
+        });
       } catch (e) {
         if (msg) msg.textContent = 'ERROR: ' + e.message;
         console.error(e);
