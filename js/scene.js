@@ -747,13 +747,14 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // 2. 上面（草地の地面）を作ってフタをする関数
+    // 2. 上面（草地の地面）を作ってフタをする関数（バグ修正版）
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
 
       const getVec2 = (coord) => {
         const pos = latLonToXZ(coord[1], coord[0]);
-        return new THREE.Vector2(pos.x, pos.z);
+        // 後でX軸で手前に90度倒すため、Y座標には-Zを入れるのが正解
+        return new THREE.Vector2(pos.x, -pos.z);
       };
 
       const cleanPts = (pts) => {
@@ -784,17 +785,17 @@ export async function buildLandmass(THREE, scene) {
         const uvAttr = geo.attributes.uv;
         if (!posAttr) return;
 
+        // 草のテクスチャUV設定
         for (let i = 0; i < posAttr.count; i++) {
-          const px = posAttr.getX(i);
-          const pz = posAttr.getY(i); 
-          posAttr.setXYZ(i, px, 0, pz);
-          uvAttr.setXY(i, px / 200, pz / 200); 
+          uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
         }
         geo.computeVertexNormals();
 
         const mesh = new THREE.Mesh(geo, material);
+        // ★修正: Zを潰すバグコードを削除し、純粋に-90度回転させてフタにする
+        mesh.rotation.x = -Math.PI / 2;
         mesh.position.y = 4.4; 
-        mesh.frustumCulled = false; // ★カメラ外と誤判定されて消えるのを防ぐ
+        mesh.frustumCulled = false; 
         landGroup.add(mesh);
 
       } catch (e) {
