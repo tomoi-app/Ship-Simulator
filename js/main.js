@@ -37,7 +37,6 @@ buildCity(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 shipGroup.add(camera);
-// ★修正: 元の完璧に微調整されたローカル座標設定に復元
 const bridgeXPos   = -13;     // 左右
 const bridgeHeight = 10;      // 高さ
 const bridgeZPos   = 9.7;     // 前後位置
@@ -81,6 +80,56 @@ requestAnimationFrame(reparentToGameGroup);
 function setMenuState(isMenuMode) {
   gameGroup.visible = !isMenuMode;
 }
+
+// ============================================================
+//  カメラ切り替えUI（ドローン視点 / ブリッジ視点）
+// ============================================================
+export let cameraMode = 'bridge'; 
+
+const camBtn = document.createElement('div');
+camBtn.id = 'camera-btn';
+camBtn.innerHTML = '📷 BRIDGE';
+Object.assign(camBtn.style, {
+  position: 'absolute',
+  top: '70px', 
+  right: '20px',
+  width: '110px',
+  height: '35px',
+  backgroundColor: 'rgba(15, 25, 35, 0.85)',
+  border: '1px solid rgba(255,255,255,0.2)',
+  borderLeft: '4px solid #6baed6',
+  color: '#ffffff',
+  fontSize: '13px',
+  fontWeight: 'bold',
+  display: 'none', // メニュー中は非表示
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  zIndex: '400',
+  borderRadius: '4px',
+  userSelect: 'none',
+  boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+  transition: 'all 0.2s ease'
+});
+document.body.appendChild(camBtn);
+
+camBtn.addEventListener('click', () => {
+  if (cameraMode === 'bridge') {
+    cameraMode = 'drone';
+    camBtn.innerHTML = '🚁 DRONE';
+    camBtn.style.borderLeft = '4px solid #dcb982';
+    camBtn.style.color = '#dcb982';
+  } else {
+    cameraMode = 'bridge';
+    camBtn.innerHTML = '📷 BRIDGE';
+    camBtn.style.borderLeft = '4px solid #6baed6';
+    camBtn.style.color = '#ffffff';
+  }
+  // 視点を切り替えたらカメラの向きを正面にリセットする
+  camOffset.yaw = 0;
+  camOffset.pitch = 0;
+});
+
 
 // ============================================================
 //  ミッション状態
@@ -301,6 +350,9 @@ window.startM = function(id) {
   document.getElementById('comp-c')?.classList.remove('h');
   document.getElementById('telegraph-panel')?.classList.remove('h');
   document.getElementById('time-scale-btn')?.classList.remove('h');
+  
+  // ★ ドローンボタンを表示
+  camBtn.style.display = 'flex';
 
   setMenuState(false);
 
@@ -486,15 +538,26 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★修正: P.shipScale を掛ける「元の完璧な設定」に復元
+  // ★修正: カメラ位置の動的切り替え（ブリッジ or ドローン）
   const s = P.shipScale || 1.0; 
-  camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
-
-  const yr = camOffset.yaw   * Math.PI / 180;
-  const pr = camOffset.pitch * Math.PI / 180;
-  camera.rotation.order = 'YXZ';
-  camera.rotation.y = Math.PI + yr;
-  camera.rotation.x = pr;
+  if (cameraMode === 'bridge') {
+    camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
+    const yr = camOffset.yaw   * Math.PI / 180;
+    const pr = camOffset.pitch * Math.PI / 180;
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = Math.PI + yr;
+    camera.rotation.x = pr;
+  } else {
+    // 🚁 ドローン視点（船体後方・上空から俯瞰）
+    // 船のスケールに合わせてカメラを遠ざける
+    camera.position.set(0, 180 * s, 450 * s);
+    const yr = camOffset.yaw   * Math.PI / 180;
+    // デフォルトで少し見下ろす角度（-15度）にする
+    const pr = (camOffset.pitch - 15) * Math.PI / 180; 
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = Math.PI + yr;
+    camera.rotation.x = pr;
+  }
 
   if (curM?.wx === 'ngt' && navLights && navLights.mast) {
     const fl = 0.82 + Math.sin(t * 0.003) * 0.18;
@@ -565,6 +628,9 @@ window.goSel = function() {
   document.getElementById('comp-c')?.classList.add('h');
   document.getElementById('telegraph-panel')?.classList.add('h');
   document.getElementById('time-scale-btn')?.classList.add('h');
+  
+  // ドローンボタンを隠す
+  camBtn.style.display = 'none';
 
   camOffset.yaw   = 0;
   camOffset.pitch = 0;
@@ -697,6 +763,9 @@ window.openFreeModeMenu = function() {
     document.getElementById('comp-c')?.classList.remove('h');
     document.getElementById('telegraph-panel')?.classList.remove('h');
     document.getElementById('time-scale-btn')?.classList.remove('h');
+    
+    // ドローンボタンを表示
+    camBtn.style.display = 'flex';
 
     shipGroup.position.x = -P.posX;
     shipGroup.position.z = P.posZ;
