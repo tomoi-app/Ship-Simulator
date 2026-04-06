@@ -531,17 +531,27 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
 
   const { VOYAGE_LOCATIONS, selectedStartKey } = getCanvasState();
 
+  // ステップ1＆2（スタート・目的地選択）
   if (freeModeStep === 1 || freeModeStep === 2) {
     ctx.save();
     const uiText = freeModeStep === 1 ? 'スタート位置を選択してください' : '目的地を選択してください';
-    const uiSub  = freeModeStep === 1 ? 'SELECT DEPARTURE POINT' : 'SELECT DESTINATION POINT';
-    const boxW=280, boxH=55, boxX=w-boxW-20, boxY=20;
-    ctx.fillStyle='rgba(10,20,30,0.85)'; ctx.strokeStyle='#4292c6'; ctx.lineWidth=1;
-    ctx.fillRect(boxX,boxY,boxW,boxH); ctx.strokeRect(boxX,boxY,boxW,boxH);
-    ctx.fillStyle='#6baed6'; ctx.fillRect(boxX,boxY,6,boxH);
-    ctx.textAlign='right'; ctx.textBaseline='top';
-    ctx.fillStyle='#6baed6'; ctx.font='10px Arial,sans-serif'; ctx.fillText(uiSub, boxX+boxW-15, boxY+12);
-    ctx.fillStyle='#ffffff'; ctx.font='bold 15px Arial,sans-serif'; ctx.fillText(uiText, boxX+boxW-15, boxY+30);
+    
+    // 右上のボックス（シックな透過ネイビー＋ゴールドのアクセント）
+    const boxW = 240, boxH = 40, boxX = w - boxW - 20, boxY = 20;
+    ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    ctx.fillStyle = '#dcb982';
+    ctx.fillRect(boxX, boxY, 4, boxH);
+
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(uiText, boxX + boxW - 15, boxY + boxH / 2);
 
     const keys = freeModeStep === 1 ? ['uraga','yokohama','tokyo']
                : (selectedStartKey === 'uraga' ? ['yokohama','tokyo'] : ['uraga']);
@@ -552,6 +562,8 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
       const sy   = cy - (xz.z - safeP.posZ) / ecdisScale;
       const pulse  = (Math.sin(Date.now()/150)+1)/2;
       const radius = 12 + pulse*8;
+      
+      // 拠点マーカー（海図上で目立たせるため、ここだけは視認性を維持）
       ctx.beginPath(); ctx.arc(sx,sy,radius,0,Math.PI*2);
       ctx.fillStyle='rgba(255,100,0,0.4)'; ctx.fill();
       ctx.beginPath(); ctx.arc(sx,sy,6,0,Math.PI*2);
@@ -566,10 +578,11 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.restore();
   }
 
+  // ステップ3（コース作成）
   if (freeModeStep === 3) {
     ctx.save();
     
-    // ★ 修正：右上のボックスをモダン＆シックに（英語排除・蛍光色排除）
+    // 右上のボックス（統一デザイン）
     const boxW = 240, boxH = 40, boxX = w - boxW - 20, boxY = 20;
     ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
@@ -577,7 +590,6 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-    // アクセントライン（シャンパンゴールド）
     ctx.fillStyle = '#dcb982';
     ctx.fillRect(boxX, boxY, 4, boxH);
 
@@ -587,26 +599,27 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.font = '14px sans-serif';
     ctx.fillText('コースラインを作成してください', boxX + boxW - 15, boxY + boxH / 2);
 
-    // ★ 修正：「戻る」ボタン（透明感のあるスレートグレー）
-    const undoBox = { x: 20, y: h - 70, w: 100, h: 40 };
-    ctx.fillStyle = 'rgba(20, 30, 40, 0.8)';
+    // ★修正：「戻る」ボタン（大きく、落ち着いたスレートグレー）
+    const undoBox = { x: 30, y: h - 90, w: 130, h: 50 };
+    ctx.fillStyle = 'rgba(30, 40, 50, 0.9)';
     ctx.fillRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.strokeRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
-    ctx.fillStyle = '#eeeeee';
+    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '13px sans-serif';
+    ctx.font = '15px sans-serif';
     ctx.fillText('戻る', undoBox.x + undoBox.w / 2, undoBox.y + undoBox.h / 2);
 
-    // ★ 修正：「完了」ボタン（シックなネイビーブルー）
-    const compBox = { x: 130, y: h - 70, w: 100, h: 40 };
-    ctx.fillStyle = 'rgba(40, 75, 110, 0.9)'; 
+    // ★修正：「完了」ボタン（大きく、存在感のあるネイビーブルーとゴールド）
+    const compBox = { x: 180, y: h - 90, w: 150, h: 50 };
+    ctx.fillStyle = 'rgba(25, 65, 105, 0.95)'; 
     ctx.fillRect(compBox.x, compBox.y, compBox.w, compBox.h);
-    ctx.strokeStyle = 'rgba(120, 180, 240, 0.6)';
+    ctx.strokeStyle = '#dcb982';
+    ctx.lineWidth = 2;
     ctx.strokeRect(compBox.x, compBox.y, compBox.w, compBox.h);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 13px sans-serif';
+    ctx.font = 'bold 16px sans-serif';
     ctx.fillText('完了', compBox.x + compBox.w / 2, compBox.y + compBox.h / 2);
 
     ctx.restore();

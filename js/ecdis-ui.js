@@ -211,26 +211,36 @@ function _handleMapClick(e) {
 
   // Step 3: ウェイポイント追加・ボタン処理
   if (freeModeStep === 3) {
-    const undoBox={x:20, y:h-70, w:100, h:40};
-    const compBox={x:130, y:h-70, w:100, h:40};
+    // ★修正: 大きくしたボタンに合わせてクリックの当たり判定を拡張
+    const undoBox = { x: 30, y: h - 90, w: 130, h: 50 };
+    const compBox = { x: 180, y: h - 90, w: 150, h: 50 };
+
     if (_inBox(mouseX, mouseY, undoBox)) {
       if (routeWaypoints.length > 1) routeWaypoints.pop();
       return;
     }
+    
     if (_inBox(mouseX, mouseY, compBox)) {
       if (routeWaypoints.length > 1 && shipRef) {
-        const p1=routeWaypoints[0], p2=routeWaypoints[1];
-        shipRef.heading = Math.atan2(p2.x-p1.x, p2.z-p1.z);
+         const p1 = routeWaypoints[0];
+         const p2 = routeWaypoints[1];
+         let hdg = Math.atan2(p2.x - p1.x, p2.z - p1.z);
+         shipRef.heading = hdg; 
       }
-      freeModeStep = 0; selectedStartKey = null;
-      toggleTool();
-      if (onStartVoyageCallback)
+      
+      freeModeStep = 0;
+      selectedStartKey = null;
+      toggleTool(); 
+      
+      if (onStartVoyageCallback) {
         onStartVoyageCallback(currentStartLoc, currentGoalLoc, routeWaypoints);
+      }
       return;
     }
-    const tx = safeP.posX + (mouseX-cx) * ecdisScale;
-    const tz = safeP.posZ - (mouseY-cy) * ecdisScale;
-    routeWaypoints.push({x:tx, z:tz});
+
+    const targetX = safeP.posX + (mouseX - cx) * ecdisScale;
+    const targetZ = safeP.posZ - (mouseY - cy) * ecdisScale;
+    routeWaypoints.push({ x: targetX, z: targetZ });
     return;
   }
 

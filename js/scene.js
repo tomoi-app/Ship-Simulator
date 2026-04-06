@@ -759,18 +759,17 @@ export async function buildLandmass(THREE, scene) {
       if (!rings || rings.length === 0) return;
       const shape = new THREE.Shape();
       
-      // X座標の反転によるポリゴン生成エラー（裏返り）を防ぐため、配列を逆順(reverse)にして処理
-      const outer = [...rings[0]].reverse();
+      const outer = rings[0];
       for (let i = 0; i < outer.length; i++) {
         const pos = latLonToXZ(outer[i][1], outer[i][0]);
-        // 2D平面(X, Y)として登録。（YにZ座標をそのまま入れる）
+        // 一旦2DのXY平面として図形を描く（Y座標の代わりにZ座標を入れる）
         if (i === 0) shape.moveTo(pos.x, pos.z);
         else shape.lineTo(pos.x, pos.z);
       }
       
       for (let j = 1; j < rings.length; j++) {
         const holePath = new THREE.Path();
-        const hole = [...rings[j]].reverse();
+        const hole = rings[j];
         for (let i = 0; i < hole.length; i++) {
           const pos = latLonToXZ(hole[i][1], hole[i][0]);
           if (i === 0) holePath.moveTo(pos.x, pos.z);
@@ -781,20 +780,26 @@ export async function buildLandmass(THREE, scene) {
 
       const geo = new THREE.ShapeGeometry(shape);
       
-      // 回転(rotateX)は使わず、直接頂点座標を X, 0, Z に変換して水平に倒す
+      // 図形をX軸周りに90度回転させて、水平（地面）に倒す
+      geo.rotateX(Math.PI / 2);
+
+      // テクスチャ（草）が綺麗に敷き詰められるようにUVを世界座標に合わせる
       const posAttr = geo.attributes.position;
       const uvAttr = geo.attributes.uv;
       for (let i = 0; i < posAttr.count; i++) {
         const px = posAttr.getX(i);
-        const pz = posAttr.getY(i); // Yに入っていたZ座標を取り出す
-        posAttr.setXYZ(i, px, 0, pz); // 高さを0にする
+        const pz = posAttr.getZ(i);
         uvAttr.setXY(i, px / 100, pz / 100);
       }
 
+      // バウンディングボックスを再計算して、描画バグを防ぐ
       geo.computeVertexNormals();
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
 
       const mesh = new THREE.Mesh(geo, material);
       mesh.position.y = 4.4; // 岸壁(4.5m)よりわずかに低くしてフタをする
+      mesh.frustumCulled = false; // ★超重要: カメラの視界外と誤判定されて消えるのを防ぐ
       landGroup.add(mesh);
     }
 
