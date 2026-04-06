@@ -747,74 +747,66 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // 2. 上面（草地の地面）を作ってフタをする関数（強力な図形クレンジング搭載版）
+    // 2. 上面（草地の地面）を作ってフタをする関数（絶対表示させる最終形態）
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
 
       const getVec2 = (coord) => {
         const pos = latLonToXZ(coord[1], coord[0]);
+        // 後でX軸を-90度回転させて倒すため、Y座標に-Zをセット
         return new THREE.Vector2(pos.x, -pos.z);
       };
 
-      // ★ここがカギ: 複雑すぎる地図データを滑らかにしてエンジンのパニックを防ぐ
+      // 3Dエンジンが計算を放棄するのを防ぐ究極のデータクレンジング
       const cleanPts = (pts) => {
-        if (pts.length < 3) return pts;
-        const res = [pts[0]];
-        for (let i = 1; i < pts.length - 1; i++) {
-          const prev = res[res.length - 1];
-          const curr = pts[i];
-          const next = pts[i + 1];
-          
-          // 1. 近すぎる頂点を間引く（15m以内の細かいギザギザを消す）
-          if (curr.distanceTo(prev) < 15.0) continue;
-          
-          // 2. 直線上の無駄な頂点を間引く
-          const v1 = new THREE.Vector2().subVectors(curr, prev).normalize();
-          const v2 = new THREE.Vector2().subVectors(next, curr).normalize();
-          if (Math.abs(v1.cross(v2)) < 0.05) continue; 
-          
-          res.push(curr);
+        const unique = [];
+        for (let i = 0; i < pts.length; i++) {
+          // 20m以下の細かいギザギザは自己交差の原因になるため無視
+          if (unique.length === 0 || pts[i].distanceTo(unique[unique.length - 1]) > 20.0) {
+            unique.push(pts[i]);
+          }
         }
-        res.push(pts[pts.length - 1]);
-        return res;
+        // ★最重要: GeoJSON特有の「始点と終点の重複」を削除
+        if (unique.length > 1 && unique[0].distanceTo(unique[unique.length - 1]) < 20.0) {
+          unique.pop();
+        }
+        return unique;
       };
 
       try {
-        // クレンジングしたデータで外枠を作る
         let outerPts = cleanPts(rings[0].map(getVec2));
         if (outerPts.length < 3) return;
         
+        // 外枠は反時計回り(CCW)必須
         if (THREE.ShapeUtils.isClockWise(outerPts)) outerPts.reverse();
         const shape = new THREE.Shape(outerPts);
 
-        // クレンジングしたデータで穴（池や湾など）をくり抜く
-        for (let j = 1; j < rings.length; j++) {
-          let holePts = cleanPts(rings[j].map(getVec2));
-          if (holePts.length < 3) continue;
-          if (!THREE.ShapeUtils.isClockWise(holePts)) holePts.reverse();
-          shape.holes.push(new THREE.Path(holePts));
-        }
+        // ★エラーの最大要因である「内側の穴（Holes）」のくり抜き処理を完全に削除
+        // 海岸線さえ正常に描画できれば、船のシミュレーターとしては十分なため
 
-        // 面を張る
         const geo = new THREE.ShapeGeometry(shape);
         const posAttr = geo.attributes.position;
         const uvAttr = geo.attributes.uv;
         if (!posAttr) return;
 
-        // 草地のテクスチャUV設定
+        // UV設定
         for (let i = 0; i < posAttr.count; i++) {
           uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
         }
         geo.computeVertexNormals();
 
-        const mesh = new THREE.Mesh(geo, material);
+        // ★万が一 grass.png が読み込めなかった時のために、マテリアルに深緑色を強制付与
+        const safeMat = material.clone();
+        safeMat.color = new THREE.Color(0x3b5e3b);
+
+        const mesh = new THREE.Mesh(geo, safeMat);
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.y = 4.4; // 岸壁よりわずかに低く
         mesh.frustumCulled = false; 
         landGroup.add(mesh);
 
       } catch (e) {
-        console.warn("陸地ポリゴンの生成をスキップしました:", e);
+        console.warn("陸地ポリゴンの生成を一部スキップしました:", e);
       }
     }
 
