@@ -91,11 +91,11 @@ camBtn.id = 'camera-btn';
 camBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>`;
 Object.assign(camBtn.style, {
   position: 'absolute',
-  top: '65px',    // ★修正: 倍速ボタンのすぐ下に配置
-  right: '20px',  // ★修正: 倍速ボタンと同じ右端ラインに揃える
-  width: '40px',  // ★修正: 倍速ボタンと同じ幅
-  height: '40px', // ★修正: 倍速ボタンと同じ高さ
-  backgroundColor: 'rgba(65, 80, 90, 0.85)', // 倍速ボタンに近いスレートグレー
+  top: '20px',    // ★修正: 倍速ボタンと縦の高さを揃える
+  right: '70px',  // ★修正: 倍速ボタンのすぐ左横に配置（右からの距離を調整）
+  width: '40px',
+  height: '40px',
+  backgroundColor: 'rgba(65, 80, 90, 0.85)',
   border: '1px solid rgba(0, 0, 0, 0.5)',
   display: 'none',
   alignItems: 'center',
@@ -521,25 +521,45 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★修正: カメラ位置の動的切り替え
+  // ★修正: カメラ位置の動的切り替え（ドローンのみ揺れを完全に無効化）
   const s = P.shipScale || 1.0; 
   if (cameraMode === 'bridge') {
+    // 📷 ブリッジ視点：船（shipGroup）の子要素にして、波の揺れに完全に連動させる
+    if (camera.parent !== shipGroup) shipGroup.add(camera);
+    
     camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
     const yr = camOffset.yaw   * Math.PI / 180;
     const pr = camOffset.pitch * Math.PI / 180;
     camera.rotation.order = 'YXZ';
     camera.rotation.y = Math.PI + yr;
     camera.rotation.x = pr;
+    camera.rotation.z = 0;
   } else {
-    // 🚁 ドローン視点
-    // ★修正: 左右の位置(X座標)を 0 ではなく bridgeXPos に揃える
-    camera.position.set(bridgeXPos * s, 20 * s, -50 * s); 
+    // 🚁 ドローン視点：sceneの直下に置き、波による船のRoll/Pitchの揺れを無視する
+    if (camera.parent !== scene) scene.add(camera);
+    
+    // ドローンの相対位置（左右、高さ、前後）
+    const lx = bridgeXPos * s;
+    const ly = 20 * s;
+    const lz = -50 * s;
+    
+    // 船の向き（Heading）に合わせてドローンの絶対座標を計算
+    const theta = -P.heading;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    
+    camera.position.x = -P.posX + (lx * cosT + lz * sinT);
+    camera.position.y = ly;
+    camera.position.z = P.posZ  + (-lx * sinT + lz * cosT);
     
     const yr = camOffset.yaw   * Math.PI / 180;
     const pr = (camOffset.pitch - 10) * Math.PI / 180; 
+    
+    // ワールド座標なので、カメラの向きにも船の向き(-P.heading)を足す
     camera.rotation.order = 'YXZ';
-    camera.rotation.y = Math.PI + yr;
+    camera.rotation.y = -P.heading + Math.PI + yr;
     camera.rotation.x = pr;
+    camera.rotation.z = 0; // 横揺れ（Roll）を強制的にゼロにして水平を保つ
   }
 
   if (curM?.wx === 'ngt' && navLights && navLights.mast) {
