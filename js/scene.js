@@ -708,6 +708,7 @@ export async function buildLandmass(THREE, scene) {
 
     const landGroup = new THREE.Group();
 
+    // 1. 側面（コンクリートの護岸）を作る関数
     function createWall(points, material) {
       if (points.length < 2) return;
       const vertices = [];
@@ -717,30 +718,22 @@ export async function buildLandmass(THREE, scene) {
       let totalDistance = 0;
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        // ★修正: 岸壁の高さを海抜50mから現実的な4.5mに変更
-        vertices.push(pos.x, -5, pos.z); 
-        vertices.push(pos.x, 4.5, pos.z);  
+        vertices.push(pos.x, -5, pos.z);  // 海底
+        vertices.push(pos.x, 4.5, pos.z); // 海抜4.5mの岸壁
 
         if (i > 0) {
           const prevPos = latLonToXZ(points[i-1][1], points[i-1][0]);
           totalDistance += new THREE.Vector2(pos.x, pos.z).distanceTo(new THREE.Vector2(prevPos.x, prevPos.z));
         }
-        
-        // ★修正: テクスチャの引き伸ばしを防ぐためスケールを再調整
         const textureScaleX = 20; 
         const textureScaleY = 9.5; 
         const u = totalDistance / textureScaleX;
-        const vTop = 1.0; 
-
-        uvs.push(u, 0);    
-        uvs.push(u, vTop); 
+        uvs.push(u, 0, u, 1.0); 
       }
 
       for (let i = 0; i < points.length - 1; i++) {
-        const b1 = i * 2, t1 = i * 2 + 1;
-        const b2 = (i + 1) * 2, t2 = (i + 1) * 2 + 1;
-        indices.push(b1, t1, t2);
-        indices.push(b1, t2, b2);
+        const b1 = i * 2, t1 = i * 2 + 1, b2 = (i + 1) * 2, t2 = (i + 1) * 2 + 1;
+        indices.push(b1, t1, t2, b1, t2, b2);
       }
 
       const geo = new THREE.BufferGeometry();
@@ -754,14 +747,13 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // ★修正: ポリゴンの「上面（地面）」を作成してフタをする関数（究極安定版）
+    // 2. 上面（草地の地面）を作ってフタをする関数
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
 
       const getVec2 = (coord) => {
         const pos = latLonToXZ(coord[1], coord[0]);
-        // 後でX軸を-90度回転させるため、Y座標の代わりに -Z を入れる
-        return new THREE.Vector2(pos.x, -pos.z);
+        return new THREE.Vector2(pos.x, pos.z);
       };
 
       const cleanPts = (pts) => {
@@ -777,14 +769,12 @@ export async function buildLandmass(THREE, scene) {
         let outerPts = cleanPts(rings[0].map(getVec2));
         if (outerPts.length < 3) return;
         
-        // 外枠は反時計回り(CCW)必須
         if (THREE.ShapeUtils.isClockWise(outerPts)) outerPts.reverse();
         const shape = new THREE.Shape(outerPts);
 
         for (let j = 1; j < rings.length; j++) {
           let holePts = cleanPts(rings[j].map(getVec2));
           if (holePts.length < 3) continue;
-          // 穴は時計回り(CW)必須
           if (!THREE.ShapeUtils.isClockWise(holePts)) holePts.reverse();
           shape.holes.push(new THREE.Path(holePts));
         }
@@ -794,17 +784,17 @@ export async function buildLandmass(THREE, scene) {
         const uvAttr = geo.attributes.uv;
         if (!posAttr) return;
 
-        // 草のテクスチャUV設定
         for (let i = 0; i < posAttr.count; i++) {
-          uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
+          const px = posAttr.getX(i);
+          const pz = posAttr.getY(i); 
+          posAttr.setXYZ(i, px, 0, pz);
+          uvAttr.setXY(i, px / 200, pz / 200); 
         }
         geo.computeVertexNormals();
 
         const mesh = new THREE.Mesh(geo, material);
-        // 生成した2Dの面をX軸で-90度回転させて、水平(地面)にパタンと倒す
-        mesh.rotation.x = -Math.PI / 2;
         mesh.position.y = 4.4; 
-        mesh.frustumCulled = false; 
+        mesh.frustumCulled = false; // ★カメラ外と誤判定されて消えるのを防ぐ
         landGroup.add(mesh);
 
       } catch (e) {
@@ -812,29 +802,29 @@ export async function buildLandmass(THREE, scene) {
       }
     }
 
-    // ★修正: 側面(壁)と上面(地面)の両方を正しく生成するようにループを書き換え
+    // 3. データから「壁」と「フタ」を両方呼び出すループ
     data.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
       if (type === 'LineString') {
-        createWall(coords, concreteMat);
+        createWall(coords, concreteMat); 
       } 
       else if (type === 'Polygon') {
-        coords.forEach(ring => createWall(ring, concreteMat)); // 側面はコンクリート
-        createGround(coords, grassMat);                        // 上面は草地
+        coords.forEach(ring => createWall(ring, concreteMat)); 
+        createGround(coords, grassMat); // ★ここが抜けていたため追加                        
       } 
       else if (type === 'MultiPolygon') {
         coords.forEach(poly => {
-          poly.forEach(ring => createWall(ring, concreteMat)); // 側面はコンクリート
-          createGround(poly, grassMat);                        // 上面は草地
+          poly.forEach(ring => createWall(ring, concreteMat)); 
+          createGround(poly, grassMat); // ★ここが抜けていたため追加
         });
       }
     });
 
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！（岸壁の高さ修正版）");
+    console.log("陸地の読み込み完了！（壁＋地面の完全フタ付き版）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);

@@ -88,17 +88,27 @@ export let cameraMode = 'bridge';
 
 const camBtn = document.createElement('div');
 camBtn.id = 'camera-btn';
-// ★修正: 文字や色をなくし、白線のカメラアイコン（SVG）のみに変更
-camBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+// ★修正：一眼レフカメラ風のSVGアイコン
+const camIcon = `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;">
+  <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+  <path d="M16 7L14 3h-4L8 7"></path>
+  <circle cx="12" cy="14" r="5"></circle>
+  <circle cx="12" cy="14" r="2"></circle>
+</svg>`;
+camBtn.innerHTML = camIcon + 'BRIDGE';
 Object.assign(camBtn.style, {
   position: 'absolute',
-  top: '60px',  // 倍速ボタン(右上)の下あたりに配置
+  top: '70px', 
   right: '20px',
-  width: '32px',  // ★修正: 倍速ボタンと同じ正方形サイズ
-  height: '32px',
+  width: '110px',
+  height: '35px',
   backgroundColor: 'rgba(15, 25, 35, 0.85)',
   border: '1px solid rgba(255,255,255,0.2)',
-  display: 'none',
+  borderLeft: '4px solid #6baed6',
+  color: '#ffffff',
+  fontSize: '13px',
+  fontWeight: 'bold',
+  display: 'none', // メニュー中は非表示
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
@@ -106,14 +116,22 @@ Object.assign(camBtn.style, {
   borderRadius: '4px',
   userSelect: 'none',
   boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
-  transition: 'background-color 0.2s'
+  transition: 'all 0.2s ease'
 });
 document.body.appendChild(camBtn);
 
 camBtn.addEventListener('click', () => {
-  cameraMode = cameraMode === 'bridge' ? 'drone' : 'bridge';
-  // 視覚的フィードバック（ドローン中は少し背景を明るく）
-  camBtn.style.backgroundColor = cameraMode === 'drone' ? 'rgba(80, 100, 120, 0.9)' : 'rgba(15, 25, 35, 0.85)';
+  if (cameraMode === 'bridge') {
+    cameraMode = 'drone';
+    camBtn.innerHTML = camIcon + 'DRONE';
+    camBtn.style.borderLeft = '4px solid #dcb982';
+    camBtn.style.color = '#dcb982';
+  } else {
+    cameraMode = 'bridge';
+    camBtn.innerHTML = camIcon + 'BRIDGE';
+    camBtn.style.borderLeft = '4px solid #6baed6';
+    camBtn.style.color = '#ffffff';
+  }
   camOffset.yaw = 0;
   camOffset.pitch = 0;
 });
@@ -526,7 +544,7 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★修正: カメラ位置の動的切り替え（ドローン視点を近づける）
+  // ★修正: カメラ位置の動的切り替え（ドローン視点位置の修正）
   const s = P.shipScale || 1.0; 
   if (cameraMode === 'bridge') {
     camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
@@ -536,9 +554,10 @@ function upd3D(t) {
     camera.rotation.y = Math.PI + yr;
     camera.rotation.x = pr;
   } else {
-    // 🚁 ドローン視点（距離を大幅に近づけました）
-    camera.position.set(0, 35 * s, 100 * s); 
+    // 🚁 ドローン視点（★修正: ブリッジより後方上空に配置）
+    camera.position.set(0, 180 * s, -100 * s); 
     const yr = camOffset.yaw   * Math.PI / 180;
+    // デフォルトで少し見下ろす角度（-15度）にする
     const pr = (camOffset.pitch - 15) * Math.PI / 180; 
     camera.rotation.order = 'YXZ';
     camera.rotation.y = Math.PI + yr;
