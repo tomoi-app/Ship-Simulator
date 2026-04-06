@@ -680,14 +680,10 @@ export async function buildLandmass(THREE, scene) {
     const data = await res.json();
 
     const texLoader = new THREE.TextureLoader();
-    const grassTexture = texLoader.load('./grass.png', () => {
-      console.log("草地テクスチャ読み込み完了！");
-    }, undefined, (err) => console.error("grass.png が見つかりません"));
+    const grassTexture = texLoader.load('./grass.png');
     grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
 
-    const concreteTexture = texLoader.load('./concrete.png', () => {
-      console.log("コンクリートテクスチャ読み込み完了！");
-    }, undefined, (err) => console.error("concrete.png が見つかりません"));
+    const concreteTexture = texLoader.load('./concrete.png');
     concreteTexture.wrapS = concreteTexture.wrapT = THREE.RepeatWrapping;
 
     const grassMat = new THREE.MeshStandardMaterial({ 
@@ -700,6 +696,7 @@ export async function buildLandmass(THREE, scene) {
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
 
+    // 東京港の位置を合わせるため、X座標(東西)をマイナス反転させて計算
     function latLonToXZ(lat, lon) {
       const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
@@ -708,150 +705,153 @@ export async function buildLandmass(THREE, scene) {
 
     const landGroup = new THREE.Group();
 
-    // 1. 側面（コンクリートの護岸）を作る関数
-    function createWall(points, material) {
-      if (points.length < 2) return;
-      const vertices = [];
-      const indices = [];
-      const uvs = [];
-
-      let totalDistance = 0;
-      for (let i = 0; i < points.length; i++) {
-        const pos = latLonToXZ(points[i][1], points[i][0]);
-        vertices.push(pos.x, -5, pos.z);  // 海底
-        vertices.push(pos.x, 4.5, pos.z); // 海抜4.5mの岸壁
-
+    // 1. 壁を作る関数（XZ座標の配列をそのまま受け取る）
+    function createWall(pointsXZ, material) {
+      if (pointsXZ.length < 2) return;
+      const vertices = [], indices = [], uvs = [];
+      let totalDist = 0;
+      for (let i = 0; i < pointsXZ.length; i++) {
+        const p = pointsXZ[i];
+        vertices.push(p.x, -5, p.z);
+        vertices.push(p.x, 4.5, p.z);
         if (i > 0) {
-          const prevPos = latLonToXZ(points[i-1][1], points[i-1][0]);
-          totalDistance += new THREE.Vector2(pos.x, pos.z).distanceTo(new THREE.Vector2(prevPos.x, prevPos.z));
+          const prev = pointsXZ[i-1];
+          totalDist += Math.hypot(p.x - prev.x, p.z - prev.z);
         }
-        const textureScaleX = 20; 
-        const textureScaleY = 9.5; 
-        const u = totalDistance / textureScaleX;
-        uvs.push(u, 0, u, 1.0); 
+        uvs.push(totalDist / 20, 0, totalDist / 20, 1.0);
       }
-
-      for (let i = 0; i < points.length - 1; i++) {
-        const b1 = i * 2, t1 = i * 2 + 1, b2 = (i + 1) * 2, t2 = (i + 1) * 2 + 1;
+      for (let i = 0; i < pointsXZ.length - 1; i++) {
+        const b1 = i*2, t1 = i*2+1, b2 = (i+1)*2, t2 = (i+1)*2+1;
         indices.push(b1, t1, t2, b1, t2, b2);
       }
-
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
       geo.setIndex(indices);
       geo.computeVertexNormals();
-
       const mesh = new THREE.Mesh(geo, material);
-      mesh.frustumCulled = false; 
+      mesh.frustumCulled = false;
       landGroup.add(mesh);
     }
 
-    // 2. 上面（草地の地面）を作ってフタをする関数（★陸海判定テスト版）
-    function createGround(rings, material) {
-      if (!rings || rings.length === 0) return;
+    // 2. 地面を作る関数（XZ座標の配列をそのまま受け取る）
+    function createGround(pointsXZ, material) {
+      if (pointsXZ.length < 3) return;
 
-      const getVec2 = (coord) => {
-        const pos = latLonToXZ(coord[1], coord[0]);
-        return new THREE.Vector2(pos.x, -pos.z);
-      };
-
-      const outerPts = rings[0].map(getVec2);
-      if (outerPts.length < 3) return;
-
-      // --- テスト1: ポリゴンの「輪郭」を赤い線で描画 ---
-      // これにより、プログラムが読み込んでいる地形の形が正しいか一目でわかります
-      const points3D = outerPts.map(p => new THREE.Vector3(p.x, 15, p.y));
-      // 始点と終点を繋ぐために最初の点を追加
-      points3D.push(points3D[0]); 
-      
-      const lineGeo = new THREE.BufferGeometry().setFromPoints(points3D);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
-      const line = new THREE.LineLoop(lineGeo, lineMat);
-      landGroup.add(line);
-
-      // --- テスト2: 陸地・海の判定テスト ---
-      // ポリゴンの最大・最小範囲（バウンディングボックス）を取得
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      outerPts.forEach(p => {
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minZ) minZ = p.y;
-        if (p.y > maxZ) maxZ = p.y;
-      });
-
-      // ブラウザフリーズ防止のため、巨大すぎる領域はテスト除外
-      if (maxX - minX > 90000 || maxZ - minZ > 90000) return;
-
-      // 純粋な数学計算で「点がポリゴンの内側にあるか」を判定する関数（レイキャスト法）
-      function isInside(pt) {
-        let inside = false;
-        for (let i = 0, j = outerPts.length - 1; i < outerPts.length; j = i++) {
-          const xi = outerPts[i].x, zi = outerPts[i].y;
-          const xj = outerPts[j].x, zj = outerPts[j].y;
-          if (((zi > pt.y) !== (zj > pt.y)) &&
-              (pt.x < (xj - xi) * (pt.y - zi) / (zj - zi) + xi)) {
-            inside = !inside;
-          }
-        }
-        return inside;
-      }
-
-      // バウンディングボックス内を400m間隔 for 走査し、陸地なら緑のブロックを置く
-      const step = 400; 
-      const maxBlocks = Math.ceil(((maxX - minX) / step) * ((maxZ - minZ) / step));
-      if (maxBlocks <= 0) return;
-
-      const boxGeo = new THREE.BoxGeometry(200, 20, 200);
-      const boxMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-      const iMesh = new THREE.InstancedMesh(boxGeo, boxMat, maxBlocks);
-      const dummy = new THREE.Object3D();
-      let count = 0;
-
-      for (let x = minX; x <= maxX; x += step) {
-        for (let z = minZ; z <= maxZ; z += step) {
-          // もしプログラムが「ここは陸地だ」と認識したらブロックを置く
-          if (isInside(new THREE.Vector2(x, z))) {
-            dummy.position.set(x, 10, z); // 海面より高い上空10mに配置
-            dummy.updateMatrix();
-            iMesh.setMatrixAt(count++, dummy.matrix);
-          }
+      // 20m以下の細かいギザギザをカットしてエラーを防ぐ
+      const unique = [];
+      for (let i = 0; i < pointsXZ.length; i++) {
+        if (unique.length === 0 || Math.hypot(pointsXZ[i].x - unique[unique.length-1].x, pointsXZ[i].z - unique[unique.length-1].z) > 20.0) {
+          unique.push(pointsXZ[i]);
         }
       }
+      if (unique.length > 1 && Math.hypot(unique[0].x - unique[unique.length-1].x, unique[0].z - unique[unique.length-1].z) < 20.0) {
+        unique.pop();
+      }
+      if (unique.length < 3) return;
 
-      iMesh.count = count;
-      iMesh.instanceMatrix.needsUpdate = true;
-      landGroup.add(iMesh);
+      // ShapeGeometryの仕様に合わせるため Y軸に-Zを入れる
+      const vecs = unique.map(p => new THREE.Vector2(p.x, -p.z));
+      if (THREE.ShapeUtils.isClockWise(vecs)) vecs.reverse();
+
+      try {
+        const shape = new THREE.Shape(vecs);
+        const geo = new THREE.ShapeGeometry(shape);
+        const posAttr = geo.attributes.position;
+        const uvAttr = geo.attributes.uv;
+        if (!posAttr) return;
+
+        for (let i = 0; i < posAttr.count; i++) {
+          uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
+        }
+        geo.computeVertexNormals();
+
+        const safeMat = material.clone();
+        safeMat.color = new THREE.Color(0x3b5e3b); // 安全用ベースカラー
+        const mesh = new THREE.Mesh(geo, safeMat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 4.4; 
+        mesh.frustumCulled = false; 
+        landGroup.add(mesh);
+      } catch(e) { }
     }
 
-    // 3. データから「壁」と「フタ」を両方呼び出すループ
+    // 3. データパース ＆ 強引な囲い込み処理 (あなたの推理をもとにECDISと完全同期)
+    const rawLinesXZ = [];
+
     data.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
       if (type === 'LineString') {
-        createWall(coords, concreteMat); 
-      } 
-      else if (type === 'Polygon') {
-        coords.forEach(ring => createWall(ring, concreteMat)); 
-        createGround(coords, grassMat); // ★ここが抜けていたため追加                        
-      } 
-      else if (type === 'MultiPolygon') {
+        // 線は一旦配列に貯めておく
+        rawLinesXZ.push(coords.map(p => latLonToXZ(p[1], p[0])));
+      } else if (type === 'Polygon') {
+        const polyXZ = coords[0].map(p => latLonToXZ(p[1], p[0]));
+        createWall(polyXZ, concreteMat);
+        createGround(polyXZ, grassMat);
+      } else if (type === 'MultiPolygon') {
         coords.forEach(poly => {
-          poly.forEach(ring => createWall(ring, concreteMat)); 
-          createGround(poly, grassMat); // ★ここが抜けていたため追加
+          const polyXZ = poly[0].map(p => latLonToXZ(p[1], p[0]));
+          createWall(polyXZ, concreteMat);
+          createGround(polyXZ, grassMat);
         });
       }
     });
 
+    // 分断された海岸線(LineString)を繋ぎ合わせる
+    let stitched = true;
+    while (stitched) {
+      stitched = false;
+      for (let i = 0; i < rawLinesXZ.length; i++) {
+        for (let j = 0; j < rawLinesXZ.length; j++) {
+          if (i === j) continue;
+          const lineA = rawLinesXZ[i], lineB = rawLinesXZ[j];
+          const lastA = lineA[lineA.length - 1], firstB = lineB[0];
+          // 終点と始点が近い場合は結合
+          if (Math.hypot(lastA.x - firstB.x, lastA.z - firstB.z) < 1.0) {
+            rawLinesXZ[i] = lineA.concat(lineB.slice(1));
+            rawLinesXZ.splice(j, 1);
+            stitched = true;
+            break;
+          }
+        }
+        if (stitched) break;
+      }
+    }
+
+    // ★繋げた海岸線を「強引に奥まで囲い込んで」巨大な陸地にする
+    rawLinesXZ.forEach(lineXZ => {
+      // 海岸線の「壁」だけは先に作る（見えない遥か彼方の壁は作らないため）
+      createWall(lineXZ, concreteMat);
+
+      if (lineXZ.length > 5) {
+        let closedPoly = [...lineXZ];
+        const start = lineXZ[0];
+        const end = lineXZ[lineXZ.length - 1];
+
+        // 始点と終点が離れている(開いた線)なら、彼方まで伸ばして無理やり面にする
+        if (Math.hypot(start.x - end.x, start.z - end.z) > 10.0) {
+          const FAR_NORTH = 99999;
+          const FAR_EAST = -99999; // Xがマイナス反転しているため-99999が東
+          const FAR_WEST = 99999;
+
+          closedPoly.push({ x: FAR_EAST, z: end.z });
+          closedPoly.push({ x: FAR_EAST, z: FAR_NORTH });
+          closedPoly.push({ x: FAR_WEST, z: FAR_NORTH });
+          closedPoly.push({ x: FAR_WEST, z: start.z });
+        }
+        // 強引に囲い込んだ巨大ポリゴンで地面を作る！
+        createGround(closedPoly, grassMat);
+      }
+    });
+
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！（壁＋地面の完全フタ付き版）");
+    console.log("陸地の読み込み完了！（海岸線 強引囲い込み版）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
-    const ldm = document.getElementById('ldm');
-    if (ldm) ldm.textContent = '⚠ 地図データのロードに失敗しました。リロードしてください。';
   }
 }
 
