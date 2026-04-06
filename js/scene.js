@@ -747,7 +747,7 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // 2. 上面（草地の地面）を作ってフタをする関数（原因究明テスト版）
+    // 2. 上面（草地の地面）を作ってフタをする関数（強力な図形クレンジング搭載版）
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
 
@@ -756,38 +756,65 @@ export async function buildLandmass(THREE, scene) {
         return new THREE.Vector2(pos.x, -pos.z);
       };
 
+      // ★ここがカギ: 複雑すぎる地図データを滑らかにしてエンジンのパニックを防ぐ
+      const cleanPts = (pts) => {
+        if (pts.length < 3) return pts;
+        const res = [pts[0]];
+        for (let i = 1; i < pts.length - 1; i++) {
+          const prev = res[res.length - 1];
+          const curr = pts[i];
+          const next = pts[i + 1];
+          
+          // 1. 近すぎる頂点を間引く（15m以内の細かいギザギザを消す）
+          if (curr.distanceTo(prev) < 15.0) continue;
+          
+          // 2. 直線上の無駄な頂点を間引く
+          const v1 = new THREE.Vector2().subVectors(curr, prev).normalize();
+          const v2 = new THREE.Vector2().subVectors(next, curr).normalize();
+          if (Math.abs(v1.cross(v2)) < 0.05) continue; 
+          
+          res.push(curr);
+        }
+        res.push(pts[pts.length - 1]);
+        return res;
+      };
+
       try {
-        // 近すぎる頂点の間引き（0.1m以下）は削除し、生データでテスト
-        let outerPts = rings[0].map(getVec2);
+        // クレンジングしたデータで外枠を作る
+        let outerPts = cleanPts(rings[0].map(getVec2));
         if (outerPts.length < 3) return;
         
-        // 必須の反時計回り処理
         if (THREE.ShapeUtils.isClockWise(outerPts)) outerPts.reverse();
         const shape = new THREE.Shape(outerPts);
 
-        // ⚠️【テスト1】穴あき(Holes)の処理を全ブロック削除しました。
+        // クレンジングしたデータで穴（池や湾など）をくり抜く
+        for (let j = 1; j < rings.length; j++) {
+          let holePts = cleanPts(rings[j].map(getVec2));
+          if (holePts.length < 3) continue;
+          if (!THREE.ShapeUtils.isClockWise(holePts)) holePts.reverse();
+          shape.holes.push(new THREE.Path(holePts));
+        }
 
-        // ジオメトリ生成（ここでエラーが起きやすい）
+        // 面を張る
         const geo = new THREE.ShapeGeometry(shape);
-        
-        // ⚠️【テスト2】真っ赤なワイヤーフレーム（網目）にして視認性を強制的に上げる
-        const debugMat = new THREE.MeshBasicMaterial({
-          color: 0xff0000,
-          wireframe: true,
-          side: THREE.DoubleSide
-        });
+        const posAttr = geo.attributes.position;
+        const uvAttr = geo.attributes.uv;
+        if (!posAttr) return;
 
-        const mesh = new THREE.Mesh(geo, debugMat);
+        // 草地のテクスチャUV設定
+        for (let i = 0; i < posAttr.count; i++) {
+          uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
+        }
+        geo.computeVertexNormals();
+
+        const mesh = new THREE.Mesh(geo, material);
         mesh.rotation.x = -Math.PI / 2;
-
-        // ⚠️【テスト3】壁や海に埋もれないよう、上空15mに浮かせる
-        mesh.position.y = 15.0; 
+        mesh.position.y = 4.4; // 岸壁よりわずかに低く
         mesh.frustumCulled = false; 
         landGroup.add(mesh);
 
       } catch (e) {
-        // ⚠️【テスト4】失敗した場合はコンソールに赤いエラーを出す
-        console.error("❌ 陸地フタの生成に失敗！ 原因:", e.message, "頂点数:", rings[0].length);
+        console.warn("陸地ポリゴンの生成をスキップしました:", e);
       }
     }
 
