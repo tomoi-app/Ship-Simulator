@@ -32,7 +32,6 @@ function canvasTex(canvas, wrap = true) {
 export function makeMetalTexture(baseColor = '#1e1e1e') {
   const c = makeCanvas(256); const ctx = c.getContext('2d');
   ctx.fillStyle = baseColor; ctx.fillRect(0, 0, 256, 256);
-  // スクラッチ・溶接跡
   for (let i = 0; i < 80; i++) {
     const x = Math.random() * 256, y = Math.random() * 256;
     const l = 10 + Math.random() * 40, a = Math.random() * Math.PI;
@@ -41,13 +40,11 @@ export function makeMetalTexture(baseColor = '#1e1e1e') {
     ctx.strokeStyle = `rgba(${Math.random() > 0.5 ? '80,80,80' : '10,10,10'},${ 0.2 + Math.random() * 0.3})`;
     ctx.lineWidth = 0.5 + Math.random(); ctx.stroke();
   }
-  // リベット
   for (let i = 0; i < 30; i++) {
     const x = Math.random() * 256, y = Math.random() * 256;
     ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(60,60,60,0.6)'; ctx.fill();
   }
-  // ノイズ
   const id = ctx.getImageData(0, 0, 256, 256);
   for (let i = 0; i < id.data.length; i += 4) {
     const n = (Math.random() - 0.5) * 20;
@@ -78,7 +75,6 @@ export function makeRustTexture() {
 export function makeConcreteTexture() {
   const c = makeCanvas(512); const ctx = c.getContext('2d');
   ctx.fillStyle = '#555550'; ctx.fillRect(0, 0, 512, 512);
-  // 粒感
   const id = ctx.getImageData(0, 0, 512, 512);
   for (let i = 0; i < id.data.length; i += 4) {
     const n = (Math.random() - 0.5) * 40;
@@ -87,7 +83,6 @@ export function makeConcreteTexture() {
     id.data[i + 2] = Math.max(0, Math.min(255, id.data[i + 2] + n));
   }
   ctx.putImageData(id, 0, 0);
-  // クラック
   for (let i = 0; i < 15; i++) {
     ctx.beginPath();
     let x = Math.random() * 512, y = Math.random() * 512;
@@ -106,7 +101,6 @@ export function makeConcreteTexture() {
 export function makeDeckTexture() {
   const c = makeCanvas(512); const ctx = c.getContext('2d');
   ctx.fillStyle = '#2a2a1a'; ctx.fillRect(0, 0, 512, 512);
-  // デッキ板
   for (let y = 0; y < 512; y += 14) {
     ctx.fillStyle = `rgba(50,46,28,${0.3 + Math.random() * 0.2})`;
     ctx.fillRect(0, y, 512, 12);
@@ -138,7 +132,6 @@ export function buildScene(THREE) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0xaac8dc, 0.000075);
 
-  // ---- 空シェーダー（3層グラデーション + 太陽 + 散乱） ----
   const skyVert = `
     varying vec3 vWorldDir;
     void main(){
@@ -154,15 +147,12 @@ export function buildScene(THREE) {
     varying vec3 vWorldDir;
     void main(){
       vec3 d = normalize(vWorldDir);
-      // 3層グラデーション: 天頂→中空→地平線
       float yt = clamp(d.y, 0.0, 1.0);
       float ym = clamp(1.0 - abs(d.y) * 2.5, 0.0, 1.0);
       vec3 col = mix(uHorizon, uMidsky, smoothstep(0.0, 0.3, d.y));
       col = mix(col, uZenith, smoothstep(0.25, 0.8, d.y));
-      // 地平線ハロ（大気散乱）
       float halo = pow(clamp(1.0 - abs(d.y) * 3.5, 0.0, 1.0), 4.0);
       col += vec3(0.95, 0.98, 1.0) * halo * 0.35;
-      // 太陽本体
       float sunCos = dot(d, normalize(uSunDir));
       float sunDisk = pow(max(sunCos, 0.0), 3000.0) * uSunIntensity;
       float sunGlow = pow(max(sunCos, 0.0), 80.0) * 0.5 * uSunIntensity;
@@ -191,7 +181,6 @@ export function buildScene(THREE) {
   );
   scene.add(sky);
 
-  // ---- 雲（プロシージャル 2層） ----
   const mkCloud = (seed, y, opacity) => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 1024;
     const cx = cv.getContext('2d');
@@ -224,7 +213,6 @@ export function buildScene(THREE) {
   mkCloud(1.7,  800, 0.6);
   mkCloud(3.1, 1400, 0.38);
 
-  // ---- ライト ----
   const sun  = new THREE.DirectionalLight(0xfff6e0, 1.8);
   sun.position.set(600, 420, 680);
   scene.add(sun);
@@ -235,7 +223,6 @@ export function buildScene(THREE) {
   return { scene, sky, sun, amb, moon };
 }
 
-// ---- 海シェーダー (至高のリアルウォーター・視点バグ修正版) ----
 export function buildOcean(THREE, scene) {
   const wu = {
     uT:          { value: 0 },
@@ -398,10 +385,9 @@ export function buildOcean(THREE, scene) {
   return { ocean, wu };
 }
 
-// ---- 船体（GLTFモデル版） ----
 export function buildShip(THREE, scene) {
   const SG = new THREE.Group();
-  SG.name = 'Ship';
+  SG.name = 'Ship'; 
 
   const loader = new GLTFLoader();
   
@@ -480,7 +466,6 @@ export function buildShip(THREE, scene) {
 
   navLights.mast = fwdMast.children[2]; 
 
-  // ★★★ これが抜けていたので追加！ ★★★
   SG.add(navLights);
 
   const prop = new THREE.Group(); 
@@ -500,15 +485,20 @@ export function toggleNight(scene, night) {
 
 export function buildWorld(THREE, scene) {
   const buoys = [];
+
   BUOYS.forEach(b => {
     const xz = latLonToXZ_tool(b.lat, b.lon);
+
     const geometry = new THREE.CylinderGeometry(5, 5, 15, 16);
+    
     const material = new THREE.MeshStandardMaterial({ 
       color: b.color,
       roughness: 0.3, 
       metalness: 0.2
     });
+    
     const buoyMesh = new THREE.Mesh(geometry, material);
+
     buoyMesh.position.x = -xz.x;
     buoyMesh.position.y = 7.5; 
     buoyMesh.position.z = xz.z;
@@ -557,6 +547,7 @@ export function buildAI(THREE, scene) {
       void main() {
         float front = vUV.y;
         float back = 1.0 - vUV.y;
+
         float distFromCenter = abs(vUV.x - 0.5) * 2.0;
 
         float wakeWidth = back * 0.7 + 0.1;
@@ -726,18 +717,18 @@ export async function buildLandmass(THREE, scene) {
       let totalDistance = 0;
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        // ★修正: 岸壁の高さを現実的な海抜 5.5m に下げる
+        // ★修正: 岸壁の高さを海抜50mから現実的な4.5mに変更
         vertices.push(pos.x, -5, pos.z); 
-        vertices.push(pos.x, 5.5, pos.z);  
+        vertices.push(pos.x, 4.5, pos.z);  
 
         if (i > 0) {
           const prevPos = latLonToXZ(points[i-1][1], points[i-1][0]);
           totalDistance += new THREE.Vector2(pos.x, pos.z).distanceTo(new THREE.Vector2(prevPos.x, prevPos.z));
         }
         
-        // ★修正: 高さが変わったのでコンクリートの模様のスケールも合わせる
-        const textureScaleX = 30; 
-        const textureScaleY = 10.5; // (-5から5.5までの高さ)
+        // ★修正: テクスチャの引き伸ばしを防ぐためスケールを再調整
+        const textureScaleX = 20; 
+        const textureScaleY = 9.5; 
         const u = totalDistance / textureScaleX;
         const vTop = 1.0; 
 
@@ -774,7 +765,7 @@ export async function buildLandmass(THREE, scene) {
     });
 
     scene.add(landGroup);
-    console.log("陸地の読み込み完了！（東西反転バグ修正版）");
+    console.log("陸地の読み込み完了！（岸壁の高さ修正版）");
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);

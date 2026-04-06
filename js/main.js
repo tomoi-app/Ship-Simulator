@@ -37,10 +37,10 @@ buildCity(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 shipGroup.add(camera);
-// ★修正: 350m級コンテナ船の現実的なブリッジ位置（メートル指定）
-const bridgeXPos   = 0;       // 左右（中央）
-const bridgeHeight = 35;      // 高さ（海抜35mの視点）
-const bridgeZPos   = -120;    // 前後位置（船体後方）
+// ★修正: 倍率バグを排除し、現実的なメートル単位で絶対座標を指定
+const bridgeXPos   = 0;       // 左右（船体中央）
+const bridgeHeight = 38;      // 高さ（海抜38mの視点）
+const bridgeZPos   = -120;    // 前後位置（船尾寄りのブリッジ）
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
 P.shipMesh = shipGroup;
@@ -63,9 +63,6 @@ function drawRain() {
   });
 }
 
-// ============================================================
-//  メニュー画面の背景設定
-// ============================================================
 const gameGroup = new THREE.Group();
 gameGroup.name = 'gameGroup';
 scene.add(gameGroup);
@@ -294,30 +291,22 @@ function applyWeatherScene(m) {
 }
 
 // ============================================================
-//  ★修正: ミッション管理（スタート ＆ リトライ）
+//  ミッション管理
 // ============================================================
-
-// startM: 文字列(ID) または ミッションオブジェクトを直接受け取れるように変更
-window.startM = function(missionOrId) {
-  const m = typeof missionOrId === 'string' ? MISSIONS.find(x => x.id === missionOrId) : missionOrId;
-  if (!m) return;
+window.startM = function(id) {
+  const m = MISSIONS.find(x => x.id === id); if (!m) return;
   curM = m;
-  
   document.getElementById('ms-sel')?.classList.add('h');
   document.getElementById('gauges-container')?.classList.remove('h');
   document.getElementById('comp-c')?.classList.remove('h');
   document.getElementById('telegraph-panel')?.classList.remove('h');
   document.getElementById('time-scale-btn')?.classList.remove('h');
 
-  setMenuState(false); 
+  setMenuState(false);
 
-  // ★ 物理完全リセット（座礁後の慣性バグ修正）
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
   P.speed = 0; P.rudder = 0; P.yawRate = 0; P.engineOrder = 0;
-  P.targetRudder = 0;
   P.driftX = 0; P.driftZ = 0; P.rollAngle = 0; P.pitchAngle = 0;
-  P.u = 0; P.v = 0; P.r = 0; // ← これがリトライバグの真犯人でした
-
   P.windSpeed = m.wind; 
   P.windDir   = 180 + Math.random() * 180;
   P.currSpeed = m.curr; 
@@ -329,9 +318,6 @@ window.startM = function(missionOrId) {
   mst      = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
   goActive = false;
   vhfFired = new Set();
-  
-  colCd = 0;
-  _ukcWarnCd = 0;
 
   document.getElementById('dr')?.classList.remove('v');
   document.getElementById('go')?.classList.remove('v', 'dk');
@@ -339,15 +325,9 @@ window.startM = function(missionOrId) {
 
   applyWeatherScene(m);
   applyWeatherOverlay(m);
-  toggleNight(scene, m.wx === 'ngt');
   
+  toggleNight(scene, m.wx === 'ngt');
   isMenu = false;
-};
-
-// ★修正: リトライ時、現在のミッションオブジェクト(curM)をそのまま渡すことで
-// フリーモードのコース情報を破壊せずに完全なリスタートが可能になりました
-window.retry = function() { 
-  if (curM) startM(curM); 
 };
 
 function chkMission() {
@@ -454,7 +434,7 @@ function updAI(dt) {
     }
     if (s.avoidTimer > 0) s.avoidTimer--;
     const spd = s.speed * 0.514;
-    s.mesh.position.x += Math.sin(s.heading) * spd * dt;
+    s.mesh.position.x += Math.sin(s.heading) * spd * dt; 
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
     if (s.mesh.position.z >  8000) s.mesh.position.z = -2500;
@@ -497,17 +477,16 @@ function checkSpdPen() {
 //  3D シーン更新
 // ============================================================
 function upd3D(t) {
-  ocean.position.x = -P.posX;
+  ocean.position.x = -P.posX; 
   ocean.position.z = P.posZ;
   wu.uOffset.value.set(P.posX, P.posZ); 
-  const wa = curM ? curM.waves : 1;
 
   shipGroup.position.set(-P.posX, 0, P.posZ); 
   shipGroup.rotation.z = P.rollAngle;
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★修正: 倍率(s)を掛けず、設定したリアルな高さ(35m)を常に維持する
+  // ★修正: P.shipScale を掛け算するバグを削除。常に設定した絶対的な高さ(38m)を維持
   camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
   const yr = camOffset.yaw   * Math.PI / 180;
@@ -544,6 +523,7 @@ window.showModeSel = function() {
 };
 
 function buildSel() {
+
   const grid = document.getElementById('mission-grid');
   if (!grid) return;
   grid.innerHTML = '';
@@ -601,6 +581,7 @@ window.goSel = function() {
   setMenuState(true);
   isMenu = true; 
 };
+window.retry = function() { if (curM) startM(curM.id); };
 
 // ============================================================
 //  メインループ
@@ -695,32 +676,43 @@ window.addEventListener('resize', () => {
 });
 
 // ============================================================
-// ★修正: フリーモード開始 (地図上での地点選択)
+// フリーモード開始 (地図上での地点選択)
 // ============================================================
 window.openFreeModeMenu = function() {
   document.getElementById('ms-sel')?.classList.add('h');
   
   startFreeModeSelection(P, (startLoc, goalLoc, waypoints) => {
     const m = MISSIONS.find(x => x.id === 'FREE-1');
-    let newM = null;
     if (m) {
-      // テンプレートをコピーして、今回のユーザー設定を書き込む
-      newM = JSON.parse(JSON.stringify(m)); 
-      
+      curM = JSON.parse(JSON.stringify(m)); 
       const goalXZ = latLonToXZ(goalLoc.lat, goalLoc.lon);
-      newM.tx = goalXZ.x;
-      newM.tz = goalXZ.z;
-      newM.waypoints = waypoints;
-      
-      // ★リトライ時のために「スタート地点」も sp として保存しておく
-      const startXZ = latLonToXZ(startLoc.lat, startLoc.lon);
-      newM.sp = { x: startXZ.x, z: startXZ.z, h: startLoc.heading * Math.PI / 180 };
-      
-      newM.title = `${startLoc.name} ➔ ${goalLoc.name}`;
+      curM.tx = goalXZ.x;
+      curM.tz = goalXZ.z;
+      curM.waypoints = waypoints;
     }
 
-    // startMにカスタムしたミッションオブジェクトを直接渡す
-    startM(newM);
+    setMenuState(false);
+    document.getElementById('gauges-container')?.classList.remove('h');
+    document.getElementById('comp-c')?.classList.remove('h');
+    document.getElementById('telegraph-panel')?.classList.remove('h');
+    document.getElementById('time-scale-btn')?.classList.remove('h');
+
+    shipGroup.position.x = -P.posX;
+    shipGroup.position.z = P.posZ;
+    shipGroup.rotation.y = -P.heading;
+
+    camera.position.x = -P.posX;
+    camera.position.z = P.posZ;
+
+    mst = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
+    isMenu = false;
+
+    if (curM) {
+      applyWeatherScene(curM);
+      applyWeatherOverlay(curM);
+      toggleNight(scene, curM.wx === 'ngt');
+    }
+    
     console.log(`FREE MODE START: FROM ${startLoc.name} TO ${goalLoc.name}`);
   });
 };
@@ -779,99 +771,57 @@ window.openFreeModeMenu = function() {
 const binoCv = document.createElement('canvas');
 binoCv.id = 'binocular-overlay';
 Object.assign(binoCv.style, {
-  position: 'absolute', 
-  top: '0', 
-  left: '0',
-  width: '100%', 
-  height: '100%',
-  pointerEvents: 'none', 
-  zIndex: '450',         
-  display: 'none'
+  position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+  pointerEvents: 'none', zIndex: '450', display: 'none'
 });
 document.body.appendChild(binoCv);
 
 function drawBinocularMask() {
-  binoCv.width = window.innerWidth;
-  binoCv.height = window.innerHeight;
+  binoCv.width = window.innerWidth; binoCv.height = window.innerHeight;
   const ctx = binoCv.getContext('2d');
   
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, binoCv.width, binoCv.height);
-  
+  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, binoCv.width, binoCv.height);
   ctx.globalCompositeOperation = 'destination-out';
   
   const cy = binoCv.height / 2;
   const r = Math.min(binoCv.width * 0.25, binoCv.height * 0.45);
-  const cx1 = binoCv.width / 2 - r * 0.55; 
-  const cx2 = binoCv.width / 2 + r * 0.55; 
+  const cx1 = binoCv.width / 2 - r * 0.55, cx2 = binoCv.width / 2 + r * 0.55; 
   
   ctx.filter = 'blur(15px)';
+  ctx.beginPath(); ctx.arc(cx1, cy, r, 0, Math.PI * 2); ctx.arc(cx2, cy, r, 0, Math.PI * 2); ctx.fill();
   
-  ctx.beginPath();
-  ctx.arc(cx1, cy, r, 0, Math.PI * 2);
-  ctx.arc(cx2, cy, r, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
+  ctx.strokeStyle = 'rgba(20, 255, 50, 0.4)'; ctx.lineWidth = 1.5;
   
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.filter = 'none';
-
-  ctx.strokeStyle = 'rgba(20, 255, 50, 0.4)';
-  ctx.lineWidth = 1.5;
-  
-  ctx.beginPath();
-  ctx.moveTo(binoCv.width / 2, cy - r * 0.8);
-  ctx.lineTo(binoCv.width / 2, cy + r * 0.8);
-  ctx.moveTo(binoCv.width / 2 - r * 0.8, cy);
-  ctx.lineTo(binoCv.width / 2 + r * 0.8, cy);
-  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(binoCv.width / 2, cy - r * 0.8); ctx.lineTo(binoCv.width / 2, cy + r * 0.8);
+  ctx.moveTo(binoCv.width / 2 - r * 0.8, cy); ctx.lineTo(binoCv.width / 2 + r * 0.8, cy); ctx.stroke();
   
   for (let i = -5; i <= 5; i++) {
     if (i === 0) continue;
     const y = cy + i * (r * 0.15);
-    ctx.beginPath();
-    ctx.moveTo(binoCv.width / 2 - 8, y);
-    ctx.lineTo(binoCv.width / 2 + 8, y);
-    ctx.stroke();
-
+    ctx.beginPath(); ctx.moveTo(binoCv.width / 2 - 8, y); ctx.lineTo(binoCv.width / 2 + 8, y); ctx.stroke();
     const x = binoCv.width / 2 + i * (r * 0.15);
-    ctx.beginPath();
-    ctx.moveTo(x, cy - 8);
-    ctx.lineTo(x, cy + 8);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, cy - 8); ctx.lineTo(x, cy + 8); ctx.stroke();
   }
 }
 
-window.addEventListener('resize', () => {
-  if (binoCv.style.display === 'block') drawBinocularMask();
-});
+window.addEventListener('resize', () => { if (binoCv.style.display === 'block') drawBinocularMask(); });
 
-let isBinocular = false;
-let defaultFov = 60; 
-
+let isBinocular = false, defaultFov = 60; 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Shift' && !isBinocular) {
     isBinocular = true;
-    
     if (typeof camera !== 'undefined') {
-      defaultFov = camera.fov; 
-      camera.fov = 12; 
-      camera.updateProjectionMatrix();
+      defaultFov = camera.fov; camera.fov = 12; camera.updateProjectionMatrix();
     }
-    
-    drawBinocularMask();
-    binoCv.style.display = 'block';
+    drawBinocularMask(); binoCv.style.display = 'block';
   }
 });
 
 window.addEventListener('keyup', (e) => {
   if (e.key === 'Shift') {
     isBinocular = false;
-    
-    if (typeof camera !== 'undefined') {
-      camera.fov = defaultFov; 
-      camera.updateProjectionMatrix();
-    }
-    
+    if (typeof camera !== 'undefined') { camera.fov = defaultFov; camera.updateProjectionMatrix(); }
     binoCv.style.display = 'none';
   }
 });
