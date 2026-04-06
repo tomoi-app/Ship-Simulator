@@ -461,31 +461,150 @@ function checkCol() {
 }
 
 // ============================================================
-//  AI更新
+//  航跡波（ウェイク）システム
+// ============================================================
+const WAKE_MAX = 500; // 同時に表示できる波の最大数
+const wakeGeo = new THREE.CircleGeometry(1, 16);
+wakeGeo.rotateX(-Math.PI / 2); // 水平に寝かせる
+const wakeMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+  depthWrite: false,
+  // ★加算合成: 色を重ねて白く発光させ、黒(0,0,0)になると完全に透明になる魔法のブレンド
+  blending: THREE.AdditiveBlending 
+});
+const wakeInst = new THREE.InstancedMesh(wakeGeo, wakeMat, WAKE_MAX);
+wakeInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(wakeInst);
+
+const wakes = [];
+let wakeIdx = 0;
+const dummyWake = new THREE.Object3D();
+const colorWake = new THREE.Color();
+
+// 波を発生させる関数
+function spawnWake(x, z, heading, speed, size) {
+  if (Math.abs(speed) < 1.0) return; // 止まっている時は出さない
+  wakes[wakeIdx] = { x, z, h: heading, age: 0, s: size };
+  wakeIdx = (wakeIdx + 1) % WAKE_MAX;
+}
+
+// 波のアニメーションを更新する関数
+function updateWakes(dt) {
+  for (let i = 0; i < WAKE_MAX; i++) {
+    const w = wakes[i];
+    if (!w || w.age > 1.0) {
+      dummyWake.scale.set(0, 0, 0);
+      dummyWake.updateMatrix();
+      wakeInst.setMatrixAt(i, dummyWake.matrix);
+      wakeInst.setColorAt(i, colorWake.setRGB(0, 0, 0)); // 黒にして透明化
+      continue;
+    }
+    w.age += dt * 0.12; // 波が消えていくスピード
+    
+    dummyWake.position.set(w.x, 0.2, w.z); // 海面よりわずかに浮かす
+    dummyWake.rotation.y = -w.h;
+    
+    // 時間とともに横に広く、縦に長く引き伸ばす
+    const scaleX = w.s * (1.0 + w.age * 4.0);
+    const scaleZ = w.s * (1.0 + w.age * 2.0);
+    dummyWake.scale.set(scaleX, 1, scaleZ);
+    dummyWake.updateMatrix();
+    wakeInst.setMatrixAt(i, dummyWake.matrix);
+    
+    // 時間とともに色を暗くしてフェードアウトさせる（青白い泡の色）
+    const intensity = (1.0 - Math.pow(w.age, 0.6)) * 0.4;
+    wakeInst.setColorAt(i, colorWake.setRGB(intensity * 0.8, intensity * 0.9, intensity)); 
+  }
+  wakeInst.instanceMatrix.needsUpdate = true;
+  if (wakeInst.instanceColor) wakeInst.instanceColor.needsUpdate = true;
+}
+
+// ============================================================
+//  AI更新（避航ルール ＋ 航跡波 追加版）
 // ============================================================
 function updAI(dt) {
-  AIships.forEach(s => {
-    const dx = P.posX - s.mesh.position.x, dz = P.posZ - s.mesh.position.z;
-    if (Math.sqrt(dx*dx + dz*dz) < 400 && s.avoidTimer <= 0 && !s.isTanker) {
-      s.heading += 0.04; s.avoidTimer = 200;
+  const normAngle = (a) => {
+    while (a <= -Math.PI) a += Math.PI * 2;
+    while (a > Math.PI) a -= Math.PI * 2;
+    return a;
+  };
+
+  const AVOID_DIST = 1200;
+
+  AIships.forEach((s, idx) => {
+    if (!s.waypoints) {
+      const offset = idx * 200;
+      s.waypoints = [
+        { x: -1000 + offset, z: 2000 - offset },
+        { x: 1500 + offset,  z: -1000 - offset },
+        { x: -3000 + offset, z: -2000 + offset },
+        { x: -2000 - offset, z: 4000 + offset }
+      ];
+      s.wpIndex = idx % s.waypoints.length; 
     }
-    if (s.avoidTimer > 0) s.avoidTimer--;
-    const spd = s.speed * 0.514;
+
+    const wp = s.waypoints[s.wpIndex];
+    const distToWp = Math.hypot(wp.x - s.mesh.position.x, wp.z - s.mesh.position.z);
+    if (distToWp < 400) s.wpIndex = (s.wpIndex + 1) % s.waypoints.length;
+
+    let targetHeading = Math.atan2(wp.x - s.mesh.position.x, wp.z - s.mesh.position.z);
+
+    const allTargets = [
+      { x: P.posX, z: P.posZ, h: P.heading },
+      ...AIships.filter(other => other !== s).map(o => ({ x: o.mesh.position.x, z: o.mesh.position.z, h: o.heading }))
+    ];
+
+    for (let t of allTargets) {
+      const dx = t.x - s.mesh.position.x;
+      const dz = t.z - s.mesh.position.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < AVOID_DIST) {
+        const bearingToTarget = Math.atan2(dx, dz);
+        const relBearing = normAngle(bearingToTarget - s.heading);
+        if (relBearing > 0 && relBearing < 1.96) {
+          targetHeading = normAngle(bearingToTarget + Math.PI / 2);
+          break; 
+        } else if (Math.abs(relBearing) < 0.17) {
+          targetHeading = normAngle(s.heading + 0.5); 
+          break;
+        }
+      }
+    }
+
+    const turnSpeed = s.isTanker ? 0.003 : 0.008;
+    const angleDiff = normAngle(targetHeading - s.heading);
+    s.heading += Math.max(-turnSpeed, Math.min(turnSpeed, angleDiff));
+
+    const spd = s.speed * 0.514; 
     s.mesh.position.x += Math.sin(s.heading) * spd * dt; 
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
-    if (s.mesh.position.z >  8000) s.mesh.position.z = -2500;
-    if (s.mesh.position.z < -2500) s.mesh.position.z =  8000;
-    if (s.mesh.position.x >  3500) s.mesh.position.x = -5000; 
-    if (s.mesh.position.x < -5000) s.mesh.position.x =  3500;
+
+    // ★ AI船の航跡波を発生させる
+    if (Math.random() < 0.3) {
+      const tailX = s.mesh.position.x - Math.sin(s.heading) * (s.isTanker ? 120 : 30);
+      const tailZ = s.mesh.position.z - Math.cos(s.heading) * (s.isTanker ? 120 : 30);
+      spawnWake(tailX, tailZ, s.heading, s.speed, s.isTanker ? 15 : 6);
+    }
   });
+
   fishBoats.forEach(f => {
     f.heading += f.drift;
     f.mesh.position.x += Math.sin(f.heading) * f.speed * 0.514 * dt; 
     f.mesh.position.z += Math.cos(f.heading) * f.speed * 0.514 * dt;
     f.mesh.rotation.y = -f.heading;
-    if (Math.sqrt(f.mesh.position.x**2 + f.mesh.position.z**2) > 2500)
+    
+    if (Math.hypot(f.mesh.position.x, f.mesh.position.z) > 4000) {
       f.heading += Math.PI + (Math.random() * 0.6 - 0.3);
+    }
+
+    // ★ 漁船の航跡波を発生させる
+    if (Math.random() < 0.2) {
+      const tailX = f.mesh.position.x - Math.sin(f.heading) * 6;
+      const tailZ = f.mesh.position.z - Math.cos(f.heading) * 6;
+      spawnWake(tailX, tailZ, f.heading, f.speed, 2.5);
+    }
   });
 }
 
@@ -511,7 +630,7 @@ function checkSpdPen() {
 }
 
 // ============================================================
-//  3D シーン更新
+//  3D シーン更新（カメラ揺れ防止 ＆ 自船の航跡波 追加版）
 // ============================================================
 function upd3D(t) {
   ocean.position.x = -P.posX; 
@@ -523,12 +642,9 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★修正: カメラ位置の動的切り替え（ドローンのみ揺れを完全に無効化）
   const s = P.shipScale || 1.0; 
   if (cameraMode === 'bridge') {
-    // 📷 ブリッジ視点：船（shipGroup）の子要素にして、波の揺れに完全に連動させる
     if (camera.parent !== shipGroup) shipGroup.add(camera);
-    
     camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
     const yr = camOffset.yaw   * Math.PI / 180;
     const pr = camOffset.pitch * Math.PI / 180;
@@ -537,31 +653,22 @@ function upd3D(t) {
     camera.rotation.x = pr;
     camera.rotation.z = 0;
   } else {
-    // 🚁 ドローン視点：sceneの直下に置き、波による船のRoll/Pitchの揺れを無視する
     if (camera.parent !== scene) scene.add(camera);
-    
-    // ドローンの相対位置（左右、高さ、前後）
     const lx = bridgeXPos * s;
     const ly = 20 * s;
     const lz = -50 * s;
-    
-    // 船の向き（Heading）に合わせてドローンの絶対座標を計算
     const theta = -P.heading;
     const cosT = Math.cos(theta);
     const sinT = Math.sin(theta);
-    
     camera.position.x = -P.posX + (lx * cosT + lz * sinT);
     camera.position.y = ly;
     camera.position.z = P.posZ  + (-lx * sinT + lz * cosT);
-    
     const yr = camOffset.yaw   * Math.PI / 180;
     const pr = (camOffset.pitch - 10) * Math.PI / 180; 
-    
-    // ワールド座標なので、カメラの向きにも船の向き(-P.heading)を足す
     camera.rotation.order = 'YXZ';
     camera.rotation.y = -P.heading + Math.PI + yr;
     camera.rotation.x = pr;
-    camera.rotation.z = 0; // 横揺れ（Roll）を強制的にゼロにして水平を保つ
+    camera.rotation.z = 0;
   }
 
   if (curM?.wx === 'ngt' && navLights && navLights.mast) {
@@ -572,6 +679,16 @@ function upd3D(t) {
   prop.rotation.x += P.speed * 0.06;
   buoys.forEach((b, i) => b.position.y = Math.sin(t * 0.0012 + i * 0.8) * 0.35);
   sky.position.set(-P.posX, 0, P.posZ); 
+
+  // ★ 自船の航跡波を発生させる
+  if (Math.random() < 0.4) {
+    const tailX = -P.posX - Math.sin(P.heading) * 115 * s;
+    const tailZ = P.posZ - Math.cos(P.heading) * 115 * s;
+    spawnWake(tailX, tailZ, P.heading, Math.abs(P.speed), 12 * s);
+  }
+  
+  // ★ 波のアニメーションを進める（倍速ボタンの速度にも対応）
+  updateWakes(0.016 * timeScale); 
 }
 
 // ============================================================
