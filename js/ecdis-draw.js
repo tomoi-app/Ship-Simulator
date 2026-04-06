@@ -57,7 +57,6 @@ export function drawAll(P, AIships, fishBoats) {
     return;
   }
 
-  // 喫水(Draft)のデフォルトは14.5m（main.jsの物理モデルに合わせる）
   const safeP = (P && typeof P.posX === 'number' && !isNaN(P.posX))
     ? P
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0, draft: 14.5 };
@@ -316,7 +315,7 @@ function _drawTrack(ctx, P, safeP, cx, cy, ecdisScale) {
   ctx.restore();
 }
 
-// ─── ★ルート描画 & UKCリアルタイムチェック機能 ────────────────
+// ─── ルート描画 & UKCリアルタイムチェック機能 ────────────────
 function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
   if (routeWaypoints.length === 0) return;
   ctx.save();
@@ -330,7 +329,6 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
   for (let i = 0; i < routeWaypoints.length-1; i++) {
     const p1 = routeWaypoints[i], p2 = routeWaypoints[i+1];
     
-    // ライン上を20等分して水深をチェック
     let lowestUKC = 999;
     for (let j = 0; j <= 1; j += 0.05) {
         const px = p1.x + (p2.x - p1.x) * j;
@@ -340,7 +338,7 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
     }
     
     const isShallow = lowestUKC < MIN_UKC;
-    const color = isShallow ? '#ff0000' : '#ff00ff'; // 危険なら赤、安全ならマゼンタ
+    const color = isShallow ? '#d32f2f' : '#ff00ff'; // 危険なら落ち着いた赤、安全ならマゼンタ
 
     const sx1 = cx + (p1.x - safeP.posX) / ecdisScale;
     const sy1 = cy - (p1.z - safeP.posZ) / ecdisScale;
@@ -370,7 +368,6 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
     const tX = safeP.posX + (hoverX - cx) * ecdisScale;
     const tZ = safeP.posZ - (hoverY - cy) * ecdisScale;
 
-    // マウスカーソルまでのライン上を20等分して水深をチェック
     let lowestUKC = 999;
     for (let j = 0; j <= 1; j += 0.05) {
         const px = lastP.x + (tX - lastP.x) * j;
@@ -380,7 +377,7 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
     }
     
     const isShallow = lowestUKC < MIN_UKC;
-    const color = isShallow ? '#ff0000' : '#ff00ff';
+    const color = isShallow ? '#d32f2f' : '#ff00ff';
 
     ctx.setLineDash([5, 5]);
     ctx.strokeStyle = color;
@@ -398,16 +395,16 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
 
     // ★ 危険な場合はカーソル上に警告テキストを表示
     if (isShallow) {
-        ctx.fillStyle = '#ff0000';
+        ctx.fillStyle = '#d32f2f'; // シックな赤
         ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'center';
-        // マイナスなら座礁、プラスならUKCの数値を表示
-        const warnText = `⚠ UKC不足 (${lowestUKC < 0 ? '座礁' : lowestUKC.toFixed(1) + 'm'})`;
         
-        // 文字の背景に白帯を敷いて見やすくする
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fillRect(hoverX - 60, hoverY - 30, 120, 20);
-        ctx.fillStyle = '#ff0000';
+        // 修正: 指定された文言に変更
+        const warnText = `⚠ 座礁アラート`;
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillRect(hoverX - 55, hoverY - 30, 110, 20);
+        ctx.fillStyle = '#d32f2f';
         ctx.fillText(warnText, hoverX, hoverY - 20);
     }
   }
@@ -571,26 +568,47 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
 
   if (freeModeStep === 3) {
     ctx.save();
-    const boxW=320, boxH=55, boxX=w-boxW-20, boxY=20;
-    ctx.fillStyle='rgba(10,20,30,0.85)'; ctx.strokeStyle='#ff00ff'; ctx.lineWidth=1;
-    ctx.fillRect(boxX,boxY,boxW,boxH); ctx.strokeRect(boxX,boxY,boxW,boxH);
-    ctx.fillStyle='#ff00ff'; ctx.fillRect(boxX,boxY,6,boxH);
-    ctx.textAlign='right'; ctx.textBaseline='top';
-    ctx.fillStyle='#ff00ff'; ctx.font='10px Arial,sans-serif';
-    ctx.fillText('DRAW COURSE LINE (Click to add waypoint)', boxX+boxW-15, boxY+12);
-    ctx.fillStyle='#ffffff'; ctx.font='bold 15px Arial,sans-serif';
-    ctx.fillText('コースラインを作成してください', boxX+boxW-15, boxY+30);
+    
+    // ★ 修正：右上のボックスをモダン＆シックに（英語排除・蛍光色排除）
+    const boxW = 240, boxH = 40, boxX = w - boxW - 20, boxY = 20;
+    ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-    const undoBox={x:20, y:h-70, w:100, h:40};
-    ctx.fillStyle='rgba(10,20,30,0.85)'; ctx.fillRect(undoBox.x,undoBox.y,undoBox.w,undoBox.h);
-    ctx.strokeStyle='#ff4444'; ctx.strokeRect(undoBox.x,undoBox.y,undoBox.w,undoBox.h);
-    ctx.fillStyle='#ff4444'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font='bold 14px sans-serif'; ctx.fillText('戻る', undoBox.x+undoBox.w/2, undoBox.y+undoBox.h/2);
+    // アクセントライン（シャンパンゴールド）
+    ctx.fillStyle = '#dcb982';
+    ctx.fillRect(boxX, boxY, 4, boxH);
 
-    const compBox={x:130, y:h-70, w:100, h:40};
-    ctx.fillStyle='rgba(10,20,30,0.85)'; ctx.fillRect(compBox.x,compBox.y,compBox.w,compBox.h);
-    ctx.strokeStyle='#11cc11'; ctx.strokeRect(compBox.x,compBox.y,compBox.w,compBox.h);
-    ctx.fillStyle='#11cc11'; ctx.fillText('完了', compBox.x+compBox.w/2, compBox.y+compBox.h/2);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px sans-serif';
+    ctx.fillText('コースラインを作成してください', boxX + boxW - 15, boxY + boxH / 2);
+
+    // ★ 修正：「戻る」ボタン（透明感のあるスレートグレー）
+    const undoBox = { x: 20, y: h - 70, w: 100, h: 40 };
+    ctx.fillStyle = 'rgba(20, 30, 40, 0.8)';
+    ctx.fillRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.strokeRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
+    ctx.fillStyle = '#eeeeee';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('戻る', undoBox.x + undoBox.w / 2, undoBox.y + undoBox.h / 2);
+
+    // ★ 修正：「完了」ボタン（シックなネイビーブルー）
+    const compBox = { x: 130, y: h - 70, w: 100, h: 40 };
+    ctx.fillStyle = 'rgba(40, 75, 110, 0.9)'; 
+    ctx.fillRect(compBox.x, compBox.y, compBox.w, compBox.h);
+    ctx.strokeStyle = 'rgba(120, 180, 240, 0.6)';
+    ctx.strokeRect(compBox.x, compBox.y, compBox.w, compBox.h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('完了', compBox.x + compBox.w / 2, compBox.y + compBox.h / 2);
+
     ctx.restore();
   }
 }

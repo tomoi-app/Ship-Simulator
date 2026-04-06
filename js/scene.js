@@ -754,42 +754,47 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // ★追加: ポリゴンの「上面（地面）」を作成してフタをする関数
+    // ★修正: ポリゴンの「上面（地面）」を作成してフタをする関数
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
       const shape = new THREE.Shape();
       
-      const outer = rings[0];
+      // X座標の反転によるポリゴン生成エラー（裏返り）を防ぐため、配列を逆順(reverse)にして処理
+      const outer = [...rings[0]].reverse();
       for (let i = 0; i < outer.length; i++) {
         const pos = latLonToXZ(outer[i][1], outer[i][0]);
-        // Three.js の Shape は (X, Y) 平面。後で rotateX すると Y が -Z になるため -pos.z にする
-        if (i === 0) shape.moveTo(pos.x, -pos.z);
-        else shape.lineTo(pos.x, -pos.z);
+        // 2D平面(X, Y)として登録。（YにZ座標をそのまま入れる）
+        if (i === 0) shape.moveTo(pos.x, pos.z);
+        else shape.lineTo(pos.x, pos.z);
       }
       
       for (let j = 1; j < rings.length; j++) {
         const holePath = new THREE.Path();
-        const hole = rings[j];
+        const hole = [...rings[j]].reverse();
         for (let i = 0; i < hole.length; i++) {
           const pos = latLonToXZ(hole[i][1], hole[i][0]);
-          if (i === 0) holePath.moveTo(pos.x, -pos.z);
-          else holePath.lineTo(pos.x, -pos.z);
+          if (i === 0) holePath.moveTo(pos.x, pos.z);
+          else holePath.lineTo(pos.x, pos.z);
         }
         shape.holes.push(holePath);
       }
 
       const geo = new THREE.ShapeGeometry(shape);
-      geo.rotateX(Math.PI / 2);
-
-      // テクスチャ（草）が綺麗に敷き詰められるようにUVを世界座標に合わせる
-      const uvAttr = geo.attributes.uv;
+      
+      // 回転(rotateX)は使わず、直接頂点座標を X, 0, Z に変換して水平に倒す
       const posAttr = geo.attributes.position;
-      for (let i = 0; i < uvAttr.count; i++) {
-        uvAttr.setXY(i, posAttr.getX(i) / 100, posAttr.getZ(i) / 100);
+      const uvAttr = geo.attributes.uv;
+      for (let i = 0; i < posAttr.count; i++) {
+        const px = posAttr.getX(i);
+        const pz = posAttr.getY(i); // Yに入っていたZ座標を取り出す
+        posAttr.setXYZ(i, px, 0, pz); // 高さを0にする
+        uvAttr.setXY(i, px / 100, pz / 100);
       }
 
+      geo.computeVertexNormals();
+
       const mesh = new THREE.Mesh(geo, material);
-      mesh.position.y = 4.4; // 岸壁の高さ(4.5)よりわずかに低くしてフタをする
+      mesh.position.y = 4.4; // 岸壁(4.5m)よりわずかに低くしてフタをする
       landGroup.add(mesh);
     }
 
