@@ -754,17 +754,16 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // ★修正: ポリゴンの「上面（地面）」を作成してフタをする関数（完全版）
+    // ★修正: ポリゴンの「上面（地面）」を作成してフタをする関数（究極安定版）
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
 
-      // 緯度経度を3D空間のベクトルに変換する関数
       const getVec2 = (coord) => {
         const pos = latLonToXZ(coord[1], coord[0]);
-        return new THREE.Vector2(pos.x, pos.z);
+        // 後でX軸を-90度回転させるため、Y座標の代わりに -Z を入れる
+        return new THREE.Vector2(pos.x, -pos.z);
       };
 
-      // 3Dエンジンのエラーを防ぐため、近すぎる重複頂点を間引く関数
       const cleanPts = (pts) => {
         const res = [];
         for (let i = 0; i < pts.length; i++) {
@@ -775,52 +774,41 @@ export async function buildLandmass(THREE, scene) {
       };
 
       try {
-        // 外枠（Outer Ring）の処理
         let outerPts = cleanPts(rings[0].map(getVec2));
         if (outerPts.length < 3) return;
         
-        // ★最重要: Three.jsは外枠を「反時計回り(CCW)」で描く必要がある
-        // 東西反転によって時計回りになってしまっている場合は、強制的に逆順にする
-        if (THREE.ShapeUtils.isClockWise(outerPts)) {
-          outerPts.reverse();
-        }
+        // 外枠は反時計回り(CCW)必須
+        if (THREE.ShapeUtils.isClockWise(outerPts)) outerPts.reverse();
         const shape = new THREE.Shape(outerPts);
 
-        // くり抜き穴（Holes）の処理
         for (let j = 1; j < rings.length; j++) {
           let holePts = cleanPts(rings[j].map(getVec2));
           if (holePts.length < 3) continue;
-          
-          // 穴は「時計回り(CW)」で描く必要がある
-          if (!THREE.ShapeUtils.isClockWise(holePts)) {
-            holePts.reverse();
-          }
+          // 穴は時計回り(CW)必須
+          if (!THREE.ShapeUtils.isClockWise(holePts)) holePts.reverse();
           shape.holes.push(new THREE.Path(holePts));
         }
 
         const geo = new THREE.ShapeGeometry(shape);
         const posAttr = geo.attributes.position;
         const uvAttr = geo.attributes.uv;
-        if (!posAttr) return; // ポリゴン生成に失敗した場合はスキップ
+        if (!posAttr) return;
 
-        // ShapeGeometryはXY平面（壁）として作られるので、XZ平面（床）に手動で倒す
+        // 草のテクスチャUV設定
         for (let i = 0; i < posAttr.count; i++) {
-          const px = posAttr.getX(i);
-          const pz = posAttr.getY(i); // Yに入っているZ座標を取り出す
-          posAttr.setXYZ(i, px, 0, pz);
-          
-          // 草のテクスチャが自然に見えるようにスケールを調整
-          uvAttr.setXY(i, px / 200, pz / 200); 
+          uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
         }
         geo.computeVertexNormals();
 
         const mesh = new THREE.Mesh(geo, material);
-        mesh.position.y = 4.4; // 岸壁(4.5m)よりわずかに低くしてフタをする
-        mesh.frustumCulled = false; // 視界外と誤判定されて消えるのを防ぐ
+        // 生成した2Dの面をX軸で-90度回転させて、水平(地面)にパタンと倒す
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 4.4; 
+        mesh.frustumCulled = false; 
         landGroup.add(mesh);
 
       } catch (e) {
-        console.warn("陸地ポリゴンの生成を一部スキップしました", e);
+        console.warn("陸地ポリゴンの生成を一部スキップしました:", e);
       }
     }
 
