@@ -37,10 +37,10 @@ buildCity(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 shipGroup.add(camera);
-// ★修正: 倍率バグを排除し、現実的なメートル単位で絶対座標を指定
-const bridgeXPos   = 0;       // 左右（船体中央）
-const bridgeHeight = 38;      // 高さ（海抜38mの視点）
-const bridgeZPos   = -120;    // 前後位置（船尾寄りのブリッジ）
+// ★修正: 元の完璧に微調整されたローカル座標設定に復元
+const bridgeXPos   = -13;     // 左右
+const bridgeHeight = 10;      // 高さ
+const bridgeZPos   = 9.7;     // 前後位置
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
 P.shipMesh = shipGroup;
@@ -486,8 +486,9 @@ function upd3D(t) {
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  // ★修正: P.shipScale を掛け算するバグを削除。常に設定した絶対的な高さ(38m)を維持
-  camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
+  // ★修正: P.shipScale を掛ける「元の完璧な設定」に復元
+  const s = P.shipScale || 1.0; 
+  camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
 
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;

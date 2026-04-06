@@ -129,13 +129,14 @@ const FAMOUS_SHOALS = [
   { name: '羽田沖',   pos: latLonToXZ(35.5400, 139.8000), radius: 3000, depth: 7.0 },
 ];
 
+// ★修正: 港湾部の水深設定をさらに広げ、最大水深も増加
 const DEEP_AREAS = [
-  { pos: latLonToXZ(35.452, 139.648), radius: 2500, depth: 20.0 },
-  { pos: latLonToXZ(35.445, 139.680), radius: 3500, depth: 20.0 },
-  { pos: latLonToXZ(35.430, 139.720), radius: 4500, depth: 20.0 },
-  { pos: latLonToXZ(35.590, 139.780), radius: 3000, depth: 20.0 },
-  { pos: latLonToXZ(35.550, 139.780), radius: 4000, depth: 20.0 },
-  { pos: latLonToXZ(35.480, 139.770), radius: 5500, depth: 20.0 },
+  { pos: latLonToXZ(35.452, 139.648), radius: 3000, depth: 25.0 }, // 横浜港
+  { pos: latLonToXZ(35.445, 139.680), radius: 4000, depth: 25.0 }, 
+  { pos: latLonToXZ(35.430, 139.720), radius: 5000, depth: 25.0 }, 
+  { pos: latLonToXZ(35.590, 139.780), radius: 4000, depth: 25.0 }, // 東京港
+  { pos: latLonToXZ(35.550, 139.780), radius: 5000, depth: 25.0 }, 
+  { pos: latLonToXZ(35.480, 139.770), radius: 6000, depth: 25.0 }, 
 ];
 
 // ─── GeoJSON 読み込み → ポリゴン解析 → 水深生成 ─────────────
@@ -269,6 +270,7 @@ function generateDepths(onComplete) {
           if (!onLand) {
             const distToCoast = Math.sqrt(minDistSq);
             let depth = 2.0 + (distToCoast / 1000) * 11.0 + rand() * 3;
+            
             shoals.forEach(s => {
               const dSq = (s.pos.x - x)**2 + (s.pos.z - z)**2;
               if (dSq < s.radius**2) {
@@ -277,6 +279,7 @@ function generateDepths(onComplete) {
                 depth = depth * (1 - ratio) + s.depth * ratio;
               }
             });
+            
             let inFairway = false;
             fairways.forEach(fwPath => {
               for (let i = 0; i < fwPath.length - 1; i++) {
@@ -285,14 +288,26 @@ function generateDepths(onComplete) {
               }
             });
             if (inFairway) depth = Math.max(depth, 22.0 + rand() * 2);
+            
             finalDepth = Math.max(2.0, Math.min(45.0, depth));
+            
+            // ★修正: 港湾部（deepAreas）の底をすり鉢状ではなく平らなお盆状に変更
             deepAreas.forEach(area => {
               const dSq = (area.pos.x - x)**2 + (area.pos.z - z)**2;
               if (dSq < area.radius**2) {
                 const d = Math.sqrt(dSq);
-                const ratio = 1.0 - (d / area.radius);
+                
+                // 中心から半径の半分（50%）までは比率1.0（平らな底）
+                // それより外側は外縁部に向かってなだらかに比率を落とす
+                let ratio = 1.0;
+                if (d > area.radius * 0.5) {
+                  ratio = 1.0 - ((d - area.radius * 0.5) / (area.radius * 0.5));
+                }
+                
                 const areaDepth = area.depth * Math.pow(ratio, 0.5);
-                if (areaDepth > finalDepth) finalDepth = areaDepth;
+                if (areaDepth > finalDepth) {
+                  finalDepth = areaDepth;
+                }
               }
             });
           }

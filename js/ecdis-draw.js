@@ -57,9 +57,10 @@ export function drawAll(P, AIships, fishBoats) {
     return;
   }
 
+  // 喫水(Draft)のデフォルトは14.5m（main.jsの物理モデルに合わせる）
   const safeP = (P && typeof P.posX === 'number' && !isNaN(P.posX))
     ? P
-    : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0, draft: 11.5 };
+    : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0, draft: 14.5 };
 
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
@@ -103,7 +104,6 @@ function _drawDepthContours(ctx, safeP, cx, cy, w, h, ecdisScale) {
     return (v === undefined || isNaN(v)) ? 50.0 : v;
   };
 
-  // マーチングスクエア法で塗りつぶし
   const fillContourBand = (threshold, color) => {
     ctx.fillStyle = color;
     for (let r = startR; r < endR - 1; r++) {
@@ -157,7 +157,6 @@ function _drawDepthContours(ctx, safeP, cx, cy, w, h, ecdisScale) {
   fillContourBand(5.0,  '#4292c6');
   fillContourBand(0.5,  '#dcb982');
 
-  // 等深線
   const drawContour = (threshold, color, lw) => {
     ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
     for (let r = startR; r < endR-1; r++) {
@@ -203,7 +202,6 @@ function _drawDepthContours(ctx, safeP, cx, cy, w, h, ecdisScale) {
   drawContour(20.0, '#5a9dc4', 1.0);
   drawContour(0.5,  '#222222', 1.0);
 
-  // 水深数値ラベル
   const drawnPositions = [];
   ctx.textAlign = 'center';
   for (let r = startR; r < endR; r++) {
@@ -295,8 +293,6 @@ function _drawBuoys(ctx, safeP, cx, cy, w, h, ecdisScale) {
 // ─── 航跡 ────────────────────────────────────────────────────
 function _drawTrack(ctx, P, safeP, cx, cy, ecdisScale) {
   if (!P || typeof P.posX !== 'number' || isNaN(P.posX)) return;
-
-  // 記録（freeModeStep===0 のときのみ）
   if (freeModeStep === 0) {
     if (trackHistory.length === 0) {
       trackHistory.push({x:P.posX, z:P.posZ});
@@ -306,7 +302,6 @@ function _drawTrack(ctx, P, safeP, cx, cy, ecdisScale) {
         trackHistory.push({x:P.posX, z:P.posZ});
     }
   }
-
   if (trackHistory.length === 0 || freeModeStep !== 0) return;
   ctx.save();
   ctx.beginPath();
@@ -316,54 +311,105 @@ function _drawTrack(ctx, P, safeP, cx, cy, ecdisScale) {
     const sy = cy - (pt.z - safeP.posZ) / ecdisScale;
     if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
   });
-  ctx.lineTo(cx, cy); // 現在地まで延伸
+  ctx.lineTo(cx, cy);
   ctx.stroke();
   ctx.restore();
 }
 
-// ─── ルート（コースライン） ───────────────────────────────────
+// ─── ★ルート描画 & UKCリアルタイムチェック機能 ────────────────
 function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
   if (routeWaypoints.length === 0) return;
   ctx.save();
   ctx.lineWidth   = 2.5;
-  ctx.strokeStyle = '#ff00ff';
-  ctx.fillStyle   = '#ff00ff';
   ctx.font        = 'bold 13px Arial,sans-serif';
 
+  const DRAFT = safeP.draft || 14.5;
+  const MIN_UKC = 5.0;
+
+  // 確定済みのルートライン
   for (let i = 0; i < routeWaypoints.length-1; i++) {
-    const p1=routeWaypoints[i], p2=routeWaypoints[i+1];
-    const sx1=cx+(p1.x-safeP.posX)/ecdisScale, sy1=cy-(p1.z-safeP.posZ)/ecdisScale;
-    const sx2=cx+(p2.x-safeP.posX)/ecdisScale, sy2=cy-(p2.z-safeP.posZ)/ecdisScale;
+    const p1 = routeWaypoints[i], p2 = routeWaypoints[i+1];
+    
+    // ライン上を20等分して水深をチェック
+    let lowestUKC = 999;
+    for (let j = 0; j <= 1; j += 0.05) {
+        const px = p1.x + (p2.x - p1.x) * j;
+        const pz = p1.z + (p2.z - p1.z) * j;
+        const ukc = getRealDepthAt(px, pz) - DRAFT;
+        if (ukc < lowestUKC) lowestUKC = ukc;
+    }
+    
+    const isShallow = lowestUKC < MIN_UKC;
+    const color = isShallow ? '#ff0000' : '#ff00ff'; // 危険なら赤、安全ならマゼンタ
 
-    ctx.beginPath(); ctx.moveTo(sx1,sy1); ctx.lineTo(sx2,sy2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(sx2,sy2,4,0,Math.PI*2); ctx.fill();
+    const sx1 = cx + (p1.x - safeP.posX) / ecdisScale;
+    const sy1 = cy - (p1.z - safeP.posZ) / ecdisScale;
+    const sx2 = cx + (p2.x - safeP.posX) / ecdisScale;
+    const sy2 = cy - (p2.z - safeP.posZ) / ecdisScale;
 
-    let hdg = Math.atan2(p2.x-p1.x, p2.z-p1.z)*180/Math.PI;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(sx2, sy2, 4, 0, Math.PI*2); ctx.fill();
+
+    let hdg = Math.atan2(p2.x - p1.x, p2.z - p1.z) * 180 / Math.PI;
     if (hdg < 0) hdg += 360;
     const hdgStr = '<' + String(Math.round(hdg)%360).padStart(3,'0') + '>';
-    const midX=(sx1+sx2)/2, midY=(sy1+sy2)/2;
-    ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillRect(midX+6, midY-7, 40, 14);
-    ctx.fillStyle='#ff00ff'; ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillText(hdgStr, midX+8, midY);
-    ctx.fillStyle='#ff00ff'; // reset
+    const midX = (sx1 + sx2) / 2, midY = (sy1 + sy2) / 2;
+    
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(midX + 6, midY - 7, 40, 14);
+    ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(hdgStr, midX + 8, midY);
   }
 
-  // 描画中の仮線（freeModeStep===3）
+  // 描画中の仮線（マウス追従）
   if (freeModeStep === 3 && routeWaypoints.length > 0) {
     const lastP = routeWaypoints[routeWaypoints.length-1];
-    const sx1=cx+(lastP.x-safeP.posX)/ecdisScale, sy1=cy-(lastP.z-safeP.posZ)/ecdisScale;
+    const sx1 = cx + (lastP.x - safeP.posX) / ecdisScale;
+    const sy1 = cy - (lastP.z - safeP.posZ) / ecdisScale;
+    const tX = safeP.posX + (hoverX - cx) * ecdisScale;
+    const tZ = safeP.posZ - (hoverY - cy) * ecdisScale;
+
+    // マウスカーソルまでのライン上を20等分して水深をチェック
+    let lowestUKC = 999;
+    for (let j = 0; j <= 1; j += 0.05) {
+        const px = lastP.x + (tX - lastP.x) * j;
+        const pz = lastP.z + (tZ - lastP.z) * j;
+        const ukc = getRealDepthAt(px, pz) - DRAFT;
+        if (ukc < lowestUKC) lowestUKC = ukc;
+    }
+    
+    const isShallow = lowestUKC < MIN_UKC;
+    const color = isShallow ? '#ff0000' : '#ff00ff';
+
     ctx.setLineDash([5, 5]);
-    ctx.beginPath(); ctx.moveTo(sx1,sy1); ctx.lineTo(hoverX,hoverY); ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(hoverX, hoverY); ctx.stroke();
     ctx.setLineDash([]);
 
-    const tX=safeP.posX+(hoverX-cx)*ecdisScale, tZ=safeP.posZ-(hoverY-cy)*ecdisScale;
-    let hdg = Math.atan2(tX-lastP.x, tZ-lastP.z)*180/Math.PI;
+    let hdg = Math.atan2(tX - lastP.x, tZ - lastP.z) * 180 / Math.PI;
     if (hdg < 0) hdg += 360;
     const hdgStr = '<' + String(Math.round(hdg)%360).padStart(3,'0') + '>';
-    const midX=(sx1+hoverX)/2, midY=(sy1+hoverY)/2;
-    ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillRect(midX+6, midY-7, 40, 14);
-    ctx.fillStyle='#ff00ff'; ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillText(hdgStr, midX+8, midY);
+    const midX = (sx1 + hoverX) / 2, midY = (sy1 + hoverY) / 2;
+    
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(midX + 6, midY - 7, 40, 14);
+    ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(hdgStr, midX + 8, midY);
+
+    // ★ 危険な場合はカーソル上に警告テキストを表示
+    if (isShallow) {
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        // マイナスなら座礁、プラスならUKCの数値を表示
+        const warnText = `⚠ UKC不足 (${lowestUKC < 0 ? '座礁' : lowestUKC.toFixed(1) + 'm'})`;
+        
+        // 文字の背景に白帯を敷いて見やすくする
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(hoverX - 60, hoverY - 30, 120, 20);
+        ctx.fillStyle = '#ff0000';
+        ctx.fillText(warnText, hoverX, hoverY - 20);
+    }
   }
   ctx.restore();
 }
@@ -478,7 +524,7 @@ function _drawHUD(ctx, safeP, w, ecdisScale) {
   const d = getRealDepthAt(safeP.posX, safeP.posZ);
   ctx.fillText(`DEPTH : ${d === 99.9 ? '---' : d.toFixed(1)} m`, 20, 105);
   
-  const draft = safeP.draft || 11.5; // 物理モデルにdraftがない場合のデフォルト値
+  const draft = safeP.draft || 14.5;
   ctx.fillText(`DRAFT : ${draft.toFixed(1)} m`, 20, 120);
 }
 

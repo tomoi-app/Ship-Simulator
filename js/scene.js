@@ -754,14 +754,64 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
+    // ★追加: ポリゴンの「上面（地面）」を作成してフタをする関数
+    function createGround(rings, material) {
+      if (!rings || rings.length === 0) return;
+      const shape = new THREE.Shape();
+      
+      const outer = rings[0];
+      for (let i = 0; i < outer.length; i++) {
+        const pos = latLonToXZ(outer[i][1], outer[i][0]);
+        // Three.js の Shape は (X, Y) 平面。後で rotateX すると Y が -Z になるため -pos.z にする
+        if (i === 0) shape.moveTo(pos.x, -pos.z);
+        else shape.lineTo(pos.x, -pos.z);
+      }
+      
+      for (let j = 1; j < rings.length; j++) {
+        const holePath = new THREE.Path();
+        const hole = rings[j];
+        for (let i = 0; i < hole.length; i++) {
+          const pos = latLonToXZ(hole[i][1], hole[i][0]);
+          if (i === 0) holePath.moveTo(pos.x, -pos.z);
+          else holePath.lineTo(pos.x, -pos.z);
+        }
+        shape.holes.push(holePath);
+      }
+
+      const geo = new THREE.ShapeGeometry(shape);
+      geo.rotateX(Math.PI / 2);
+
+      // テクスチャ（草）が綺麗に敷き詰められるようにUVを世界座標に合わせる
+      const uvAttr = geo.attributes.uv;
+      const posAttr = geo.attributes.position;
+      for (let i = 0; i < uvAttr.count; i++) {
+        uvAttr.setXY(i, posAttr.getX(i) / 100, posAttr.getZ(i) / 100);
+      }
+
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.position.y = 4.4; // 岸壁の高さ(4.5)よりわずかに低くしてフタをする
+      landGroup.add(mesh);
+    }
+
+    // ★修正: 側面(壁)と上面(地面)の両方を正しく生成するようにループを書き換え
     data.features.forEach(feat => {
       if (!feat.geometry) return;
       const type = feat.geometry.type;
       const coords = feat.geometry.coordinates;
 
-      if (type === 'LineString') createWall(coords, concreteMat); 
-      else if (type === 'Polygon') coords.forEach(ring => createWall(ring, grassMat)); 
-      else if (type === 'MultiPolygon') coords.forEach(poly => poly.forEach(ring => createWall(ring, grassMat))); 
+      if (type === 'LineString') {
+        createWall(coords, concreteMat);
+      } 
+      else if (type === 'Polygon') {
+        coords.forEach(ring => createWall(ring, concreteMat)); // 側面はコンクリート
+        createGround(coords, grassMat);                        // 上面は草地
+      } 
+      else if (type === 'MultiPolygon') {
+        coords.forEach(poly => {
+          poly.forEach(ring => createWall(ring, concreteMat)); // 側面はコンクリート
+          createGround(poly, grassMat);                        // 上面は草地
+        });
+      }
     });
 
     scene.add(landGroup);
