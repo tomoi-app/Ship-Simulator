@@ -747,67 +747,81 @@ export async function buildLandmass(THREE, scene) {
       landGroup.add(mesh);
     }
 
-    // 2. 上面（草地の地面）を作ってフタをする関数（絶対表示させる最終形態）
+    // 2. 上面（草地の地面）を作ってフタをする関数（★陸海判定テスト版）
     function createGround(rings, material) {
       if (!rings || rings.length === 0) return;
 
       const getVec2 = (coord) => {
         const pos = latLonToXZ(coord[1], coord[0]);
-        // 後でX軸を-90度回転させて倒すため、Y座標に-Zをセット
         return new THREE.Vector2(pos.x, -pos.z);
       };
 
-      // 3Dエンジンが計算を放棄するのを防ぐ究極のデータクレンジング
-      const cleanPts = (pts) => {
-        const unique = [];
-        for (let i = 0; i < pts.length; i++) {
-          // 20m以下の細かいギザギザは自己交差の原因になるため無視
-          if (unique.length === 0 || pts[i].distanceTo(unique[unique.length - 1]) > 20.0) {
-            unique.push(pts[i]);
+      const outerPts = rings[0].map(getVec2);
+      if (outerPts.length < 3) return;
+
+      // --- テスト1: ポリゴンの「輪郭」を赤い線で描画 ---
+      // これにより、プログラムが読み込んでいる地形の形が正しいか一目でわかります
+      const points3D = outerPts.map(p => new THREE.Vector3(p.x, 15, p.y));
+      // 始点と終点を繋ぐために最初の点を追加
+      points3D.push(points3D[0]); 
+      
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points3D);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+      const line = new THREE.LineLoop(lineGeo, lineMat);
+      landGroup.add(line);
+
+      // --- テスト2: 陸地・海の判定テスト ---
+      // ポリゴンの最大・最小範囲（バウンディングボックス）を取得
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      outerPts.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minZ) minZ = p.y;
+        if (p.y > maxZ) maxZ = p.y;
+      });
+
+      // ブラウザフリーズ防止のため、巨大すぎる領域はテスト除外
+      if (maxX - minX > 90000 || maxZ - minZ > 90000) return;
+
+      // 純粋な数学計算で「点がポリゴンの内側にあるか」を判定する関数（レイキャスト法）
+      function isInside(pt) {
+        let inside = false;
+        for (let i = 0, j = outerPts.length - 1; i < outerPts.length; j = i++) {
+          const xi = outerPts[i].x, zi = outerPts[i].y;
+          const xj = outerPts[j].x, zj = outerPts[j].y;
+          if (((zi > pt.y) !== (zj > pt.y)) &&
+              (pt.x < (xj - xi) * (pt.y - zi) / (zj - zi) + xi)) {
+            inside = !inside;
           }
         }
-        // ★最重要: GeoJSON特有の「始点と終点の重複」を削除
-        if (unique.length > 1 && unique[0].distanceTo(unique[unique.length - 1]) < 20.0) {
-          unique.pop();
-        }
-        return unique;
-      };
-
-      try {
-        let outerPts = cleanPts(rings[0].map(getVec2));
-        if (outerPts.length < 3) return;
-        
-        // 外枠は反時計回り(CCW)必須
-        if (THREE.ShapeUtils.isClockWise(outerPts)) outerPts.reverse();
-        const shape = new THREE.Shape(outerPts);
-
-        // ★エラーの最大要因である「内側の穴（Holes）」のくり抜き処理を完全に削除
-        // 海岸線さえ正常に描画できれば、船のシミュレーターとしては十分なため
-
-        const geo = new THREE.ShapeGeometry(shape);
-        const posAttr = geo.attributes.position;
-        const uvAttr = geo.attributes.uv;
-        if (!posAttr) return;
-
-        // UV設定
-        for (let i = 0; i < posAttr.count; i++) {
-          uvAttr.setXY(i, posAttr.getX(i) / 200, posAttr.getY(i) / 200); 
-        }
-        geo.computeVertexNormals();
-
-        // ★万が一 grass.png が読み込めなかった時のために、マテリアルに深緑色を強制付与
-        const safeMat = material.clone();
-        safeMat.color = new THREE.Color(0x3b5e3b);
-
-        const mesh = new THREE.Mesh(geo, safeMat);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.y = 4.4; // 岸壁よりわずかに低く
-        mesh.frustumCulled = false; 
-        landGroup.add(mesh);
-
-      } catch (e) {
-        console.warn("陸地ポリゴンの生成を一部スキップしました:", e);
+        return inside;
       }
+
+      // バウンディングボックス内を400m間隔 for 走査し、陸地なら緑のブロックを置く
+      const step = 400; 
+      const maxBlocks = Math.ceil(((maxX - minX) / step) * ((maxZ - minZ) / step));
+      if (maxBlocks <= 0) return;
+
+      const boxGeo = new THREE.BoxGeometry(200, 20, 200);
+      const boxMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+      const iMesh = new THREE.InstancedMesh(boxGeo, boxMat, maxBlocks);
+      const dummy = new THREE.Object3D();
+      let count = 0;
+
+      for (let x = minX; x <= maxX; x += step) {
+        for (let z = minZ; z <= maxZ; z += step) {
+          // もしプログラムが「ここは陸地だ」と認識したらブロックを置く
+          if (isInside(new THREE.Vector2(x, z))) {
+            dummy.position.set(x, 10, z); // 海面より高い上空10mに配置
+            dummy.updateMatrix();
+            iMesh.setMatrixAt(count++, dummy.matrix);
+          }
+        }
+      }
+
+      iMesh.count = count;
+      iMesh.instanceMatrix.needsUpdate = true;
+      landGroup.add(iMesh);
     }
 
     // 3. データから「壁」と「フタ」を両方呼び出すループ
