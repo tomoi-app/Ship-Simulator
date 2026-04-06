@@ -520,7 +520,7 @@ function updateWakes(dt) {
 }
 
 // ============================================================
-//  AI更新（渋滞解消・広域分散・AIS詳細情報 実装版）
+//  AI更新（広域散らばり配置・目的地到着による停止 実装版）
 // ============================================================
 function updAI(dt) {
   const normAngle = (a) => {
@@ -530,53 +530,78 @@ function updAI(dt) {
   };
 
   AIships.forEach((s, idx) => {
-    // 1. 情報と広域航路の割り当て（初回のみ）
+    // 1. 情報と広域航路の割り当て（初回のみ強制ワープで散らばせる）
     if (!s.navInfoSet) {
-      const dests = ['TOKYO PORT', 'YOKOHAMA PORT', 'KISARAZU PORT', 'YOKOSUKA PORT', 'OPEN OCEAN'];
-      s.dest = dests[idx % dests.length]; // 均等に目的地を振り分ける
+      const ports = ['TOKYO PORT', 'YOKOHAMA PORT', 'KISARAZU PORT', 'YOKOSUKA PORT'];
+      let dest = ports[idx % ports.length]; // 各港を均等に割り振る
+      
+      // 各港と外洋（南側）を結ぶ直線的なルート
+      let wps = [];
+      if (dest === 'TOKYO PORT') {
+          wps = [{x: 0, z: -15000}, {x: -1000, z: 0}, {x: -3000, z: 14000}];
+      } else if (dest === 'YOKOHAMA PORT') {
+          wps = [{x: -2000, z: -15000}, {x: -1000, z: -5000}, {x: 2000, z: 2000}];
+      } else if (dest === 'KISARAZU PORT') {
+          wps = [{x: 1000, z: 10000}, {x: -5000, z: 0}, {x: -10000, z: -4000}];
+      } else if (dest === 'YOKOSUKA PORT') {
+          wps = [{x: -3000, z: 10000}, {x: 0, z: -2000}, {x: 3000, z: -8000}];
+      }
+
+      // ★ 50%の確率で「港発、外洋行き」にルートを反転させる
+      if (Math.random() > 0.5) {
+          wps.reverse();
+          s.dest = 'OPEN OCEAN'; 
+      } else {
+          s.dest = dest;         
+      }
+
+      s.waypoints = wps;
       s.shipType = s.isTanker ? 'TANKER' : (Math.random() > 0.4 ? 'CARGO' : 'FERRY');
       
       const r = Math.random();
-      if (r < 0.6) s.navStatus = 'UNDERWAY';       
-      else if (r < 0.8) s.navStatus = 'ANCHORED';  
-      else if (r < 0.9) s.navStatus = 'MOORED';    
-      else s.navStatus = 'DEPARTING';              
+      if (r < 0.7) s.navStatus = 'UNDERWAY';       
+      else if (r < 0.85) s.navStatus = 'ANCHORED';  
+      else s.navStatus = 'MOORED';    
 
+      // ★ AI船の初期位置を東京湾のあちこちにワープさせて散らばせる
       if (s.navStatus === 'ANCHORED' || s.navStatus === 'MOORED') {
          s.speed = 0;
-      } else if (s.navStatus === 'DEPARTING') {
-         s.speed = Math.min(s.speed, 6.0); 
+         const lastWp = s.waypoints[s.waypoints.length - 1];
+         s.mesh.position.x = lastWp.x + (Math.random() - 0.5) * 3000;
+         s.mesh.position.z = lastWp.z + (Math.random() - 0.5) * 3000;
+         s.heading = Math.random() * Math.PI * 2;
+      } else {
+         s.speed = s.isTanker ? (10 + Math.random() * 4) : (14 + Math.random() * 8);
+         const startWp = s.waypoints[0];
+         s.mesh.position.x = startWp.x + (Math.random() - 0.5) * 4000;
+         s.mesh.position.z = startWp.z + (Math.random() - 0.5) * 4000;
+         s.wpIndex = 1;
+         s.heading = Math.atan2(s.waypoints[1].x - s.mesh.position.x, s.waypoints[1].z - s.mesh.position.z);
       }
       s.navInfoSet = true;
-
-      // ★大渋滞の解消: 目的地ごとに東京湾全域を使った広いルートを設定
-      // X: 西(+) 東(-)、 Z: 北(+) 南(-)
-      if (s.dest === 'TOKYO PORT') {
-          s.waypoints = [{x: -3000, z: 15000}, {x: -1000, z: 5000}, {x: -2000, z: -5000}];
-      } else if (s.dest === 'YOKOHAMA PORT') {
-          s.waypoints = [{x: 2000, z: 2000}, {x: -2000, z: -2000}, {x: 1000, z: -8000}];
-      } else if (s.dest === 'KISARAZU PORT') {
-          s.waypoints = [{x: -12000, z: -3000}, {x: -8000, z: 5000}, {x: -5000, z: -8000}];
-      } else if (s.dest === 'YOKOSUKA PORT') {
-          s.waypoints = [{x: 3000, z: -8000}, {x: 0, z: -12000}, {x: -4000, z: -4000}];
-      } else {
-          // OPEN OCEAN (外洋/浦賀水道方面)
-          s.waypoints = [{x: -3000, z: -15000}, {x: -6000, z: 5000}, {x: 2000, z: 8000}];
-      }
-      s.wpIndex = Math.floor(Math.random() * s.waypoints.length); // スタート地点をバラす
     }
 
     if (s.navStatus === 'ANCHORED' || s.navStatus === 'MOORED') return; 
 
-    // 2. 航路追従
+    // 2. 航路追従と目的地到着判定
     const wp = s.waypoints[s.wpIndex];
     const distToWp = Math.hypot(wp.x - s.mesh.position.x, wp.z - s.mesh.position.z);
-    if (distToWp < 600) s.wpIndex = (s.wpIndex + 1) % s.waypoints.length;
+    
+    if (distToWp < 800) {
+      if (s.wpIndex === s.waypoints.length - 1) {
+        // ★ 最終目的地に到着したら、状態を停泊中に変えて完全に停止させる
+        s.navStatus = 'MOORED';
+        s.speed = 0;
+        return;
+      } else {
+        s.wpIndex++;
+      }
+    }
 
     let targetHeading = Math.atan2(wp.x - s.mesh.position.x, wp.z - s.mesh.position.z);
 
-    // 3. 避航判定（センサー範囲を縮小して過剰反応を防ぐ）
-    const avoidDist = s.isTanker ? 700 : 400; // ★1200mから大幅に縮小
+    // 3. 避航判定
+    const avoidDist = s.isTanker ? 700 : 400;
     const allTargets = [
       { x: P.posX, z: P.posZ, h: P.heading },
       ...AIships.filter(other => other !== s && other.speed > 0).map(o => ({ x: o.mesh.position.x, z: o.mesh.position.z, h: o.heading }))
@@ -611,10 +636,14 @@ function updAI(dt) {
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
 
+    // ★ 修正: 三角関数を使わず、3Dモデルの真後ろ（ローカル座標 -Z方向）から正確に発生させる
     if (Math.random() < 0.3) {
-      const tailX = s.mesh.position.x - Math.sin(s.heading) * (s.isTanker ? 120 : 30);
-      const tailZ = s.mesh.position.z - Math.cos(s.heading) * (s.isTanker ? 120 : 30);
-      spawnWake(tailX, tailZ, s.heading, s.speed, s.isTanker ? 15 : 6);
+      const tVec = new THREE.Vector3(0, 0, s.isTanker ? -120 : -30);
+      s.mesh.updateMatrixWorld(true);
+      s.mesh.localToWorld(tVec);
+      if (typeof spawnWake === 'function') {
+         spawnWake(tVec.x, tVec.z, s.heading, s.speed, s.isTanker ? 15 : 6);
+      }
     }
   });
 
@@ -626,6 +655,9 @@ function updAI(dt) {
       f.navStatus = Math.random() > 0.3 ? 'UNDERWAY' : 'ANCHORED';
       if (f.navStatus === 'ANCHORED') f.speed = 0;
       f.navInfoSet = true;
+      // ★ 漁船も初回ワープで広範囲に散らばせる
+      f.mesh.position.x = (Math.random() - 0.5) * 20000;
+      f.mesh.position.z = (Math.random() - 0.5) * 20000;
     }
 
     if (f.navStatus === 'ANCHORED') return;
@@ -635,15 +667,18 @@ function updAI(dt) {
     f.mesh.position.z += Math.cos(f.heading) * f.speed * 0.514 * dt;
     f.mesh.rotation.y = -f.heading;
     
-    // ★活動範囲を広げて一箇所に固まらないようにする
     if (Math.hypot(f.mesh.position.x, f.mesh.position.z) > 12000) {
       f.heading += Math.PI + (Math.random() * 0.6 - 0.3);
     }
 
+    // ★ 修正: 漁船も同様に3Dモデルの真後ろから発生させる
     if (Math.random() < 0.2) {
-      const tailX = f.mesh.position.x - Math.sin(f.heading) * 6;
-      const tailZ = f.mesh.position.z - Math.cos(f.heading) * 6;
-      spawnWake(tailX, tailZ, f.heading, f.speed, 2.5);
+      const tVec = new THREE.Vector3(0, 0, -6);
+      f.mesh.updateMatrixWorld(true);
+      f.mesh.localToWorld(tVec);
+      if (typeof spawnWake === 'function') {
+         spawnWake(tVec.x, tVec.z, f.heading, f.speed, 2.5);
+      }
     }
   });
 }
@@ -720,14 +755,16 @@ function upd3D(t) {
   buoys.forEach((b, i) => b.position.y = Math.sin(t * 0.0012 + i * 0.8) * 0.35);
   sky.position.set(-P.posX, 0, P.posZ); 
 
-  // ★ 自船の航跡波を発生させる
+  // ★ 修正: 自船も3Dモデルの真後ろ（ローカル座標 -115）から確実に発生させる
   if (Math.random() < 0.4) {
-    const tailX = -P.posX - Math.sin(P.heading) * 115 * s;
-    const tailZ = P.posZ - Math.cos(P.heading) * 115 * s;
-    spawnWake(tailX, tailZ, P.heading, Math.abs(P.speed), 12 * s);
+    const tVec = new THREE.Vector3(0, 0, -115 * s);
+    shipGroup.updateMatrixWorld(true);
+    shipGroup.localToWorld(tVec);
+    if (typeof spawnWake === 'function') {
+      spawnWake(tVec.x, tVec.z, P.heading, Math.abs(P.speed), 12 * s);
+    }
   }
   
-  // ★ 波のアニメーションを進める（倍速ボタンの速度にも対応）
   updateWakes(0.016 * timeScale); 
 }
 

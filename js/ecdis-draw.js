@@ -13,7 +13,6 @@ import {
   FAIRWAYS, BUOYS, LANDMARKS,
 } from './ecdis-data.js';
 
-// ─── 外部から注入されるUI状態（ecdis-ui.js が書き込む） ──────
 import {
   getCanvasState,
   isGlobalLoading, globalLoadingText,
@@ -25,7 +24,6 @@ import {
   selectedAIShip, setSelectedAIShip
 } from './ecdis-ui.js';
 
-// ─── メイン描画エントリーポイント ─────────────────────────────
 export function drawAll(P, AIships, fishBoats) {
   const { mapCv, mapCtx, toolOpen, ecdisScale, panX, panY } = getCanvasState();
   if (!toolOpen && !isGlobalLoading && !isDepthLoading) return;
@@ -40,7 +38,6 @@ export function drawAll(P, AIships, fishBoats) {
 
   const w = mapCv.width, h = mapCv.height;
 
-  // ─ ローディング画面 ─
   if (isDepthLoading || isGlobalLoading) {
     mapCtx.save();
     mapCtx.clearRect(0, 0, w, h);
@@ -85,7 +82,6 @@ export function drawAll(P, AIships, fishBoats) {
   _drawFreeModeOverlay(mapCtx, safeP, cx, cy, w, h, ecdisScale);
 }
 
-// ─── 水深コンター ─────────────────────────────────────────────
 function _drawDepthContours(ctx, safeP, cx, cy, w, h, ecdisScale) {
   if (!renderGrid) return;
 
@@ -223,7 +219,6 @@ function _drawDepthContours(ctx, safeP, cx, cy, w, h, ecdisScale) {
   }
 }
 
-// ─── グリッド ─────────────────────────────────────────────────
 function _drawGrid(ctx, w, h) {
   ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1;
   ctx.beginPath();
@@ -232,7 +227,6 @@ function _drawGrid(ctx, w, h) {
   ctx.stroke();
 }
 
-// ─── 陸地ポリゴン ─────────────────────────────────────────────
 function _drawLand(ctx, safeP, cx, cy, ecdisScale) {
   ctx.fillStyle   = '#dcb982';
   ctx.strokeStyle = '#222222';
@@ -248,7 +242,6 @@ function _drawLand(ctx, safeP, cx, cy, ecdisScale) {
   });
 }
 
-// ─── 航路 ────────────────────────────────────────────────────
 function _drawFairways(ctx, safeP, cx, cy, ecdisScale) {
   ctx.save();
   ctx.strokeStyle = 'rgba(200,0,200,0.7)';
@@ -269,7 +262,6 @@ function _drawFairways(ctx, safeP, cx, cy, ecdisScale) {
   ctx.restore();
 }
 
-// ─── 浮標 ────────────────────────────────────────────────────
 function _drawBuoys(ctx, safeP, cx, cy, w, h, ecdisScale) {
   BUOYS.forEach(b => {
     const xz = latLonToXZ(b.lat, b.lon);
@@ -291,7 +283,6 @@ function _drawBuoys(ctx, safeP, cx, cy, w, h, ecdisScale) {
   });
 }
 
-// ─── 航跡 ────────────────────────────────────────────────────
 function _drawTrack(ctx, P, safeP, cx, cy, ecdisScale) {
   if (!P || typeof P.posX !== 'number' || isNaN(P.posX)) return;
   if (freeModeStep === 0) {
@@ -317,7 +308,6 @@ function _drawTrack(ctx, P, safeP, cx, cy, ecdisScale) {
   ctx.restore();
 }
 
-// ─── ルート描画 & UKCリアルタイムチェック機能 ────────────────
 function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
   if (routeWaypoints.length === 0) return;
   ctx.save();
@@ -327,7 +317,6 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
   const DRAFT = safeP.draft || 14.5;
   const MIN_UKC = 5.0;
 
-  // 確定済みのルートライン
   for (let i = 0; i < routeWaypoints.length-1; i++) {
     const p1 = routeWaypoints[i], p2 = routeWaypoints[i+1];
     
@@ -340,7 +329,7 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
     }
     
     const isShallow = lowestUKC < MIN_UKC;
-    const color = isShallow ? '#d32f2f' : '#ff00ff'; // 危険なら落ち着いた赤、安全ならマゼンタ
+    const color = isShallow ? '#d32f2f' : '#ff00ff';
 
     const sx1 = cx + (p1.x - safeP.posX) / ecdisScale;
     const sy1 = cy - (p1.z - safeP.posZ) / ecdisScale;
@@ -362,7 +351,6 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.fillText(hdgStr, midX + 8, midY);
   }
 
-  // 描画中の仮線（マウス追従）
   if (freeModeStep === 3 && routeWaypoints.length > 0) {
     const lastP = routeWaypoints[routeWaypoints.length-1];
     const sx1 = cx + (lastP.x - safeP.posX) / ecdisScale;
@@ -395,13 +383,11 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(hdgStr, midX + 8, midY);
 
-    // ★ 危険な場合はカーソル上に警告テキストを表示
     if (isShallow) {
-        ctx.fillStyle = '#d32f2f'; // シックな赤
+        ctx.fillStyle = '#d32f2f';
         ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'center';
         
-        // 修正: 指定された文言に変更
         const warnText = `⚠ 座礁アラート`;
         
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
@@ -413,7 +399,6 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
   ctx.restore();
 }
 
-// ─── AI船 ────────────────────────────────────────────────────
 function _drawAIShips(ctx, safeP, cx, cy, ecdisScale, AIships, fishBoats) {
   if (!AIships) return;
   const allTargets = AIships.concat(fishBoats || []);
@@ -426,7 +411,6 @@ function _drawAIShips(ctx, safeP, cx, cy, ecdisScale, AIships, fishBoats) {
     const sx = cx + (pos.x - safeP.posX) / ecdisScale;
     const sy = cy - (pos.z - safeP.posZ) / ecdisScale;
 
-    // クリック判定（半径20ピクセル以内なら選択）
     if (ecdisClickPos) {
       if (Math.hypot(ecdisClickPos.x - sx, ecdisClickPos.y - sy) < 20) {
         clickedShip = s;
@@ -436,11 +420,9 @@ function _drawAIShips(ctx, safeP, cx, cy, ecdisScale, AIships, fishBoats) {
     ctx.save();
     ctx.translate(sx, sy); ctx.rotate(s.heading || 0);
     
-    // 船体の描画
     ctx.beginPath();
     ctx.moveTo(0,-8); ctx.lineTo(5,5); ctx.lineTo(-5,5); ctx.closePath();
     
-    // ★選択中の船は色を変えて目立たせる
     if (s === selectedAIShip) {
         ctx.fillStyle = 'rgba(220, 185, 130, 0.4)';
         ctx.fill();
@@ -452,10 +434,8 @@ function _drawAIShips(ctx, safeP, cx, cy, ecdisScale, AIships, fishBoats) {
     }
     ctx.stroke();
 
-    // 進行方向ベクトル（線）
     ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,-25); ctx.stroke();
     
-    // ★選択中の船の周囲に点線のサークルを描画
     if (s === selectedAIShip) {
         ctx.beginPath();
         ctx.arc(0, 0, 18, 0, Math.PI * 2);
@@ -466,19 +446,16 @@ function _drawAIShips(ctx, safeP, cx, cy, ecdisScale, AIships, fishBoats) {
     ctx.restore();
   });
 
-  // クリック処理を確定（何もない海をクリックしたら選択解除）
   if (ecdisClickPos) {
       setSelectedAIShip(clickedShip);
       clearEcdisClick();
   }
 
-  // 選択中の船があれば情報パネルを描画
   if (selectedAIShip) {
       _drawARPATarget(ctx, safeP, selectedAIShip, ctx.canvas.width, ctx.canvas.height);
   }
 }
 
-// ─── ターゲット情報の計算と描画 (ARPA ＋ AIS詳細情報) ─────────
 function _drawARPATarget(ctx, safeP, target, w, h) {
   const tPos = target.mesh ? target.mesh.position : target.position;
   if (!tPos) return;
@@ -526,7 +503,6 @@ function _drawARPATarget(ctx, safeP, target, w, h) {
   const panelColor = isDanger ? 'rgba(80, 20, 20, 0.85)' : 'rgba(15, 25, 35, 0.85)';
   const accentColor = isDanger ? '#d32f2f' : '#dcb982';
 
-  // ★修正: 追加情報を表示するためパネルを縦に伸ばし、横幅も広げる
   const boxW = 180;
   const boxH = 190;
   const boxX = w - boxW - 20;
@@ -534,13 +510,11 @@ function _drawARPATarget(ctx, safeP, target, w, h) {
 
   ctx.save();
   ctx.fillStyle = panelColor;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   ctx.lineWidth = 1;
   ctx.fillRect(boxX, boxY, boxW, boxH);
   ctx.strokeRect(boxX, boxY, boxW, boxH);
-  ctx.fillStyle = accentColor;
-  ctx.fillRect(boxX, boxY, 4, boxH);
-
+  
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'left';
@@ -550,7 +524,6 @@ function _drawARPATarget(ctx, safeP, target, w, h) {
   
   ctx.font = '12px monospace';
   
-  // ★追加: AI船に割り当てたプロパティを取得
   const tType = target.shipType || 'UNKNOWN';
   const tStat = target.navStatus || 'UNKNOWN';
   const tDest = target.dest || 'UNKNOWN';
@@ -569,11 +542,10 @@ function _drawARPATarget(ctx, safeP, target, w, h) {
   ];
 
   lines.forEach((text, i) => {
-      // 危険判定の色分け
       if (isDanger && i >= 8) ctx.fillStyle = '#ff6b6b';
-      else if (i === 3) ctx.fillStyle = 'rgba(255,255,255,0.2)'; // 区切り線
-      else if (i >= 8) ctx.fillStyle = '#dcb982';
-      else if (i < 3) ctx.fillStyle = '#a6c3d9'; // AIS情報は少し青っぽく
+      else if (i === 3) ctx.fillStyle = 'rgba(255,255,255,0.2)'; 
+      else if (i >= 8) ctx.fillStyle = accentColor; 
+      else if (i < 3) ctx.fillStyle = '#a6c3d9'; 
       else ctx.fillStyle = '#cccccc';
       
       ctx.fillText(text, boxX + 12, boxY + 32 + i * 14);
@@ -581,7 +553,6 @@ function _drawARPATarget(ctx, safeP, target, w, h) {
   ctx.restore();
 }
 
-// ─── フリーモード拠点マーカー ─────────────────────────────────
 function _drawVoyageMarkers(ctx, safeP, cx, cy, ecdisScale) {
   if (freeModeStep !== 0 && freeModeStep !== 3) return;
   if (!currentStartLoc && !currentGoalLoc) return;
@@ -602,7 +573,6 @@ function _drawVoyageMarkers(ctx, safeP, cx, cy, ecdisScale) {
   });
 }
 
-// ─── 自船 ────────────────────────────────────────────────────
 function _drawOwnShip(ctx, cx, cy, P) {
   if (!P || typeof P.posX !== 'number' || isNaN(P.posX)) return;
   ctx.save();
@@ -614,7 +584,6 @@ function _drawOwnShip(ctx, cx, cy, P) {
   ctx.restore();
 }
 
-// ─── テキストラベル（浮標名・ランドマーク） ──────────────────
 function _drawLabels(ctx, safeP, cx, cy, w, h, ecdisScale) {
   ctx.save();
   const baseFont = 'sans-serif';
@@ -653,7 +622,6 @@ function _drawLabels(ctx, safeP, cx, cy, w, h, ecdisScale) {
   ctx.restore();
 }
 
-// ─── HUD（左上情報パネル） ────────────────────────────────────
 function _drawHUD(ctx, safeP, w, ecdisScale) {
   ctx.fillStyle    = '#000000';
   ctx.textAlign    = 'left';
@@ -677,27 +645,21 @@ function _drawHUD(ctx, safeP, w, ecdisScale) {
   ctx.fillText(`DRAFT : ${draft.toFixed(1)} m`, 20, 120);
 }
 
-// ─── フリーモード選択オーバーレイ ─────────────────────────────
 function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
   if (freeModeStep === 0) return;
 
   const { VOYAGE_LOCATIONS, selectedStartKey } = getCanvasState();
 
-  // ステップ1＆2（スタート・目的地選択）
   if (freeModeStep === 1 || freeModeStep === 2) {
     ctx.save();
     const uiText = freeModeStep === 1 ? 'スタート位置を選択してください' : '目的地を選択してください';
     
-    // 右上のボックス（シックな透過ネイビー＋ゴールドのアクセント）
     const boxW = 240, boxH = 40, boxX = w - boxW - 20, boxY = 20;
     ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 1;
     ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-    ctx.fillStyle = '#dcb982';
-    ctx.fillRect(boxX, boxY, 4, boxH);
 
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -715,7 +677,6 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
       const pulse  = (Math.sin(Date.now()/150)+1)/2;
       const radius = 12 + pulse*8;
       
-      // 拠点マーカー（海図上で目立たせるため、ここだけは視認性を維持）
       ctx.beginPath(); ctx.arc(sx,sy,radius,0,Math.PI*2);
       ctx.fillStyle='rgba(255,100,0,0.4)'; ctx.fill();
       ctx.beginPath(); ctx.arc(sx,sy,6,0,Math.PI*2);
@@ -730,20 +691,15 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.restore();
   }
 
-  // ステップ3（コース作成）
   if (freeModeStep === 3) {
     ctx.save();
     
-    // 右上のボックス（統一デザイン）
     const boxW = 240, boxH = 40, boxX = w - boxW - 20, boxY = 20;
     ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 1;
     ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-    ctx.fillStyle = '#dcb982';
-    ctx.fillRect(boxX, boxY, 4, boxH);
 
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -751,7 +707,6 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.font = '14px sans-serif';
     ctx.fillText('コースラインを作成してください', boxX + boxW - 15, boxY + boxH / 2);
 
-    // ★修正：「戻る」ボタン（大きく、落ち着いたスレートグレー）
     const undoBox = { x: 30, y: h - 90, w: 130, h: 50 };
     ctx.fillStyle = 'rgba(30, 40, 50, 0.9)';
     ctx.fillRect(undoBox.x, undoBox.y, undoBox.w, undoBox.h);
@@ -763,7 +718,6 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.font = '15px sans-serif';
     ctx.fillText('戻る', undoBox.x + undoBox.w / 2, undoBox.y + undoBox.h / 2);
 
-    // ★修正：「完了」ボタン（大きく、存在感のあるネイビーブルーとゴールド）
     const compBox = { x: 180, y: h - 90, w: 150, h: 50 };
     ctx.fillStyle = 'rgba(25, 65, 105, 0.95)'; 
     ctx.fillRect(compBox.x, compBox.y, compBox.w, compBox.h);
