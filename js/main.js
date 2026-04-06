@@ -88,22 +88,21 @@ export let cameraMode = 'bridge';
 
 const camBtn = document.createElement('div');
 camBtn.id = 'camera-btn';
-// ★修正: ご指定の塗りつぶしビデオカメラアイコン（文字・色なし）
-camBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>`;
+camBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>`;
 Object.assign(camBtn.style, {
   position: 'absolute',
-  top: '50px',   // 倍速ボタンの下に配置
-  right: '10px', // 倍速ボタンと右端を揃える
-  width: '30px', // 倍速ボタンと同じ四角形
-  height: '30px',
-  backgroundColor: 'rgba(0, 0, 0, 0.6)', // 倍速ボタンと同じ半透明グレー
-  border: '1px solid rgba(255,255,255,0.2)',
+  top: '65px',    // ★修正: 倍速ボタンのすぐ下に配置
+  right: '20px',  // ★修正: 倍速ボタンと同じ右端ラインに揃える
+  width: '40px',  // ★修正: 倍速ボタンと同じ幅
+  height: '40px', // ★修正: 倍速ボタンと同じ高さ
+  backgroundColor: 'rgba(65, 80, 90, 0.85)', // 倍速ボタンに近いスレートグレー
+  border: '1px solid rgba(0, 0, 0, 0.5)',
   display: 'none',
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
   zIndex: '400',
-  borderRadius: '3px',
+  borderRadius: '4px',
   userSelect: 'none',
 });
 document.body.appendChild(camBtn);
@@ -532,12 +531,11 @@ function upd3D(t) {
     camera.rotation.y = Math.PI + yr;
     camera.rotation.x = pr;
   } else {
-    // 🚁 ドローン視点（高すぎたため、距離と高さを最適化）
-    // ブリッジ(高さ10)の2倍の高さ(20)から、船尾(-50)を見下ろす
-    camera.position.set(0, 20 * s, -50 * s); 
+    // 🚁 ドローン視点
+    // ★修正: 左右の位置(X座標)を 0 ではなく bridgeXPos に揃える
+    camera.position.set(bridgeXPos * s, 20 * s, -50 * s); 
     
     const yr = camOffset.yaw   * Math.PI / 180;
-    // 見下ろす角度を自然な -10度 に調整
     const pr = (camOffset.pitch - 10) * Math.PI / 180; 
     camera.rotation.order = 'YXZ';
     camera.rotation.y = Math.PI + yr;
