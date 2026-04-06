@@ -89,14 +89,16 @@ export let cameraMode = 'bridge';
 const camBtn = document.createElement('div');
 camBtn.id = 'camera-btn';
 camBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>`;
+
 Object.assign(camBtn.style, {
   position: 'absolute',
-  top: '20px',    // ★修正: 倍速ボタンと縦の高さを揃える
-  right: '70px',  // ★修正: 倍速ボタンのすぐ左横に配置（右からの距離を調整）
-  width: '40px',
-  height: '40px',
+  top: '15px',    // ★修正: 少し上に上げて x1 ボタンと高さを完璧に揃える
+  right: '65px',  // ★修正: x1 ボタンのすぐ左横にピッタリ配置
+  width: '40px',  
+  height: '32px', // ★修正: 高さを減らし、x1 ボタンと同じ長方形にする
   backgroundColor: 'rgba(65, 80, 90, 0.85)',
   border: '1px solid rgba(0, 0, 0, 0.5)',
+  boxSizing: 'border-box', // ★修正: 枠線の太さでサイズがズレるのを防ぐ
   display: 'none',
   alignItems: 'center',
   justifyContent: 'center',
