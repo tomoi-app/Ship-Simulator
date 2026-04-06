@@ -23,6 +23,11 @@ export let hoverX = 0, hoverY = 0;
 export let isGlobalLoading  = false;
 export let globalLoadingText = '';
 
+export let ecdisClickPos = null;
+export function clearEcdisClick() { ecdisClickPos = null; }
+export let selectedAIShip = null;
+export function setSelectedAIShip(s) { selectedAIShip = s; }
+
 // ─── フリーモード選択状態 ─────────────────────────────────────
 export let freeModeStep      = 0;
 export let selectedStartKey  = null;
@@ -169,7 +174,7 @@ function _attachEvents() {
     e.stopPropagation();
     isDragging = false;
     if (Math.abs(e.clientX-downX) < 5 && Math.abs(e.clientY-downY) < 5)
-      _handleMapClick(e);
+      handleMapClick(e);
   });
 
   mapCv.addEventListener('mouseleave', e => { e.stopPropagation(); isDragging = false; });
@@ -196,42 +201,45 @@ function _attachEvents() {
   });
 }
 
-// ─── クリック処理（フリーモード） ────────────────────────────
-function _handleMapClick(e) {
-  if (freeModeStep === 0 || _isLoading()) return;
-  const rect   = mapCv.getBoundingClientRect();
+// ─── クリック処理（ターゲット選択 ＆ フリーモード） ───────────
+export function handleMapClick(e) {
+  if (_isLoading()) return;
+  const rect = mapCv.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
   const w = mapCv.width, h = mapCv.height;
-  const cx = w/2 + panX, cy = h/2 + panY;
+  const cx = (w / 2) + panX;
+  const cy = (h / 2) + panY;
 
   const safeP = (shipRef && typeof shipRef.posX === 'number' && !isNaN(shipRef.posX))
     ? shipRef
     : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z };
 
-  // Step 3: ウェイポイント追加・ボタン処理
+  // ★追加: フリーモード（コース作成）以外の通常時は、他船のクリック判定に使う
+  if (freeModeStep === 0) {
+    ecdisClickPos = { x: mouseX, y: mouseY };
+    return;
+  }
+
   if (freeModeStep === 3) {
-    // ★修正: 大きくしたボタンに合わせてクリックの当たり判定を拡張
     const undoBox = { x: 30, y: h - 90, w: 130, h: 50 };
     const compBox = { x: 180, y: h - 90, w: 150, h: 50 };
 
-    if (_inBox(mouseX, mouseY, undoBox)) {
-      if (routeWaypoints.length > 1) routeWaypoints.pop();
+    if (mouseX >= undoBox.x && mouseX <= undoBox.x + undoBox.w && mouseY >= undoBox.y && mouseY <= undoBox.y + undoBox.h) {
+      if (routeWaypoints.length > 1) routeWaypoints.pop(); 
       return;
     }
     
-    if (_inBox(mouseX, mouseY, compBox)) {
+    if (mouseX >= compBox.x && mouseX <= compBox.x + compBox.w && mouseY >= compBox.y && mouseY <= compBox.y + compBox.h) {
       if (routeWaypoints.length > 1 && shipRef) {
          const p1 = routeWaypoints[0];
          const p2 = routeWaypoints[1];
          let hdg = Math.atan2(p2.x - p1.x, p2.z - p1.z);
          shipRef.heading = hdg; 
       }
-      
       freeModeStep = 0;
       selectedStartKey = null;
       toggleTool(); 
-      
       if (onStartVoyageCallback) {
         onStartVoyageCallback(currentStartLoc, currentGoalLoc, routeWaypoints);
       }
@@ -244,32 +252,34 @@ function _handleMapClick(e) {
     return;
   }
 
-  // Step 1/2: 拠点選択
-  const keys = freeModeStep === 1 ? ['uraga','yokohama','tokyo']
-             : (selectedStartKey === 'uraga' ? ['yokohama','tokyo'] : ['uraga']);
+  let keys = (freeModeStep === 1) ? ['uraga', 'yokohama', 'tokyo'] : 
+             (selectedStartKey === 'uraga' ? ['yokohama', 'tokyo'] : ['uraga']);
 
-  for (const key of keys) {
+  for (let key of keys) {
     const loc = VOYAGE_LOCATIONS[key];
-    const xz  = latLonToXZ(loc.lat, loc.lon);
-    const sx   = cx + (xz.x - safeP.posX) / ecdisScale;
-    const sy   = cy - (xz.z - safeP.posZ) / ecdisScale;
-    if (Math.sqrt((mouseX-sx)**2 + (mouseY-sy)**2) < 30) {
+    const xz = latLonToXZ(loc.lat, loc.lon);
+    const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+    const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
+    
+    if (Math.sqrt((mouseX - sx)**2 + (mouseY - sy)**2) < 30) { 
       if (freeModeStep === 1) {
         selectedStartKey = key;
         freeModeStep = 2;
       } else if (freeModeStep === 2) {
         const startLoc = VOYAGE_LOCATIONS[selectedStartKey];
-        const startXZ  = latLonToXZ(startLoc.lat, startLoc.lon);
+        const goalLoc = VOYAGE_LOCATIONS[key]; 
+        const startXZ = latLonToXZ(startLoc.lat, startLoc.lon);
+        
         if (shipRef) {
-          shipRef.posX    = startXZ.x;
-          shipRef.posZ    = startXZ.z;
+          shipRef.posX = startXZ.x;
+          shipRef.posZ = startXZ.z;
           shipRef.heading = startLoc.heading * Math.PI / 180;
-          shipRef.speed   = 0;
+          shipRef.speed = 0; 
         }
-        currentStartLoc  = startLoc;
-        currentGoalLoc   = VOYAGE_LOCATIONS[key];
-        trackHistory     = [];
-        routeWaypoints   = [{ x: startXZ.x, z: startXZ.z }];
+        currentStartLoc = startLoc;
+        currentGoalLoc = goalLoc;
+        trackHistory = [];
+        routeWaypoints = [{ x: startXZ.x, z: startXZ.z }];
         freeModeStep = 3;
       }
       return;

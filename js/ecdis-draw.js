@@ -21,6 +21,8 @@ import {
   currentStartLoc, currentGoalLoc,
   routeWaypoints, trackHistory,
   hoverX, hoverY,
+  ecdisClickPos, clearEcdisClick,
+  selectedAIShip, setSelectedAIShip
 } from './ecdis-ui.js';
 
 // ─── メイン描画エントリーポイント ─────────────────────────────
@@ -414,19 +416,169 @@ function _drawRoute(ctx, safeP, cx, cy, w, h, ecdisScale) {
 // ─── AI船 ────────────────────────────────────────────────────
 function _drawAIShips(ctx, safeP, cx, cy, ecdisScale, AIships, fishBoats) {
   if (!AIships) return;
-  AIships.concat(fishBoats || []).forEach(s => {
+  const allTargets = AIships.concat(fishBoats || []);
+  
+  let clickedShip = null;
+
+  allTargets.forEach(s => {
     const pos = s.mesh ? s.mesh.position : s.position;
     if (!pos) return;
     const sx = cx + (pos.x - safeP.posX) / ecdisScale;
     const sy = cy - (pos.z - safeP.posZ) / ecdisScale;
+
+    // クリック判定（半径20ピクセル以内なら選択）
+    if (ecdisClickPos) {
+      if (Math.hypot(ecdisClickPos.x - sx, ecdisClickPos.y - sy) < 20) {
+        clickedShip = s;
+      }
+    }
+
     ctx.save();
     ctx.translate(sx, sy); ctx.rotate(s.heading || 0);
+    
+    // 船体の描画
     ctx.beginPath();
     ctx.moveTo(0,-8); ctx.lineTo(5,5); ctx.lineTo(-5,5); ctx.closePath();
-    ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5; ctx.stroke();
+    
+    // ★選択中の船は色を変えて目立たせる
+    if (s === selectedAIShip) {
+        ctx.fillStyle = 'rgba(220, 185, 130, 0.4)';
+        ctx.fill();
+        ctx.strokeStyle = '#dcb982';
+        ctx.lineWidth = 2;
+    } else {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5;
+    }
+    ctx.stroke();
+
+    // 進行方向ベクトル（線）
     ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(0,-25); ctx.stroke();
+    
+    // ★選択中の船の周囲に点線のサークルを描画
+    if (s === selectedAIShip) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 18, 0, Math.PI * 2);
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#dcb982';
+        ctx.stroke();
+    }
     ctx.restore();
   });
+
+  // クリック処理を確定（何もない海をクリックしたら選択解除）
+  if (ecdisClickPos) {
+      setSelectedAIShip(clickedShip);
+      clearEcdisClick();
+  }
+
+  // 選択中の船があれば情報パネルを描画
+  if (selectedAIShip) {
+      _drawARPATarget(ctx, safeP, selectedAIShip, ctx.canvas.width, ctx.canvas.height);
+  }
+}
+
+// ─── ターゲット情報の計算と描画 (ARPA ＋ AIS詳細情報) ─────────
+function _drawARPATarget(ctx, safeP, target, w, h) {
+  const tPos = target.mesh ? target.mesh.position : target.position;
+  if (!tPos) return;
+
+  const v0x = Math.sin(safeP.heading || 0) * ((safeP.speed || 0) * 0.514);
+  const v0z = Math.cos(safeP.heading || 0) * ((safeP.speed || 0) * 0.514);
+
+  const tHeading = target.heading || 0;
+  const tSpeed = target.speed || 0;
+  const v1x = Math.sin(tHeading) * (tSpeed * 0.514);
+  const v1z = Math.cos(tHeading) * (tSpeed * 0.514);
+
+  const dvx = v1x - v0x;
+  const dvz = v1z - v0z;
+  const dv2 = dvx * dvx + dvz * dvz;
+
+  const dx = tPos.x - safeP.posX;
+  const dz = tPos.z - safeP.posZ;
+  const distMeters = Math.hypot(dx, dz);
+  const rngNM = distMeters / 1852; 
+
+  let brgRad = Math.atan2(dx, dz);
+  let brgDeg = (brgRad * 180 / Math.PI + 360) % 360;
+
+  let tcpaMin = 0;
+  let cpaNM = rngNM;
+  let tcpaStr = '---';
+  
+  if (dv2 > 0.001) {
+      const tcpaSec = -(dx * dvx + dz * dvz) / dv2;
+      tcpaMin = tcpaSec / 60;
+      
+      const cpaX = dx + dvx * Math.max(0, tcpaSec);
+      const cpaZ = dz + dvz * Math.max(0, tcpaSec);
+      cpaNM = Math.hypot(cpaX, cpaZ) / 1852;
+      
+      if (tcpaSec < 0) {
+          tcpaStr = 'PASSED';
+      } else {
+          tcpaStr = tcpaMin.toFixed(1) + ' min';
+      }
+  }
+
+  const isDanger = (cpaNM < 0.5 && tcpaMin > 0 && tcpaMin < 15);
+  const panelColor = isDanger ? 'rgba(80, 20, 20, 0.85)' : 'rgba(15, 25, 35, 0.85)';
+  const accentColor = isDanger ? '#d32f2f' : '#dcb982';
+
+  // ★修正: 追加情報を表示するためパネルを縦に伸ばし、横幅も広げる
+  const boxW = 180;
+  const boxH = 190;
+  const boxX = w - boxW - 20;
+  const boxY = h - boxH - 20;
+
+  ctx.save();
+  ctx.fillStyle = panelColor;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.lineWidth = 1;
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+  ctx.fillStyle = accentColor;
+  ctx.fillRect(boxX, boxY, 4, boxH);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  
+  ctx.fillText('TARGET INFO', boxX + 12, boxY + 12);
+  
+  ctx.font = '12px monospace';
+  
+  // ★追加: AI船に割り当てたプロパティを取得
+  const tType = target.shipType || 'UNKNOWN';
+  const tStat = target.navStatus || 'UNKNOWN';
+  const tDest = target.dest || 'UNKNOWN';
+
+  const lines = [
+      `TYPE: ${tType}`,
+      `STAT: ${tStat}`,
+      `DEST: ${tDest}`,
+      `-------------------`,
+      `BRG:  ${brgDeg.toFixed(1).padStart(5, ' ')}°`,
+      `RNG:  ${rngNM.toFixed(2).padStart(5, ' ')} NM`,
+      `HDG:  ${((tHeading * 180 / Math.PI + 360) % 360).toFixed(0).padStart(3, '0')}°`,
+      `SPD:  ${tSpeed.toFixed(1).padStart(4, ' ')} kt`,
+      `CPA:  ${cpaNM.toFixed(2).padStart(5, ' ')} NM`,
+      `TCPA: ${tcpaStr.padStart(8, ' ')}`
+  ];
+
+  lines.forEach((text, i) => {
+      // 危険判定の色分け
+      if (isDanger && i >= 8) ctx.fillStyle = '#ff6b6b';
+      else if (i === 3) ctx.fillStyle = 'rgba(255,255,255,0.2)'; // 区切り線
+      else if (i >= 8) ctx.fillStyle = '#dcb982';
+      else if (i < 3) ctx.fillStyle = '#a6c3d9'; // AIS情報は少し青っぽく
+      else ctx.fillStyle = '#cccccc';
+      
+      ctx.fillText(text, boxX + 12, boxY + 32 + i * 14);
+  });
+  ctx.restore();
 }
 
 // ─── フリーモード拠点マーカー ─────────────────────────────────
