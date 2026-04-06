@@ -726,18 +726,20 @@ export async function buildLandmass(THREE, scene) {
       let totalDistance = 0;
       for (let i = 0; i < points.length; i++) {
         const pos = latLonToXZ(points[i][1], points[i][0]);
-        vertices.push(pos.x, -10, pos.z); 
-        vertices.push(pos.x, 50, pos.z);  
+        // ★修正: 岸壁の高さを現実的な海抜 5.5m に下げる
+        vertices.push(pos.x, -5, pos.z); 
+        vertices.push(pos.x, 5.5, pos.z);  
 
         if (i > 0) {
           const prevPos = latLonToXZ(points[i-1][1], points[i-1][0]);
           totalDistance += new THREE.Vector2(pos.x, pos.z).distanceTo(new THREE.Vector2(prevPos.x, prevPos.z));
         }
         
-        const textureScaleX = 50; 
-        const textureScaleY = 50; 
+        // ★修正: 高さが変わったのでコンクリートの模様のスケールも合わせる
+        const textureScaleX = 30; 
+        const textureScaleY = 10.5; // (-5から5.5までの高さ)
         const u = totalDistance / textureScaleX;
-        const vTop = 60 / textureScaleY; 
+        const vTop = 1.0; 
 
         uvs.push(u, 0);    
         uvs.push(u, vTop); 

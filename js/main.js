@@ -37,9 +37,10 @@ buildCity(THREE, scene);
 
 // --- ブリッジ視点（ファーストパーソン）設定 ---
 shipGroup.add(camera);
-const bridgeXPos   = -13;     // 左右
-const bridgeHeight = 10;      // 高さ
-const bridgeZPos   = 9.7;     // 前後位置
+// ★修正: 350m級コンテナ船の現実的なブリッジ位置（メートル指定）
+const bridgeXPos   = 0;       // 左右（中央）
+const bridgeHeight = 35;      // 高さ（海抜35mの視点）
+const bridgeZPos   = -120;    // 前後位置（船体後方）
 camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
 P.shipMesh = shipGroup;
@@ -64,15 +65,11 @@ function drawRain() {
 
 // ============================================================
 //  メニュー画面の背景設定
-//  shipGroup / buoys / AIships / tugs を gameGroup にまとめて
-//  isMenuMode に応じて一括 visible 切替する
 // ============================================================
 const gameGroup = new THREE.Group();
 gameGroup.name = 'gameGroup';
 scene.add(gameGroup);
 
-// buildShip / buildWorld / buildAI で生成されたオブジェクトを
-// scene から gameGroup に付け替える（ライト・海・空はそのまま）
 function reparentToGameGroup() {
   const keep = new Set([sky, ocean, gameGroup]);
   scene.children.slice().forEach(c => {
@@ -82,7 +79,6 @@ function reparentToGameGroup() {
     gameGroup.add(c);
   });
 }
-// GLTF等の非同期ロードが完了してから付け替えるため、次フレームで実行
 requestAnimationFrame(reparentToGameGroup);
 
 function setMenuState(isMenuMode) {
@@ -108,7 +104,6 @@ let simTime = 0;
 initInput();
 
 window.addEventListener('keydown', e => {
-  // メニュー画面が表示されている場合は、すべての操作キーを無効化する
   if (isMenu) return;
 
   if (e.key === 'w' || e.key === 'W') { P.engineOrder = Math.min(P.engineOrder + 1, 4);  updateTelegraph(P.engineOrder); }
@@ -140,7 +135,6 @@ function initTouch() {
     const dx = Math.max(-JR, Math.min(JR, e.touches[0].clientX - jCX));
     knob.style.left = (stick.clientWidth  / 2 - 20 + dx) + 'px';
     knob.style.top  = (stick.clientHeight / 2 - 20) + 'px';
-    // P.rudder を直接書き換えず targetRudder 経由で物理に渡す（追従舵角システムと統一）
     P.targetRudder = (dx / JR) * 35;
   }, { passive: false });
   area.addEventListener('touchend', () => {
@@ -300,28 +294,34 @@ function applyWeatherScene(m) {
 }
 
 // ============================================================
-//  ミッション管理
+//  ★修正: ミッション管理（スタート ＆ リトライ）
 // ============================================================
-window.startM = function(id) {
-  const m = MISSIONS.find(x => x.id === id); if (!m) return;
+
+// startM: 文字列(ID) または ミッションオブジェクトを直接受け取れるように変更
+window.startM = function(missionOrId) {
+  const m = typeof missionOrId === 'string' ? MISSIONS.find(x => x.id === missionOrId) : missionOrId;
+  if (!m) return;
   curM = m;
+  
   document.getElementById('ms-sel')?.classList.add('h');
   document.getElementById('gauges-container')?.classList.remove('h');
   document.getElementById('comp-c')?.classList.remove('h');
   document.getElementById('telegraph-panel')?.classList.remove('h');
   document.getElementById('time-scale-btn')?.classList.remove('h');
 
-  setMenuState(false); // ゲーム画面用に船などを表示
+  setMenuState(false); 
 
-  // 物理リセット
+  // ★ 物理完全リセット（座礁後の慣性バグ修正）
   P.posX = m.sp.x; P.posZ = m.sp.z; P.heading = m.sp.h || 0;
   P.speed = 0; P.rudder = 0; P.yawRate = 0; P.engineOrder = 0;
+  P.targetRudder = 0;
   P.driftX = 0; P.driftZ = 0; P.rollAngle = 0; P.pitchAngle = 0;
+  P.u = 0; P.v = 0; P.r = 0; // ← これがリトライバグの真犯人でした
+
   P.windSpeed = m.wind; 
   P.windDir   = 180 + Math.random() * 180;
   P.currSpeed = m.curr; 
   P.currDir   = Math.random() * 360;
-  // 動的変動の基準値を保存
   curM.windDir0 = P.windDir;
   curM.currDir0 = P.currDir;
   updateTelegraph(P.engineOrder);
@@ -329,6 +329,9 @@ window.startM = function(id) {
   mst      = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
   goActive = false;
   vhfFired = new Set();
+  
+  colCd = 0;
+  _ukcWarnCd = 0;
 
   document.getElementById('dr')?.classList.remove('v');
   document.getElementById('go')?.classList.remove('v', 'dk');
@@ -336,15 +339,17 @@ window.startM = function(id) {
 
   applyWeatherScene(m);
   applyWeatherOverlay(m);
-  
-  // ★追加: 夜間('ngt')の場合は航海灯を点灯させる
   toggleNight(scene, m.wx === 'ngt');
   
-  // メニューフラグを解除し、ゲームの物理演算を有効化
   isMenu = false;
 };
 
-// ミッション判定
+// ★修正: リトライ時、現在のミッションオブジェクト(curM)をそのまま渡すことで
+// フリーモードのコース情報を破壊せずに完全なリスタートが可能になりました
+window.retry = function() { 
+  if (curM) startM(curM); 
+};
+
 function chkMission() {
   if (!curM || mst.done) return;
   const dx   = curM.tx - P.posX, dz = curM.tz - P.posZ;
@@ -402,11 +407,10 @@ function triggerGO(cause) {
 }
 
 let colCd = 0;
-let _ukcWarnCd = 0; // 浅水域警告スロットルカウンタ
+let _ukcWarnCd = 0; 
 function checkCol() {
   if (colCd > 0) { colCd--; return; }
 
-  // 自船の実寸：Lpp=350m, B=49m → 衝突半径は短辺の半分+マージン
   const selfRadius = 30;
 
   const all = [
@@ -415,7 +419,6 @@ function checkCol() {
   ];
 
   for (const { p, sz, isTanker } of all) {
-    // 相手船の衝突半径：50m×sz（タンカーはBoxの半長）
     const otherRadius = isTanker ? 140 : 25 * sz;
     const threshold   = selfRadius + otherRadius;
 
@@ -424,15 +427,12 @@ function checkCol() {
     const d  = Math.sqrt(dx * dx + dz * dz);
 
     if (d < threshold) {
-      colCd = 240; // 約4秒間クールダウン（60fps×4）
-
-      // 相対速度（近似）が大きければゲームオーバー
+      colCd = 240; 
       const relSpd = Math.abs(P.speed);
       if (relSpd > 3.0) {
         triggerGO('collision');
         return;
       }
-      // 低速接触はペナルティのみ
       mst.colP += 10;
       mst.pens.push('⚠ 他船接触 −10pt');
       showPenaltyToast('他船に接触！ −10pt');
@@ -454,17 +454,17 @@ function updAI(dt) {
     }
     if (s.avoidTimer > 0) s.avoidTimer--;
     const spd = s.speed * 0.514;
-    s.mesh.position.x += Math.sin(s.heading) * spd * dt; // ★反転: -sin から sin へ
+    s.mesh.position.x += Math.sin(s.heading) * spd * dt;
     s.mesh.position.z += Math.cos(s.heading) * spd * dt;
     s.mesh.rotation.y = -s.heading;
     if (s.mesh.position.z >  8000) s.mesh.position.z = -2500;
     if (s.mesh.position.z < -2500) s.mesh.position.z =  8000;
-    if (s.mesh.position.x >  3500) s.mesh.position.x = -5000; // ★反転に伴う境界チェック修正
+    if (s.mesh.position.x >  3500) s.mesh.position.x = -5000; 
     if (s.mesh.position.x < -5000) s.mesh.position.x =  3500;
   });
   fishBoats.forEach(f => {
     f.heading += f.drift;
-    f.mesh.position.x += Math.sin(f.heading) * f.speed * 0.514 * dt; // ★反転: -sin から sin へ
+    f.mesh.position.x += Math.sin(f.heading) * f.speed * 0.514 * dt; 
     f.mesh.position.z += Math.cos(f.heading) * f.speed * 0.514 * dt;
     f.mesh.rotation.y = -f.heading;
     if (Math.sqrt(f.mesh.position.x**2 + f.mesh.position.z**2) > 2500)
@@ -477,9 +477,9 @@ function updTugs(dt) {
     if (!tg.active) return;
     const tx = P.posX + Math.cos(P.heading)*tg.ox - Math.sin(P.heading)*tg.oz;
     const tz = P.posZ + Math.sin(P.heading)*tg.ox + Math.cos(P.heading)*tg.oz;
-    tg.mesh.position.x += (-tx - tg.mesh.position.x) * 0.035; // ★反転: -tx に追従
+    tg.mesh.position.x += (-tx - tg.mesh.position.x) * 0.035; 
     tg.mesh.position.z += (tz - tg.mesh.position.z) * 0.035;
-    tg.mesh.rotation.y = -Math.atan2(-P.posX - tg.mesh.position.x, P.posZ - tg.mesh.position.z); // ★atan2のXも反転
+    tg.mesh.rotation.y = -Math.atan2(-P.posX - tg.mesh.position.x, P.posZ - tg.mesh.position.z); 
   });
 }
 
@@ -497,18 +497,18 @@ function checkSpdPen() {
 //  3D シーン更新
 // ============================================================
 function upd3D(t) {
-  ocean.position.x = -P.posX; // ★反転
+  ocean.position.x = -P.posX;
   ocean.position.z = P.posZ;
   wu.uOffset.value.set(P.posX, P.posZ); 
   const wa = curM ? curM.waves : 1;
 
-  shipGroup.position.set(-P.posX, 0, P.posZ); // ★反転
+  shipGroup.position.set(-P.posX, 0, P.posZ); 
   shipGroup.rotation.z = P.rollAngle;
   shipGroup.rotation.x = P.pitchAngle;
   shipGroup.rotation.y = -P.heading;
 
-  const s = P.shipScale || 1.0; 
-  camera.position.set(bridgeXPos * s, bridgeHeight * s, bridgeZPos * s);
+  // ★修正: 倍率(s)を掛けず、設定したリアルな高さ(35m)を常に維持する
+  camera.position.set(bridgeXPos, bridgeHeight, bridgeZPos);
 
   const yr = camOffset.yaw   * Math.PI / 180;
   const pr = camOffset.pitch * Math.PI / 180;
@@ -523,35 +523,31 @@ function upd3D(t) {
 
   prop.rotation.x += P.speed * 0.06;
   buoys.forEach((b, i) => b.position.y = Math.sin(t * 0.0012 + i * 0.8) * 0.35);
-  sky.position.set(-P.posX, 0, P.posZ); // ★反転
+  sky.position.set(-P.posX, 0, P.posZ); 
 }
 
 // ============================================================
 //  ミッション選択UI
 // ============================================================
-window.currentMode = 'free'; // 初期状態
+window.currentMode = 'free'; 
 
-// モード選択ボタンを押したときの処理
 window.showMissions = function(mode) {
   document.getElementById('mode-sel').classList.add('h');
   document.getElementById('mission-list-container').classList.remove('h');
   window.currentMode = mode;
-  buildSel(); // 選んだモードのミッションを描画
+  buildSel(); 
 };
 
-// BACKボタンを押したときの処理
 window.showModeSel = function() {
   document.getElementById('mission-list-container').classList.add('h');
   document.getElementById('mode-sel').classList.remove('h');
 };
 
 function buildSel() {
-
   const grid = document.getElementById('mission-grid');
   if (!grid) return;
   grid.innerHTML = '';
 
-  // 現在選択されているモード(story または free)のミッションだけを抽出
   const filtered = MISSIONS.filter(m => m.mode === window.currentMode);
 
   if (filtered.length === 0) {
@@ -589,11 +585,9 @@ window.goSel = function() {
   document.getElementById('telegraph-panel')?.classList.add('h');
   document.getElementById('time-scale-btn')?.classList.add('h');
 
-  // カメラ視点をリセット（次ミッション開始時に正面を向く）
   camOffset.yaw   = 0;
   camOffset.pitch = 0;
   
-  // メニューに戻った時はトップのモード選択画面に戻す
   showModeSel(); 
   buildSel();
 
@@ -607,13 +601,12 @@ window.goSel = function() {
   setMenuState(true);
   isMenu = true; 
 };
-window.retry = function() { if (curM) startM(curM.id); };
 
 // ============================================================
 //  メインループ
 // ============================================================
 let lastT = -1;
-let isMenu = true; // ★追加: メニュー画面かどうかの判定フラグ
+let isMenu = true; 
 
 function loop(t) {
   requestAnimationFrame(loop);
@@ -623,32 +616,23 @@ function loop(t) {
   const dt = Math.min((t - lastT) / 1000, 0.05); 
   lastT = t;
 
-  // ★ メニュー中の処理：物理やAIは動かさず、海の時間(uT)と描画だけを行う
   if (isMenu) {
     wu.uT.value = t * 0.001;
     renderer.render(scene, camera);
-    return; // ここでループを抜けるため、重い処理は実行されない
+    return; 
   }
 
-  // --- 以下はゲーム中のみ実行される処理 ---
   const scaledDt = dt * timeScale;
   simTime += scaledDt * 1000;
 
-  // ---- 天候の動的変動（風向・風速・潮流をゆっくり変化させる） ----
   if (curM && !goActive) {
-    const t_s = simTime * 0.0001; // ゆっくりした変動周期
-    // 風速：ミッション設定値 ±30% でゆらぐ
+    const t_s = simTime * 0.0001; 
     P.windSpeed = curM.wind * (1.0 + Math.sin(t_s * 1.3) * 0.3);
-    // 風向：基準から ±20度 ゆっくり変動
     P.windDir   = (curM.windDir0 || 270) + Math.sin(t_s * 0.7) * 20;
-    // 潮流速度：ミッション設定値 ±40%
     P.currSpeed = curM.curr * (1.0 + Math.sin(t_s * 0.9) * 0.4);
-    // 潮流方向：±15度 変動
     P.currDir   = (curM.currDir0 || 0) + Math.sin(t_s * 0.5) * 15;
   }
 
-  // timeScale が大きいほどサブステップを増やして物理発散を防ぐ
-  // timeScale=1→1step, 2→2, 4→4, 8→8
   const subSteps = timeScale;
   const subDt    = dt / subSteps;
   for (let i = 0; i < subSteps; i++) {
@@ -667,7 +651,6 @@ function loop(t) {
   updateCompass(P.heading);
   drawRudder(P.rudder);
   
-  // --- 座礁・UKC（余裕水深）監視システム ---
   const shipDraft = 14.5;
   const currentDepth = getRealDepthAt(P.posX, P.posZ);
   const ukc = currentDepth - shipDraft;
@@ -680,7 +663,6 @@ function loop(t) {
         triggerGO('grounding');
       }
     } else if (ukc < 3.0 && !goActive && !mst.done) {
-      // 浅水域警告は180フレーム（約3秒）に1回だけ表示
       if (!_ukcWarnCd || _ukcWarnCd <= 0) {
         showPenaltyToast(`⚠ 浅水域！ UKC: ${ukc.toFixed(1)}m`);
         _ukcWarnCd = 180;
@@ -713,52 +695,32 @@ window.addEventListener('resize', () => {
 });
 
 // ============================================================
-// フリーモード開始 (地図上での地点選択)
+// ★修正: フリーモード開始 (地図上での地点選択)
 // ============================================================
 window.openFreeModeMenu = function() {
   document.getElementById('ms-sel')?.classList.add('h');
   
-  // startFreeModeSelection(P, callback)
   startFreeModeSelection(P, (startLoc, goalLoc, waypoints) => {
-    // 1. ミッション情報の設定 (FREE-1 をベースに目的地などを上書き)
     const m = MISSIONS.find(x => x.id === 'FREE-1');
+    let newM = null;
     if (m) {
-      curM = JSON.parse(JSON.stringify(m)); // ミッションデータをコピー
-      // 目的地を海図で選んだ場所に設定
+      // テンプレートをコピーして、今回のユーザー設定を書き込む
+      newM = JSON.parse(JSON.stringify(m)); 
+      
       const goalXZ = latLonToXZ(goalLoc.lat, goalLoc.lon);
-      curM.tx = goalXZ.x;
-      curM.tz = goalXZ.z;
-      // 作成したコースライン（経由地）をミッションデータに紐付け
-      curM.waypoints = waypoints;
+      newM.tx = goalXZ.x;
+      newM.tz = goalXZ.z;
+      newM.waypoints = waypoints;
+      
+      // ★リトライ時のために「スタート地点」も sp として保存しておく
+      const startXZ = latLonToXZ(startLoc.lat, startLoc.lon);
+      newM.sp = { x: startXZ.x, z: startXZ.z, h: startLoc.heading * Math.PI / 180 };
+      
+      newM.title = `${startLoc.name} ➔ ${goalLoc.name}`;
     }
 
-    // 2. UIの表示切り替え（HUD表示）
-    setMenuState(false);
-    document.getElementById('gauges-container')?.classList.remove('h');
-    document.getElementById('comp-c')?.classList.remove('h');
-    document.getElementById('telegraph-panel')?.classList.remove('h');
-    document.getElementById('time-scale-btn')?.classList.remove('h');
-
-    // 3. 船の3Dモデルとカメラを強制移動（snapping）
-    // P の座標と方位は tools.js 内でコースに合わせて既にセットされている
-    shipGroup.position.x = -P.posX;
-    shipGroup.position.z = P.posZ;
-    shipGroup.rotation.y = -P.heading;
-
-    camera.position.x = -P.posX;
-    camera.position.z = P.posZ;
-
-    // 4. ゲーム状態のリセットと開始
-    mst = { done: false, t0: simTime, tugOn: false, pens: [], spdP: 0, colP: 0, penTmr: 0 };
-    isMenu = false;
-
-    // 天候を適用
-    if (curM) {
-      applyWeatherScene(curM);
-      applyWeatherOverlay(curM);
-      toggleNight(scene, curM.wx === 'ngt');
-    }
-    
+    // startMにカスタムしたミッションオブジェクトを直接渡す
+    startM(newM);
     console.log(`FREE MODE START: FROM ${startLoc.name} TO ${goalLoc.name}`);
   });
 };
@@ -796,7 +758,6 @@ window.openFreeModeMenu = function() {
         isMenu = true; 
         requestAnimationFrame(loop);
         
-        // ECDISツールの初期化（地理データ・水深データの非同期読み込み開始）
         initTools(() => {
           console.log('ECDIS 水深データ準備完了');
         });
@@ -815,8 +776,6 @@ window.openFreeModeMenu = function() {
 // ============================================================
 //  双眼鏡機能 (Shiftキーでズーム ＆ マスク表示)
 // ============================================================
-
-// 1. 双眼鏡の縁を描画するための専用Canvasを生成
 const binoCv = document.createElement('canvas');
 binoCv.id = 'binocular-overlay';
 Object.assign(binoCv.style, {
@@ -825,8 +784,8 @@ Object.assign(binoCv.style, {
   left: '0',
   width: '100%', 
   height: '100%',
-  pointerEvents: 'none', // クリックを下の画面に貫通させる
-  zIndex: '450',         // 計器やECDISの下、海画面の上に配置
+  pointerEvents: 'none', 
+  zIndex: '450',         
   display: 'none'
 });
 document.body.appendChild(binoCv);
@@ -836,37 +795,29 @@ function drawBinocularMask() {
   binoCv.height = window.innerHeight;
   const ctx = binoCv.getContext('2d');
   
-  // 画面全体を真っ黒に塗りつぶす
   ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, binoCv.width, binoCv.height);
   
-  // 「くり抜き（透明化）」モードに変更
   ctx.globalCompositeOperation = 'destination-out';
   
   const cy = binoCv.height / 2;
   const r = Math.min(binoCv.width * 0.25, binoCv.height * 0.45);
-  // 左右のレンズが中央で少し重なる「ひょうたん型」になるように配置
   const cx1 = binoCv.width / 2 - r * 0.55; 
   const cx2 = binoCv.width / 2 + r * 0.55; 
   
-  // レンズのフチがぼやけるようにフィルターをかける
   ctx.filter = 'blur(15px)';
   
-  // 左右の円を描画して黒い背景を透明にくり抜く
   ctx.beginPath();
   ctx.arc(cx1, cy, r, 0, Math.PI * 2);
   ctx.arc(cx2, cy, r, 0, Math.PI * 2);
   ctx.fill();
   
-  // 通常の描画モードに戻す
   ctx.globalCompositeOperation = 'source-over';
   ctx.filter = 'none';
 
-  // --- おまけ：船舶用双眼鏡の測距レティクル（十字線と目盛り） ---
-  ctx.strokeStyle = 'rgba(20, 255, 50, 0.4)'; // 薄いグリーン
+  ctx.strokeStyle = 'rgba(20, 255, 50, 0.4)';
   ctx.lineWidth = 1.5;
   
-  // 十字線
   ctx.beginPath();
   ctx.moveTo(binoCv.width / 2, cy - r * 0.8);
   ctx.lineTo(binoCv.width / 2, cy + r * 0.8);
@@ -874,16 +825,14 @@ function drawBinocularMask() {
   ctx.lineTo(binoCv.width / 2 + r * 0.8, cy);
   ctx.stroke();
   
-  // 目盛り（縦と横）
   for (let i = -5; i <= 5; i++) {
     if (i === 0) continue;
-    // 縦の目盛り
     const y = cy + i * (r * 0.15);
     ctx.beginPath();
     ctx.moveTo(binoCv.width / 2 - 8, y);
     ctx.lineTo(binoCv.width / 2 + 8, y);
     ctx.stroke();
-    // 横の目盛り
+
     const x = binoCv.width / 2 + i * (r * 0.15);
     ctx.beginPath();
     ctx.moveTo(x, cy - 8);
@@ -892,21 +841,17 @@ function drawBinocularMask() {
   }
 }
 
-// 画面サイズ変更時にもマスクを描き直す
 window.addEventListener('resize', () => {
   if (binoCv.style.display === 'block') drawBinocularMask();
 });
 
-// 2. ズームの制御（Shiftキーの監視）
 let isBinocular = false;
-let defaultFov = 60; // 元の視野角を保存しておく変数
+let defaultFov = 60; 
 
 window.addEventListener('keydown', (e) => {
-  // メニュー入力中などで干渉しないようにしつつ、Shiftで発動
   if (e.key === 'Shift' && !isBinocular) {
     isBinocular = true;
     
-    // 現在のカメラのFOVを保存し、双眼鏡の倍率（FOV=12）にズームイン
     if (typeof camera !== 'undefined') {
       defaultFov = camera.fov; 
       camera.fov = 12; 
@@ -922,7 +867,6 @@ window.addEventListener('keyup', (e) => {
   if (e.key === 'Shift') {
     isBinocular = false;
     
-    // カメラのFOVを元の広さに戻す
     if (typeof camera !== 'undefined') {
       camera.fov = defaultFov; 
       camera.updateProjectionMatrix();
