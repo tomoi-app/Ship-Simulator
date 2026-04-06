@@ -59,7 +59,7 @@ export function drawAll(P, AIships, fishBoats) {
 
   const safeP = (P && typeof P.posX === 'number' && !isNaN(P.posX))
     ? P
-    : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0 };
+    : { posX: latLonToXZ(35.30, 139.75).x, posZ: latLonToXZ(35.30, 139.75).z, heading: 0, speed: 0, draft: 11.5 };
 
   const cx = (w / 2) + panX;
   const cy = (h / 2) + panY;
@@ -474,8 +474,12 @@ function _drawHUD(ctx, safeP, w, ecdisScale) {
   let deg = ((safeP.heading||0) * 180 / Math.PI + 360) % 360;
   ctx.fillText(`HDG   : ${deg.toFixed(1)}°`,               20, 75);
   ctx.fillText(`SPD   : ${(safeP.speed||0).toFixed(1)} kt`,20, 90);
+  
   const d = getRealDepthAt(safeP.posX, safeP.posZ);
   ctx.fillText(`DEPTH : ${d === 99.9 ? '---' : d.toFixed(1)} m`, 20, 105);
+  
+  const draft = safeP.draft || 11.5; // 物理モデルにdraftがない場合のデフォルト値
+  ctx.fillText(`DRAFT : ${draft.toFixed(1)} m`, 20, 120);
 }
 
 // ─── フリーモード選択オーバーレイ ─────────────────────────────

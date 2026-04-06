@@ -5,10 +5,9 @@
 // ============================================================
 
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
-// ↓ GLTFLoader のインポートを追加します
 import { GLTFLoader } from 'https://unpkg.com/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
 import { P } from './physics.js'; 
-import { BUOYS, latLonToXZ as latLonToXZ_tool } from './tools.js'; // ★ tools.js からインポート
+import { BUOYS, latLonToXZ as latLonToXZ_tool } from './tools.js';
 
 // ============================================================
 //  Procedural テクスチャ生成
@@ -260,7 +259,6 @@ export function buildOcean(THREE, scene) {
   const vert = `
     uniform float uT, uWH, uWS, uWind;
     uniform vec2 uOffset;
-    // vViewPosを削除し、ワールド座標系のみで計算するよう修正
     varying vec3 vNormal, vWorldPos;
     varying vec2 vUV;
 
@@ -313,7 +311,6 @@ export function buildOcean(THREE, scene) {
     vec3 skyCol(vec3 dir){ return mix(uSkyHorizon, uSkyZenith, clamp(dir.y * 1.5 + 0.1, 0.0, 1.0)); }
 
     void main(){
-      // ★修正: 視線ベクトル(V)をカメラのワールド座標から直接計算する
       vec3 viewVec = cameraPosition - vWorldPos;
       float dist = length(viewVec);
       vec3 V = normalize(viewVec);
@@ -337,7 +334,6 @@ export function buildOcean(THREE, scene) {
       vec3 N = normalize(vNormal + waveNormal * globalFade);
       vec3 L = normalize(uSunDir);
 
-      // ワールド座標系同士で正しく計算されるため、下を向いても破綻しない
       float NdotV = max(dot(N, V), 0.0001);
       float fresnel = pow(1.0 - NdotV, 5.0); 
       float reflectionStrength = mix(0.005, 1.0, fresnel); 
@@ -405,121 +401,87 @@ export function buildOcean(THREE, scene) {
 // ---- 船体（GLTFモデル版） ----
 export function buildShip(THREE, scene) {
   const SG = new THREE.Group();
-  SG.name = 'Ship'; // toggleNight で検索できるように名前を付与
+  SG.name = 'Ship';
 
   const loader = new GLTFLoader();
   
-  // 先ほど配置したGLBファイルを読み込む
   loader.load('./models/ship.glb', (gltf) => {
     const model = gltf.scene;
-    // ... (スケーリング処理などはそのまま)
-
-    // --- ここから：自動スケール＆センタリング処理 ---
     
-    // 1. モデルの本来のサイズと中心座標を計算する
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
-    // 2. シミュレーターの船のサイズに自動でスケールを合わせる
-    const targetLength = 350; // ★ 350 にスケール変更
-    const maxLength = Math.max(size.x, size.y, size.z); // 一番長い辺を探す
-    const scaleFactor = targetLength / maxLength;       // 拡大・縮小率を計算
+    const targetLength = 350; 
+    const maxLength = Math.max(size.x, size.y, size.z); 
+    const scaleFactor = targetLength / maxLength;       
     
-    // ★ 計算された倍率を P.shipScale に保存して main.js と共有する
     P.shipScale = scaleFactor;
 
     model.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-    // 3. モデルの中心のズレを修正する（原点に持ってくる）
-    //    喫水線 = モデル底面がy=0に来るようにオフセット
-    //    center.y はスケール前の値なので scaleFactor を掛けて実メートルに換算
     model.position.x = -center.x * scaleFactor;
     model.position.y = (-center.y * scaleFactor) + 20;
     model.position.z = -center.z * scaleFactor;
 
-  
     model.rotation.y = -Math.PI / 2; 
 
-    // デバッグ用：F12コンソールにサイズを出力して確認する
-    console.log("🚢 Original Size:", size);
-    console.log("🚢 Scale Factor:", scaleFactor);
-    
-    // --- ここまで ---
-
-    // --- ここから追加：全メッシュを両面レンダリングに設定＆透明度無効化 ---
     model.traverse((object) => {
-      // オブジェクトがメッシュ（3D形状）の場合
       if (object.isMesh) {
-        // マテリアル（質感）の設定を変更
-        object.material.side = THREE.DoubleSide; // ★両面を描画するように設定
-        
-        // --- ここから追加：透明度設定による透けを防止 ---
-        object.material.transparent = false; // 強制的に不透明にする
-        object.material.depthWrite = true;   // 描画順序を正しくする
-        object.material.alphaTest = 0.5;     // 境界線をはっきりさせる
-        // --- ここまで追加 ---
+        object.material.side = THREE.DoubleSide; 
+        object.material.transparent = false; 
+        object.material.depthWrite = true;   
+        object.material.alphaTest = 0.5;     
       }
     });
-    // --- ここまで追加 ---
 
     SG.add(model);
   });
 
-  // ==========================================================
-  // 3. 航海灯の正確な配置と視認距離 (安全設備規則 / COLREGs 準拠)
-  // ==========================================================
   const navLights = new THREE.Group();
   navLights.name = 'NavLights';
-  const nmToMeters = 1852; // 1海里 = 1852m
+  const nmToMeters = 1852; 
 
-  // 光源と照射角を生成するヘルパー関数
   const createNavLight = (hex, angleDeg, distNm) => {
       const g = new THREE.Group();
-      // 灯器本体の発光
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: hex }));
       g.add(mesh);
-      // 規定された視認距離と照射角（Cut-off）を持つ SpotLight
       const light = new THREE.SpotLight(hex, 5.0, distNm * nmToMeters, (angleDeg / 2) * (Math.PI / 180), 0.05, 1);
       const target = new THREE.Object3D();
-      target.position.set(0, 0, 10); // 光の向かう方向
+      target.position.set(0, 0, 10); 
       g.add(target);
       light.target = target;
       g.add(light);
       return g;
   };
 
-  // ① 前部マスト灯 (Fwd Masthead Light): 白, 225度, 視認距離 6海里
   const fwdMast = createNavLight(0xffffff, 225, 6);
-  fwdMast.position.set(0, 35, 120); // 船首寄りマスト
+  fwdMast.position.set(0, 35, 120); 
   navLights.add(fwdMast);
 
-  // ② 後部マスト灯 (Aft Masthead Light): 白, 225度, 視認距離 6海里
   const aftMast = createNavLight(0xffffff, 225, 6);
-  aftMast.position.set(0, 50, -110); // 居住区トップマスト
+  aftMast.position.set(0, 50, -110); 
   navLights.add(aftMast);
 
-  // ③ 右舷灯 (Starboard Sidelight): 緑, 112.5度, 視認距離 3海里
   const stbdLight = createNavLight(0x00ff00, 112.5, 3);
-  stbdLight.position.set(26, 30, -100); // 船橋ウイング右舷端
-  stbdLight.rotation.y = -Math.PI / 8; // 正面から右真横やや後方までを照射
+  stbdLight.position.set(26, 30, -100); 
+  stbdLight.rotation.y = -Math.PI / 8; 
   navLights.add(stbdLight);
 
-  // ④ 左舷灯 (Port Sidelight): 赤, 112.5度, 視認距離 3海里
   const portLight = createNavLight(0xff0000, 112.5, 3);
-  portLight.position.set(-26, 30, -100); // 船橋ウイング左舷端
+  portLight.position.set(-26, 30, -100); 
   portLight.rotation.y = Math.PI / 8; 
   navLights.add(portLight);
 
-  // ⑤ 船尾灯 (Stern Light): 白, 135度, 視認距離 3海里
   const sternLight = createNavLight(0xffffff, 135, 3);
-  sternLight.position.set(0, 15, -170); // 船尾端
-  sternLight.rotation.y = Math.PI; // 真後ろを照射
+  sternLight.position.set(0, 15, -170); 
+  sternLight.rotation.y = Math.PI; 
   navLights.add(sternLight);
 
-  // ★追加: main.js からマスト灯の光度を操作できるよう、SpotLightへの参照を持たせる
-  // fwdMast は Group で、[0]:Mesh, [1]:Object3D(target), [2]:SpotLight の順に add されているため [2] を取得
   navLights.mast = fwdMast.children[2]; 
+
+  // ★★★ これが抜けていたので追加！ ★★★
+  SG.add(navLights);
 
   const prop = new THREE.Group(); 
   SG.add(prop);
@@ -532,35 +494,21 @@ export function toggleNight(scene, night) {
   const ship = scene.getObjectByName('Ship');
   if (ship) {
       const navLights = ship.getObjectByName('NavLights');
-      if (navLights) navLights.visible = night; // 夜間に航海灯を点灯
+      if (navLights) navLights.visible = night; 
   }
 }
 
-// ---- 陸地・港湾 ----
-// ============================================================
-//  古い陸地・建物を削除し、ブイだけを残した新しい buildWorld
-// ============================================================
 export function buildWorld(THREE, scene) {
   const buoys = [];
-
-  // --- tools.js の BUOYS データから 3D ブイを生成 ---
   BUOYS.forEach(b => {
-    // 緯度経度を3D空間の X, Z 座標（メートル）に変換
     const xz = latLonToXZ_tool(b.lat, b.lon);
-
-    // ブイの形を作成（直径10m、高さ15mのシンプルな円柱）
     const geometry = new THREE.CylinderGeometry(5, 5, 15, 16);
-    
-    // 海図と同じ色（緑か赤）をそのまま適用
     const material = new THREE.MeshStandardMaterial({ 
       color: b.color,
       roughness: 0.3, 
       metalness: 0.2
     });
-    
     const buoyMesh = new THREE.Mesh(geometry, material);
-
-    // ★重要: X座標にはマイナスを付ける
     buoyMesh.position.x = -xz.x;
     buoyMesh.position.y = 7.5; 
     buoyMesh.position.z = xz.z;
@@ -572,21 +520,18 @@ export function buildWorld(THREE, scene) {
   return { buoys };
 }
 
-// ---- AI他船 (航跡メッシュ追加版) ----
 export function buildAI(THREE, scene) {
   const AIships = [], fishBoats = [];
   const metalTex = makeMetalTexture('#334455');
 
-  // [追加] 航跡用の共有ユニフォーム（main.jsで時間を更新するため）
   const wakeUniforms = {
     uT: { value: 0 }
   };
 
-  // [追加] 航跡シェーダーマテリアル
   const wakeMat = new THREE.ShaderMaterial({
     uniforms: {
       uT: wakeUniforms.uT,
-      uSpeed: { value: 1.0 } // 船の基本速度に合わせて調整
+      uSpeed: { value: 1.0 } 
     },
     vertexShader: `
       varying vec2 vUV;
@@ -610,31 +555,23 @@ export function buildAI(THREE, scene) {
       }
 
       void main() {
-        // vUV.y: 1.0(船尾側/前), 0.0(はるか後方)
         float front = vUV.y;
         float back = 1.0 - vUV.y;
-
-        // 中央からの距離 (0.0=中央, 1.0=端)
         float distFromCenter = abs(vUV.x - 0.5) * 2.0;
 
-        // 後方に行くほど広がるV字の幅
         float wakeWidth = back * 0.7 + 0.1;
         float mask = smoothstep(wakeWidth, wakeWidth - 0.3, distFromCenter);
 
-        // スクリュー直後の泡 (プロペラウォッシュ)
         float wash = smoothstep(0.2, 0.0, distFromCenter) * smoothstep(1.0, 0.6, back);
 
-        // 動的ノイズ (後方へ流れる)
         vec2 nuv = vUV * vec2(4.0, 12.0);
         nuv.y += uT * uSpeed * 0.8;
         float n = fbm(nuv);
         float n2 = fbm(nuv * 2.0 - vec2(0.0, uT * uSpeed * 1.5));
 
-        // 合成してフェードアウト
         float wave = (mask * n + wash * n2) * front;
-        wave *= smoothstep(0.0, 0.1, front); // 後端の滑らかな消失
+        wave *= smoothstep(0.0, 0.1, front); 
 
-        // 境界線を馴染ませる
         float edgeFade = smoothstep(1.0, 0.5, distFromCenter / wakeWidth);
         float alpha = wave * edgeFade * 0.8;
 
@@ -642,7 +579,7 @@ export function buildAI(THREE, scene) {
       }
     `,
     transparent: true,
-    depthWrite: false, // 海面とのチラつき(Zファイティング)防止
+    depthWrite: false, 
     side: THREE.DoubleSide
   });
 
@@ -656,22 +593,18 @@ export function buildAI(THREE, scene) {
     const gl = new THREE.PointLight(0x00ff00, 0.5, 100 * sz); gl.position.set( 4 * sz, 5 * sz, 22 * sz); g.add(gl);
     const rl = new THREE.PointLight(0xff0000, 0.5, 100 * sz); rl.position.set(-4 * sz, 5 * sz, 22 * sz); g.add(rl);
     
-    // [追加] 航跡メッシュの追加
     const wakeLen = 80 * sz;
     const wakeGeo = new THREE.PlaneGeometry(30 * sz, wakeLen);
     wakeGeo.rotateX(-Math.PI / 2);
     const wakeMesh = new THREE.Mesh(wakeGeo, wakeMat.clone());
-    // マテリアルをクローンして個別の速度を適用
     wakeMesh.material.uniforms.uSpeed.value = spd * 0.5;
-    // 船尾から後方に配置 (zはプラスが後方)
     wakeMesh.position.set(0, 0.2, 25 * sz + wakeLen / 2 - 5 * sz);
     g.add(wakeMesh);
 
-    g.position.set(-x, 0, z); g.rotation.y = -h; scene.add(g); // ★位置Xを反転
+    g.position.set(-x, 0, z); g.rotation.y = -h; scene.add(g); 
     return { mesh: g, heading: h, speed: spd, avoidTimer: 0, sz };
   };
 
-  // タンカー（大型）
   const mkTanker = (x, z, h) => {
     const g = new THREE.Group();
     const bm = new THREE.Mesh(new THREE.BoxGeometry(40, 9, 280), new THREE.MeshStandardMaterial({ color: 0x332211, roughness: 0.8 }));
@@ -681,7 +614,6 @@ export function buildAI(THREE, scene) {
     const fn = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 5, 15, 12), new THREE.MeshStandardMaterial({ color: 0xcc2222 }));
     fn.position.set(0, 36, -120); g.add(fn);
 
-    // [追加] 航跡メッシュの追加 (大型用)
     const wakeLen = 300;
     const wakeGeo = new THREE.PlaneGeometry(80, wakeLen);
     wakeGeo.rotateX(-Math.PI / 2);
@@ -690,7 +622,7 @@ export function buildAI(THREE, scene) {
     wakeMesh.position.set(0, 0.3, 140 + wakeLen / 2 - 10);
     g.add(wakeMesh);
 
-    g.position.set(-x, 0, z); g.rotation.y = -h; scene.add(g); // ★位置Xを反転
+    g.position.set(-x, 0, z); g.rotation.y = -h; scene.add(g); 
     return { mesh: g, heading: h, speed: 4, avoidTimer: 0, sz: 5, isTanker: true };
   };
 
@@ -706,13 +638,11 @@ export function buildAI(THREE, scene) {
   AIships.push(mkTanker(300, -800, 0));
   AIships.push(mkTanker(-400, 5000, Math.PI));
 
-  // 漁船
   for (let i = 0; i < 16; i++) {
     const g = new THREE.Group();
     const bm = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 10), new THREE.MeshStandardMaterial({ color: 0x4488aa, roughness: 0.8 }));
     bm.position.y = 1; g.add(bm);
 
-    // [追加] 航跡メッシュの追加 (漁船用)
     const spd = 3 + Math.random() * 4;
     const wakeLen = 25;
     const wakeGeo = new THREE.PlaneGeometry(8, wakeLen);
@@ -723,13 +653,11 @@ export function buildAI(THREE, scene) {
     g.add(wakeMesh);
 
     const a = Math.random() * Math.PI * 2;
-    // ★位置Xを反転
     g.position.set(-(Math.cos(a) * 800 + Math.random() * 300 - 150), 0, Math.sin(a) * 800 + Math.random() * 300 - 150);
     scene.add(g);
     fishBoats.push({ mesh: g, heading: a, speed: spd, drift: Math.random() * 0.003 - 0.0015 });
   }
 
-  // タグボート
   const tugs = [];
   const mkTug = (x, z, ox, oz) => {
     const g = new THREE.Group();
@@ -740,7 +668,7 @@ export function buildAI(THREE, scene) {
     const fn = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 10, 8), new THREE.MeshStandardMaterial({ color: 0xff5500 }));
     fn.position.set(0, 18, 0); g.add(fn);
 
-    g.position.set(-x, 0, z); scene.add(g); // ★位置Xを反転
+    g.position.set(-x, 0, z); scene.add(g); 
     return { mesh: g, active: false, ox, oz };
   };
   tugs.push(mkTug(-2100 + 100, 3200 - 200,  65, -90));
@@ -752,13 +680,8 @@ export function buildAI(THREE, scene) {
     }
   });
 
-  // [修正] wakeUniforms を main.js に渡す
   return { AIships, fishBoats, tugs, wakeUniforms };
 }
-
-// ============================================================
-//  scene.js の一番下をこれに上書き（東西反転バグ修正版！）
-// ============================================================
 
 export async function buildLandmass(THREE, scene) {
   try {
@@ -766,7 +689,6 @@ export async function buildLandmass(THREE, scene) {
     const data = await res.json();
 
     const texLoader = new THREE.TextureLoader();
-    // ★ 修正：生成済みの .png を使用
     const grassTexture = texLoader.load('./grass.png', () => {
       console.log("草地テクスチャ読み込み完了！");
     }, undefined, (err) => console.error("grass.png が見つかりません"));
@@ -788,7 +710,6 @@ export async function buildLandmass(THREE, scene) {
     const ORIGIN_LON = 139.75;
 
     function latLonToXZ(lat, lon) {
-      // ★ 修正：X座標を反転！（東 = -X に統一）
       const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 
@@ -855,7 +776,6 @@ export async function buildLandmass(THREE, scene) {
     return landGroup;
   } catch (err) {
     console.error("地図データの読み込みエラー:", err);
-    // ローディング画面のメッセージに表示
     const ldm = document.getElementById('ldm');
     if (ldm) ldm.textContent = '⚠ 地図データのロードに失敗しました。リロードしてください。';
   }
@@ -893,7 +813,6 @@ export async function buildCity(THREE, scene) {
     const ORIGIN_LAT = 35.45;
     const ORIGIN_LON = 139.75;
     function latLonToXZ(lat, lon) {
-      // ★ ここも反転！
       const x = -(lon - ORIGIN_LON) * 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
       const z = (lat - ORIGIN_LAT) * 111320;
       return { x, z }; 

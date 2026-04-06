@@ -811,3 +811,123 @@ window.openFreeModeMenu = function() {
   }
   nx();
 })();
+
+// ============================================================
+//  双眼鏡機能 (Shiftキーでズーム ＆ マスク表示)
+// ============================================================
+
+// 1. 双眼鏡の縁を描画するための専用Canvasを生成
+const binoCv = document.createElement('canvas');
+binoCv.id = 'binocular-overlay';
+Object.assign(binoCv.style, {
+  position: 'absolute', 
+  top: '0', 
+  left: '0',
+  width: '100%', 
+  height: '100%',
+  pointerEvents: 'none', // クリックを下の画面に貫通させる
+  zIndex: '450',         // 計器やECDISの下、海画面の上に配置
+  display: 'none'
+});
+document.body.appendChild(binoCv);
+
+function drawBinocularMask() {
+  binoCv.width = window.innerWidth;
+  binoCv.height = window.innerHeight;
+  const ctx = binoCv.getContext('2d');
+  
+  // 画面全体を真っ黒に塗りつぶす
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, binoCv.width, binoCv.height);
+  
+  // 「くり抜き（透明化）」モードに変更
+  ctx.globalCompositeOperation = 'destination-out';
+  
+  const cy = binoCv.height / 2;
+  const r = Math.min(binoCv.width * 0.25, binoCv.height * 0.45);
+  // 左右のレンズが中央で少し重なる「ひょうたん型」になるように配置
+  const cx1 = binoCv.width / 2 - r * 0.55; 
+  const cx2 = binoCv.width / 2 + r * 0.55; 
+  
+  // レンズのフチがぼやけるようにフィルターをかける
+  ctx.filter = 'blur(15px)';
+  
+  // 左右の円を描画して黒い背景を透明にくり抜く
+  ctx.beginPath();
+  ctx.arc(cx1, cy, r, 0, Math.PI * 2);
+  ctx.arc(cx2, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // 通常の描画モードに戻す
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.filter = 'none';
+
+  // --- おまけ：船舶用双眼鏡の測距レティクル（十字線と目盛り） ---
+  ctx.strokeStyle = 'rgba(20, 255, 50, 0.4)'; // 薄いグリーン
+  ctx.lineWidth = 1.5;
+  
+  // 十字線
+  ctx.beginPath();
+  ctx.moveTo(binoCv.width / 2, cy - r * 0.8);
+  ctx.lineTo(binoCv.width / 2, cy + r * 0.8);
+  ctx.moveTo(binoCv.width / 2 - r * 0.8, cy);
+  ctx.lineTo(binoCv.width / 2 + r * 0.8, cy);
+  ctx.stroke();
+  
+  // 目盛り（縦と横）
+  for (let i = -5; i <= 5; i++) {
+    if (i === 0) continue;
+    // 縦の目盛り
+    const y = cy + i * (r * 0.15);
+    ctx.beginPath();
+    ctx.moveTo(binoCv.width / 2 - 8, y);
+    ctx.lineTo(binoCv.width / 2 + 8, y);
+    ctx.stroke();
+    // 横の目盛り
+    const x = binoCv.width / 2 + i * (r * 0.15);
+    ctx.beginPath();
+    ctx.moveTo(x, cy - 8);
+    ctx.lineTo(x, cy + 8);
+    ctx.stroke();
+  }
+}
+
+// 画面サイズ変更時にもマスクを描き直す
+window.addEventListener('resize', () => {
+  if (binoCv.style.display === 'block') drawBinocularMask();
+});
+
+// 2. ズームの制御（Shiftキーの監視）
+let isBinocular = false;
+let defaultFov = 60; // 元の視野角を保存しておく変数
+
+window.addEventListener('keydown', (e) => {
+  // メニュー入力中などで干渉しないようにしつつ、Shiftで発動
+  if (e.key === 'Shift' && !isBinocular) {
+    isBinocular = true;
+    
+    // 現在のカメラのFOVを保存し、双眼鏡の倍率（FOV=12）にズームイン
+    if (typeof camera !== 'undefined') {
+      defaultFov = camera.fov; 
+      camera.fov = 12; 
+      camera.updateProjectionMatrix();
+    }
+    
+    drawBinocularMask();
+    binoCv.style.display = 'block';
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'Shift') {
+    isBinocular = false;
+    
+    // カメラのFOVを元の広さに戻す
+    if (typeof camera !== 'undefined') {
+      camera.fov = defaultFov; 
+      camera.updateProjectionMatrix();
+    }
+    
+    binoCv.style.display = 'none';
+  }
+});
