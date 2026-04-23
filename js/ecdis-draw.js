@@ -80,6 +80,9 @@ export function drawAll(P, AIships, fishBoats) {
   _drawLabels(mapCtx, safeP, cx, cy, w, h, ecdisScale);
   _drawHUD(mapCtx, safeP, w, ecdisScale);
   _drawFreeModeOverlay(mapCtx, safeP, cx, cy, w, h, ecdisScale);
+
+  // ▼▼ この1行を追加 ▼▼
+  _drawBerthingAssist(mapCtx, safeP, cx, cy, w, ecdisScale);
 }
 
 function _drawDepthContours(ctx, safeP, cx, cy, w, h, ecdisScale) {
@@ -728,6 +731,85 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.font = 'bold 16px sans-serif';
     ctx.fillText('完了', compBox.x + compBox.w / 2, compBox.y + compBox.h / 2);
 
+    ctx.restore();
+  }
+}
+
+// ============================================================
+// 着岸支援UI（海図上の枠 ＆ 距離計）
+// ============================================================
+function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
+  // main.jsで定義したバース情報（ハードコードで可視化）
+  const BERTHS = [
+    { name: 'YOKOHAMA HONMOKU D-4', x: 2320, z: 2150, heading: 1.25 },
+    { name: 'TOKYO OHI CT', x: -1500, z: 5800, heading: -0.3 }
+  ];
+
+  let activeBerth = null;
+  let minDist = Infinity;
+
+  // 1. 各バースを緑の枠で描画 ＆ 最寄りのバースを特定
+  BERTHS.forEach(b => {
+    const sx = cx + (b.x - safeP.posX) / ecdisScale;
+    const sy = cy - (b.z - safeP.posZ) / ecdisScale;
+    
+    // 海図上に描画
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(b.heading);
+    ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)'; // 鮮やかな緑
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(-25, -150, 50, 300); // 岸壁のサイズ
+    ctx.restore();
+
+    // 自船との距離を計算
+    const distMeters = Math.hypot(-safeP.posX - b.x, safeP.posZ - b.z);
+    if (distMeters < minDist) {
+      minDist = distMeters;
+      activeBerth = b;
+    }
+  });
+
+  // 2. 最寄りバースが1000m以内なら、右上にアシスト情報を表示
+  if (activeBerth && minDist < 1000) {
+    const boxW = 180;
+    const boxH = 95;
+    const boxX = w - boxW - 20;
+    const boxY = 20; // 画面右上
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('BERTHING ASSIST', boxX + 12, boxY + 12);
+    ctx.fillStyle = '#a6c3d9';
+    ctx.fillText(activeBerth.name, boxX + 12, boxY + 28);
+
+    ctx.font = '13px monospace';
+    const spd = (safeP.speed || 0);
+    const distText = minDist < 5 ? "TOUCH" : `${minDist.toFixed(1)} m`;
+    
+    // 接近しすぎで速度が速いと警告色に
+    ctx.fillStyle = (spd > 0.5 && minDist < 100) ? '#ff4b4b' : '#00e676';
+    ctx.fillText(`DIST: ${distText.padStart(8)}`, boxX + 12, boxY + 50);
+    ctx.fillText(`SPD : ${spd.toFixed(2).padStart(8)} kt`, boxX + 12, boxY + 68);
+
+    // 完全な着岸成功判定 (距離10m以内、速度0.2kt以下)
+    if (minDist < 10 && spd < 0.2) {
+      ctx.fillStyle = 'rgba(0, 230, 118, 0.9)';
+      ctx.fillRect(boxX, boxY + boxH, boxW, 25);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText('BERTHING SUCCESS!', boxX + boxW/2, boxY + boxH + 6);
+    }
     ctx.restore();
   }
 }

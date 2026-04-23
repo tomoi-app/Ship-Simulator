@@ -893,7 +893,7 @@ function loop(t) {
   wu.uShipPos.value.set(P.posX, P.posZ);
   wu.uShipHeading.value = P.heading; 
   if (wakeUniforms) wakeUniforms.uT.value = simTime * 0.001; 
-  upd3D(simTime);
+  window.upd3D(simTime);
 
   updateCompass(P.heading);
   drawRudder(P.rudder);
@@ -1092,5 +1092,177 @@ window.addEventListener('keyup', (e) => {
     isBinocular = false;
     if (typeof camera !== 'undefined') { camera.fov = defaultFov; camera.updateProjectionMatrix(); }
     binoCv.style.display = 'none';
-  }
 });
+
+// ============================================================
+//  離着岸システム ＆ スラスター・コンソール
+// ============================================================
+
+// --- 1. バース（着岸エリア）の定義 ---
+export const BERTHS = [
+  { name: 'YOKOHAMA HONMOKU D-4', x: 2320, z: 2150, heading: 1.25, status: 'approach' },
+  { name: 'TOKYO OHI CT', x: -1500, z: 5800, heading: -0.3, status: 'approach' }
+];
+
+// スラスターの出力値 (-1.0 左舷 〜 1.0 右舷)
+let bowThruster = 0;
+let sternThruster = 0;
+
+// --- 2. コンソールUIの生成 ---
+const thrusterPanel = document.createElement('div');
+thrusterPanel.id = 'thruster-console';
+Object.assign(thrusterPanel.style, {
+  position: 'absolute',
+  right: '20px',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  width: '120px',
+  backgroundColor: 'rgba(15, 25, 35, 0.65)',
+  border: '1px solid rgba(255, 255, 255, 0.2)',
+  borderRadius: '8px',
+  padding: '15px 10px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '15px',
+  zIndex: '500',
+  color: 'white',
+  fontFamily: 'sans-serif',
+  opacity: '0', // 初期状態は非表示
+  transition: 'opacity 0.5s ease',
+  pointerEvents: 'none', // 非表示時はクリック無効
+  userSelect: 'none'
+});
+
+// レバーを作成する関数
+function createThrusterControl(label, onChange) {
+  const container = document.createElement('div');
+  container.style.textAlign = 'center';
+  container.style.width = '100%';
+
+  const title = document.createElement('div');
+  title.innerText = label;
+  title.style.fontSize = '10px';
+  title.style.fontWeight = 'bold';
+  title.style.marginBottom = '5px';
+  title.style.color = '#cccccc';
+
+  // 赤（左）と緑（右）の背景を持つスライダー
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '-100';
+  slider.max = '100';
+  slider.value = '0';
+  Object.assign(slider.style, {
+    width: '100%',
+    appearance: 'none',
+    height: '6px',
+    borderRadius: '3px',
+    background: 'linear-gradient(90deg, #ff4b4b 0%, #333 50%, #00e676 100%)',
+    outline: 'none',
+    cursor: 'pointer'
+  });
+
+  const valueDisplay = document.createElement('div');
+  valueDisplay.innerText = 'NEUTRAL';
+  valueDisplay.style.fontSize = '10px';
+  valueDisplay.style.marginTop = '4px';
+  valueDisplay.style.color = '#ffffff';
+
+  slider.addEventListener('input', (e) => {
+    let val = parseInt(e.target.value);
+    // デッドゾーン (±10%は0に吸着)
+    if (Math.abs(val) < 10) val = 0;
+    slider.value = val;
+    
+    if (val < 0) {
+        valueDisplay.innerText = `PORT ${Math.abs(val)}%`;
+        valueDisplay.style.color = '#ff4b4b';
+    } else if (val > 0) {
+        valueDisplay.innerText = `STBD ${val}%`;
+        valueDisplay.style.color = '#00e676';
+    } else {
+        valueDisplay.innerText = 'NEUTRAL';
+        valueDisplay.style.color = '#ffffff';
+    }
+    onChange(val / 100);
+  });
+
+  container.appendChild(title);
+  container.appendChild(slider);
+  container.appendChild(valueDisplay);
+  return { container, slider, valueDisplay };
+}
+
+const bowControl = createThrusterControl('BOW THRUSTER', (v) => bowThruster = v);
+const sternControl = createThrusterControl('STERN THRUSTER', (v) => sternThruster = v);
+
+// ALL STOP ボタン
+const stopBtn = document.createElement('div');
+stopBtn.innerText = 'ALL STOP';
+Object.assign(stopBtn.style, {
+  width: '60px', height: '60px',
+  borderRadius: '50%',
+  backgroundColor: 'rgba(255, 50, 50, 0.2)',
+  border: '2px solid #ff4b4b',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
+  boxShadow: 'inset 0 0 10px rgba(255,0,0,0.3)'
+});
+stopBtn.addEventListener('mousedown', () => {
+  stopBtn.style.backgroundColor = 'rgba(255, 50, 50, 0.6)';
+  bowControl.slider.value = 0;
+  sternControl.slider.value = 0;
+  bowControl.slider.dispatchEvent(new Event('input'));
+  sternControl.slider.dispatchEvent(new Event('input'));
+});
+stopBtn.addEventListener('mouseup', () => stopBtn.style.backgroundColor = 'rgba(255, 50, 50, 0.2)');
+
+thrusterPanel.appendChild(bowControl.container);
+thrusterPanel.appendChild(stopBtn);
+thrusterPanel.appendChild(sternControl.container);
+document.body.appendChild(thrusterPanel);
+
+
+// --- 3. 物理演算＆自動表示ロジック (既存の更新ループにフック) ---
+const originalUpd3D = upd3D; // 既存のupd3D関数を保持
+window.upd3D = function(t) { // グローバル関数を上書きして拡張
+  originalUpd3D(t);
+
+  // 1. スラスターの物理挙動をPに適用
+  if (bowThruster !== 0 || sternThruster !== 0) {
+    const THRUST_POWER = 0.04; // 横移動のパワー
+    const TURN_POWER = 0.001;  // 旋回のパワー
+
+    const sway = (bowThruster + sternThruster) * THRUST_POWER;
+    const turn = (bowThruster - sternThruster) * TURN_POWER;
+
+    P.heading -= turn; // 回頭
+
+    // 横移動 (船の向いている方向の90度横へ移動)
+    // 船の進行方向ベクトルに直交するベクトルを計算
+    const rightDirX = Math.sin(P.heading + Math.PI / 2);
+    const rightDirZ = Math.cos(P.heading + Math.PI / 2);
+    
+    P.posX += rightDirX * sway;
+    P.posZ += rightDirZ * sway;
+  }
+
+  // 2. 着岸判定 ＆ UI自動表示
+  let nearestDist = Infinity;
+  BERTHS.forEach(b => {
+    const dx = -P.posX - b.x;
+    const dz = P.posZ - b.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < nearestDist) nearestDist = dist;
+  });
+
+  // 距離1000m以内、かつ速度5ノット以下ならパネル表示
+  if (nearestDist < 1000 && Math.abs(P.speed) <= 5.0) {
+    thrusterPanel.style.opacity = '1';
+    thrusterPanel.style.pointerEvents = 'auto';
+  } else {
+    thrusterPanel.style.opacity = '0';
+    thrusterPanel.style.pointerEvents = 'none';
+  }
+};
