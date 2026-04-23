@@ -1092,6 +1092,7 @@ window.addEventListener('keyup', (e) => {
     isBinocular = false;
     if (typeof camera !== 'undefined') { camera.fov = defaultFov; camera.updateProjectionMatrix(); }
     binoCv.style.display = 'none';
+  }
 });
 
 // ============================================================
