@@ -1035,7 +1035,7 @@ window.openFreeModeMenu = function() {
 })();
 
 // ============================================================
-//  双眼鏡機能 (Shiftキーでズーム ＆ マスク表示)
+//  双眼鏡機能
 // ============================================================
 const binoCv = document.createElement('canvas');
 binoCv.id = 'binocular-overlay';
@@ -1099,18 +1099,9 @@ window.addEventListener('keyup', (e) => {
 //  離着岸システム ＆ スラスター・コンソール
 // ============================================================
 
-// --- 1. バース（着岸エリア）の定義 ---
-export const BERTHS = [
-  // ★修正: 横浜港と東京港の赤いマーカー（スタート地点）の座標と角度に一致させました
-  { name: 'YOKOHAMA PORT', x: -10000, z: 16600, heading: 0.6, status: 'approach' },
-  { name: 'TOKYO PORT', x: 1800, z: 35500, heading: -0.3, status: 'approach' }
-];
-
-// スラスターの出力値 (-1.0 左舷 〜 1.0 右舷)
 let bowThruster = 0;
 let sternThruster = 0;
 
-// --- 2. コンソールUIの生成 ---
 const thrusterPanel = document.createElement('div');
 thrusterPanel.id = 'thruster-console';
 Object.assign(thrusterPanel.style, {
@@ -1130,13 +1121,12 @@ Object.assign(thrusterPanel.style, {
   zIndex: '500',
   color: 'white',
   fontFamily: 'sans-serif',
-  opacity: '0', // 初期状態は非表示
+  opacity: '0',
   transition: 'opacity 0.5s ease',
-  pointerEvents: 'none', // 非表示時はクリック無効
+  pointerEvents: 'none',
   userSelect: 'none'
 });
 
-// レバーを作成する関数
 function createThrusterControl(label, onChange) {
   const container = document.createElement('div');
   container.style.textAlign = 'center';
@@ -1149,7 +1139,6 @@ function createThrusterControl(label, onChange) {
   title.style.marginBottom = '5px';
   title.style.color = '#cccccc';
 
-  // 赤（左）と緑（右）の背景を持つスライダー
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = '-100';
@@ -1173,7 +1162,6 @@ function createThrusterControl(label, onChange) {
 
   slider.addEventListener('input', (e) => {
     let val = parseInt(e.target.value);
-    // デッドゾーン (±10%は0に吸着)
     if (Math.abs(val) < 10) val = 0;
     slider.value = val;
     
@@ -1199,7 +1187,6 @@ function createThrusterControl(label, onChange) {
 const bowControl = createThrusterControl('BOW THRUSTER', (v) => bowThruster = v);
 const sternControl = createThrusterControl('STERN THRUSTER', (v) => sternThruster = v);
 
-// ALL STOP ボタン
 const stopBtn = document.createElement('div');
 stopBtn.innerText = 'ALL STOP';
 Object.assign(stopBtn.style, {
@@ -1225,10 +1212,8 @@ thrusterPanel.appendChild(stopBtn);
 thrusterPanel.appendChild(sternControl.container);
 document.body.appendChild(thrusterPanel);
 
-
-// --- 3. 物理演算＆自動表示ロジック (既存の更新ループにフック) ---
-const originalUpd3D = upd3D; // 既存のupd3D関数を保持
-window.upd3D = function(t) { // グローバル関数を上書きして拡張
+const originalUpd3D = upd3D; 
+window.upd3D = function(t) { 
   originalUpd3D(t);
 
   // 1. スラスターの物理挙動をPに適用
@@ -1242,29 +1227,10 @@ window.upd3D = function(t) { // グローバル関数を上書きして拡張
     P.heading -= turn; // 回頭
 
     // 横移動 (船の向いている方向の90度横へ移動)
-    // 船の進行方向ベクトルに直交するベクトルを計算
     const rightDirX = Math.sin(P.heading + Math.PI / 2);
     const rightDirZ = Math.cos(P.heading + Math.PI / 2);
     
     P.posX += rightDirX * sway;
     P.posZ += rightDirZ * sway;
-  }
-
-  // 2. 着岸判定 ＆ UI自動表示
-  let nearestDist = Infinity;
-  BERTHS.forEach(b => {
-    const dx = -P.posX - b.x;
-    const dz = P.posZ - b.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < nearestDist) nearestDist = dist;
-  });
-
-  // 距離1000m以内、かつ速度5ノット以下ならパネル表示
-  if (nearestDist < 1000 && Math.abs(P.speed) <= 5.0) {
-    thrusterPanel.style.opacity = '1';
-    thrusterPanel.style.pointerEvents = 'auto';
-  } else {
-    thrusterPanel.style.opacity = '0';
-    thrusterPanel.style.pointerEvents = 'none';
   }
 };

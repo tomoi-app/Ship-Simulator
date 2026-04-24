@@ -720,7 +720,6 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
     ctx.textBaseline = 'middle';
     ctx.font = '15px sans-serif';
     ctx.fillText('戻る', undoBox.x + undoBox.w / 2, undoBox.y + undoBox.h / 2);
-
     const compBox = { x: 180, y: h - 90, w: 150, h: 50 };
     ctx.fillStyle = 'rgba(25, 65, 105, 0.95)'; 
     ctx.fillRect(compBox.x, compBox.y, compBox.w, compBox.h);
@@ -739,38 +738,61 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
 // 着岸・離岸支援UI（海図上の枠 ＆ 距離計）
 // ============================================================
 function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
-  const BERTHS = [
-    { name: 'YOKOHAMA PORT', x: -10000, z: 16600, heading: 0.6 },
-    { name: 'TOKYO PORT', x: 1800, z: 35500, heading: -0.3 }
-  ];
+  // ★新アプローチ: ユーザーが選んだスタート地点とゴール地点をそのままバースとして利用
+  const berths = [];
+  if (currentStartLoc) berths.push(currentStartLoc);
+  if (currentGoalLoc) berths.push(currentGoalLoc);
 
   let activeBerth = null;
   let minDist = Infinity;
 
-  BERTHS.forEach(b => {
-    const sx = cx + (b.x - safeP.posX) / ecdisScale;
-    const sy = cy - (b.z - safeP.posZ) / ecdisScale;
+  // 1. 各バースを緑の枠で描画 ＆ 最寄りのバースを特定
+  berths.forEach(loc => {
+    // 赤いマーカーと全く同じ緯度・経度変換を使用
+    const xz = latLonToXZ(loc.lat, loc.lon);
+    const sx = cx + (xz.x - safeP.posX) / ecdisScale;
+    const sy = cy - (xz.z - safeP.posZ) / ecdisScale;
     
+    // 角度（度数法）をラジアンに変換 (未設定なら0)
+    const headingRad = (loc.heading || 0) * Math.PI / 180;
+
+    // 地図の倍率（ecdisScale）でサイズを固定（ズームアウトしても巨大化しない）
     const berthWidth = 120 / ecdisScale;
     const berthLength = 400 / ecdisScale;
     
     ctx.save();
     ctx.translate(sx, sy);
-    ctx.rotate(b.heading);
+    ctx.rotate(headingRad);
     ctx.strokeStyle = 'rgba(0, 230, 118, 0.8)';
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(-berthWidth / 2, -berthLength / 2, berthWidth, berthLength);
     ctx.restore();
 
-    const distMeters = Math.hypot(-safeP.posX - b.x, safeP.posZ - b.z);
+    // 距離計算（自船座標とマーカー座標の差分）
+    const distMeters = Math.hypot(xz.x - safeP.posX, xz.z - safeP.posZ);
     if (distMeters < minDist) {
       minDist = distMeters;
-      activeBerth = b;
+      activeBerth = loc;
     }
   });
 
+  const thrusterPanel = document.getElementById('thruster-console');
+  const spd = Math.abs(safeP.speed || 0);
+
+  // 2. 最寄りバースが1000m以内なら、右上にアシスト情報を表示
   if (activeBerth && minDist < 1000) {
+    // ★自動表示: パネルのフェードイン/アウト処理をここで一括管理
+    if (thrusterPanel) {
+      if (spd <= 5.0) {
+        thrusterPanel.style.opacity = '1';
+        thrusterPanel.style.pointerEvents = 'auto';
+      } else {
+        thrusterPanel.style.opacity = '0';
+        thrusterPanel.style.pointerEvents = 'none';
+      }
+    }
+
     const boxW = 180;
     const boxH = 95;
     const boxX = w - boxW - 20;
@@ -792,14 +814,12 @@ function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
     ctx.fillText(activeBerth.name, boxX + 12, boxY + 28);
 
     ctx.font = '13px monospace';
-    const spd = (safeP.speed || 0);
     const distText = minDist < 5 ? "TOUCH" : `${minDist.toFixed(1)} m`;
     
     ctx.fillStyle = (spd > 0.5 && minDist < 100) ? '#ff4b4b' : '#00e676';
     ctx.fillText(`DIST: ${distText.padStart(8)}`, boxX + 12, boxY + 50);
     ctx.fillText(`SPD : ${spd.toFixed(2).padStart(8)} kt`, boxX + 12, boxY + 68);
 
-    // ★修正: スタート時（離岸前）とゴール時（着岸完了）の両方で機能するステータス
     // 枠内（60m以内）かつ ほぼ停止状態（0.2kt以下）の場合
     if (minDist < 60 && spd < 0.2) {
       ctx.fillStyle = 'rgba(0, 230, 118, 0.9)';
@@ -809,5 +829,11 @@ function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
       ctx.fillText('STATUS: MOORED (係留中)', boxX + boxW/2, boxY + boxH + 6);
     }
     ctx.restore();
+  } else {
+    // 遠ざかったらスラスターパネルを隠す
+    if (thrusterPanel) {
+      thrusterPanel.style.opacity = '0';
+      thrusterPanel.style.pointerEvents = 'none';
+    }
   }
 }
