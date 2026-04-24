@@ -1101,8 +1101,9 @@ window.addEventListener('keyup', (e) => {
 
 // --- 1. バース（着岸エリア）の定義 ---
 export const BERTHS = [
-  { name: 'YOKOHAMA HONMOKU D-4', x: 2320, z: 2150, heading: 1.25, status: 'approach' },
-  { name: 'TOKYO OHI CT', x: -1500, z: 5800, heading: -0.3, status: 'approach' }
+  // ★修正: 横浜港と東京港の赤いマーカー（スタート地点）の座標と角度に一致させました
+  { name: 'YOKOHAMA PORT', x: -10000, z: 16600, heading: 0.6, status: 'approach' },
+  { name: 'TOKYO PORT', x: 1800, z: 35500, heading: -0.3, status: 'approach' }
 ];
 
 // スラスターの出力値 (-1.0 左舷 〜 1.0 右舷)

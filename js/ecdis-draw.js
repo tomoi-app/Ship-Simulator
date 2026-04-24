@@ -736,34 +736,33 @@ function _drawFreeModeOverlay(ctx, safeP, cx, cy, w, h, ecdisScale) {
 }
 
 // ============================================================
-// 着岸支援UI（海図上の枠 ＆ 距離計）
+// 着岸・離岸支援UI（海図上の枠 ＆ 距離計）
 // ============================================================
 function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
-  // main.jsで定義したバース情報（ハードコードで可視化）
   const BERTHS = [
-    { name: 'YOKOHAMA HONMOKU D-4', x: 2320, z: 2150, heading: 1.25 },
-    { name: 'TOKYO OHI CT', x: -1500, z: 5800, heading: -0.3 }
+    { name: 'YOKOHAMA PORT', x: -10000, z: 16600, heading: 0.6 },
+    { name: 'TOKYO PORT', x: 1800, z: 35500, heading: -0.3 }
   ];
 
   let activeBerth = null;
   let minDist = Infinity;
 
-  // 1. 各バースを緑の枠で描画 ＆ 最寄りのバースを特定
   BERTHS.forEach(b => {
     const sx = cx + (b.x - safeP.posX) / ecdisScale;
     const sy = cy - (b.z - safeP.posZ) / ecdisScale;
     
-    // 海図上に描画
+    const berthWidth = 120 / ecdisScale;
+    const berthLength = 400 / ecdisScale;
+    
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(b.heading);
-    ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)'; // 鮮やかな緑
+    ctx.strokeStyle = 'rgba(0, 230, 118, 0.8)';
     ctx.lineWidth = 2;
     ctx.setLineDash([4, 4]);
-    ctx.strokeRect(-25, -150, 50, 300); // 岸壁のサイズ
+    ctx.strokeRect(-berthWidth / 2, -berthLength / 2, berthWidth, berthLength);
     ctx.restore();
 
-    // 自船との距離を計算
     const distMeters = Math.hypot(-safeP.posX - b.x, safeP.posZ - b.z);
     if (distMeters < minDist) {
       minDist = distMeters;
@@ -771,12 +770,11 @@ function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
     }
   });
 
-  // 2. 最寄りバースが1000m以内なら、右上にアシスト情報を表示
   if (activeBerth && minDist < 1000) {
     const boxW = 180;
     const boxH = 95;
     const boxX = w - boxW - 20;
-    const boxY = 20; // 画面右上
+    const boxY = 20;
 
     ctx.save();
     ctx.fillStyle = 'rgba(15, 25, 35, 0.85)';
@@ -789,7 +787,7 @@ function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('BERTHING ASSIST', boxX + 12, boxY + 12);
+    ctx.fillText('THRUSTER & MOORING', boxX + 12, boxY + 12);
     ctx.fillStyle = '#a6c3d9';
     ctx.fillText(activeBerth.name, boxX + 12, boxY + 28);
 
@@ -797,18 +795,18 @@ function _drawBerthingAssist(ctx, safeP, cx, cy, w, ecdisScale) {
     const spd = (safeP.speed || 0);
     const distText = minDist < 5 ? "TOUCH" : `${minDist.toFixed(1)} m`;
     
-    // 接近しすぎで速度が速いと警告色に
     ctx.fillStyle = (spd > 0.5 && minDist < 100) ? '#ff4b4b' : '#00e676';
     ctx.fillText(`DIST: ${distText.padStart(8)}`, boxX + 12, boxY + 50);
     ctx.fillText(`SPD : ${spd.toFixed(2).padStart(8)} kt`, boxX + 12, boxY + 68);
 
-    // 完全な着岸成功判定 (距離10m以内、速度0.2kt以下)
-    if (minDist < 10 && spd < 0.2) {
+    // ★修正: スタート時（離岸前）とゴール時（着岸完了）の両方で機能するステータス
+    // 枠内（60m以内）かつ ほぼ停止状態（0.2kt以下）の場合
+    if (minDist < 60 && spd < 0.2) {
       ctx.fillStyle = 'rgba(0, 230, 118, 0.9)';
       ctx.fillRect(boxX, boxY + boxH, boxW, 25);
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
-      ctx.fillText('BERTHING SUCCESS!', boxX + boxW/2, boxY + boxH + 6);
+      ctx.fillText('STATUS: MOORED (係留中)', boxX + boxW/2, boxY + boxH + 6);
     }
     ctx.restore();
   }
